@@ -1,0 +1,184 @@
+# =============================================================================
+# UTTT-GO Backend — .gitignore
+# .NET 10 / C# 14 / ASP.NET Core 10 · VS Code · Docker · Terraform · Azure
+# =============================================================================
+
+# ------------------------- Build / .NET -------------------------
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+publish/
+artifacts/
+*.dll
+*.exe
+*.pdb
+*.mdb
+*.cache
+*.ilk
+*.meta
+*.obj
+*.iobj
+*.ipdb
+*.pgc
+*.pgd
+*.rsp
+*.sbr
+*.tlb
+*.tli
+*.tlh
+*.tmp
+*.tmp_proj
+*_i.c
+*_p.c
+*_h.h
+*.ncb
+*.sdf
+*.opensdf
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.userprefs
+*.DotSettings.user
+project.lock.json
+project.fragment.lock.json
+*.nupkg
+*.snupkg
+.nuget/
+packages/
+*.nuget.props
+*.nuget.targets
+~$*
+
+# ------------------------- Visual Studio / VS Code -------------------------
+.vs/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json.example
+.idea/
+*.swp
+*.swo
+*~
+
+# ------------------------- Entornos y secretos -------------------------
+# Variables de entorno locales: NUNCA se comitean.
+.env
+.env.*
+!.env.example
+
+# Configuración local con posibles secretos.
+appsettings.Local.json
+appsettings.*.local.json
+secrets.json
+*.secrets.json
+
+# Certificados, llaves y credenciales.
+*.pfx
+*.p12
+*.key
+*.pem
+*.crt
+*.cer
+*.der
+*.jks
+*.keystore
+id_rsa
+id_rsa.*
+id_ed25519
+id_ed25519.*
+
+# Cuentas de servicio / credenciales cloud.
+serviceAccount*.json
+*service-account*.json
+*firebase-adminsdk*.json
+google-credentials*.json
+azure-credentials*.json
+*.azureauth
+.azure/
+
+# ------------------------- Docker -------------------------
+# Overrides locales con secretos/valores de máquina.
+docker-compose.override.yml
+docker-compose.override.yaml
+.docker/
+
+# ------------------------- Terraform -------------------------
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+*.tfvars
+*.tfvars.json
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+
+# ------------------------- Tests / Cobertura -------------------------
+TestResults/
+[Tt]est[Rr]esult*/
+coverage/
+coverage*.xml
+coverage*.json
+coverage*.info
+*.coverage
+*.coveragexml
+*.trx
+*.VisualState.xml
+TestResult.xml
+nunit-result.xml
+*.received.*
+
+# ------------------------- Logs / temporales -------------------------
+*.log
+logs/
+log/
+*.log.*
+*.tlog
+*.vspscc
+*.vssscc
+*.pidb
+*.booproj
+*.svd
+*.pdb.meta
+*.mdb.meta
+temp/
+tmp/
+*.temp
+*.bak
+*.orig
+*.rej
+
+# ------------------------- Sistema operativo / editores -------------------------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+*.swp
+*.swo
+*~
+.obsidian/
+
+# ------------------------- Herramientas de agentes / IDE -------------------------
+# Configuración local de agentes/opencode si llegara a contener secretos.
+.opencode/local/
+*.local.md
+
+# ------------------------- Otros -------------------------
+*.suo
+*.sln.docstates
+*.user
