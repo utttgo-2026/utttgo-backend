@@ -126,13 +126,12 @@
 | 2026-10-29 | Alinear rutas del spec de catálogo | `specs/phase-03-catalog-offers/spec.md` v1.1: prefijos canónicos `/api/v1/products/*` y `/api/v1/offers/*` en lugar de `/catalog` y `/seller` |
 | 2026-10-29 | Crear plan de arquitectura e implementación de catálogo y ofertas | `specs/phase-03-catalog-offers/plan.md` creado con estructura `CatalogAndOffers`, POCOs `products`/`offers`/`categories`, contratos `/products` y `/offers`, caché Redis `cache:catalog:*` con invalidación por generación y fail-open, reserva atómica de stock, pruebas con Testcontainers/Azurite y matriz RF-01..RF-15; estado **Aprobado**; sin código de producción |
 | 2026-10-29 | Desglosar tareas atómicas de catálogo y ofertas | `specs/phase-03-catalog-offers/task.md` creado con TASK-CATALOG-001..059 en 7 bloques (preparación, dominio/modelos/DTOs, repositorios/servicios, caché/invalidación, endpoints/autorización, pruebas unitarias/integración/seguridad, cierre); cada tarea con RF y "Hecho cuando" verificable; sin código de producción |
-| 2026-10-29 | Inicializar repositorio Git y preparar el primer push | `git init` en la raíz del backend; `.gitignore` (\.NET 10, VS Code, secretos, Terraform, temporales) y `README.md` creados; commit raíz `09ecc92` con 20 archivos; remoto `origin` → `https://github.com/utttgo-2026/utttgo-backend.git`; rama `main`. Push rechazado con `403`: la credencial activa (`CraxkerAlda`) no tiene permiso de escritura en `utttgo-2026/utttgo-backend`; pendiente autorización/acceso |
+| 2026-10-29 | Inicializar repositorio Git y publicar el primer push | `git init` en la raíz del backend; `.gitignore` (\.NET 10, VS Code, secretos, Terraform, temporales) y `README.md` creados; commit raíz `09ecc92` con 20 archivos; remoto `origin` → `https://github.com/utttgo-2026/utttgo-backend.git`; rama `main`. Tras agregar a `CraxkerAlda` como colaborador, el push a `origin/main` se completó con éxito y la rama quedó con seguimiento configurado |
 
 ---
 
 ## Notas y pendientes
 
-- [ ] Otorgar permiso de escritura a `CraxkerAlda` en `utttgo-2026/utttgo-backend` (o autenticar una cuenta con acceso) y ejecutar `git push -u origin main`.
 - [ ] Completar HU-027 (notificaciones) con descripción funcional.
 - [ ] Agregar HU para chat (API-037, API-038) en el documento de historias de usuario.
 - [ ] Especificar la comparativa de ofertas (API-016) en el `spec.md` del módulo Offers; ya es propuesta de valor confirmada.
