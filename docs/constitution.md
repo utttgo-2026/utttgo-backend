@@ -15,8 +15,7 @@
 | Propuesta de valor | Comparación de opciones de compra (ofertas) para un mismo producto |
 | Versión actual | 2.0 — Arquitectura y reglas de negocio definidas |
 | Repositorio | `utttgo-backend` (por confirmar URL) |
-| Equipo | 3 integrantes del equipo de software UTTT |
-| Asesora | Odisey Yasmín Porras Beltrán |
+| Equipo | 4 integrantes del equipo de software UTTT |
 
 ---
 
