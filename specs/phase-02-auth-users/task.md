@@ -300,3 +300,7 @@ Dentro de cada bloque, respetar el orden numérico. Las tareas de pruebas de seg
 - [ ] Build Release y `dotnet format` en verde.
 - [ ] `docs/traceability.md` y `memoria.md` actualizados.
 - [ ] Sin código de producción fuera de este `task.md` ni secretos en el repositorio.
+
+### Nota acotada de evidencia local (2026-11-04)
+
+La autorizacion expresa de codigo local para API-039 y sus tareas de candidato estan registradas en api-039-list-users/task.md v0.2.0; los otros seis candidatos se enlazan en docs/traceability-siete-endpoints.md. Los reportes docs/qa-api-001.md, qa-api-002.md, qa-api-004.md, qa-api-006.md, qa-api-007.md, qa-api-008.md y qa-api-039.md documentan pruebas locales con dobles (320 verdes en total). No se completan tareas integrales o de servicios reales de esta fase, API-003/040 ni AC-005. La aprobacion integral del equipo continua pendiente.

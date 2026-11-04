@@ -543,3 +543,7 @@ Cada RF del spec queda cubierto al menos por una sección de implementación y u
 1. Cambiar rutas, colecciones, índices o el orden de middleware exige nueva versión de este plan.
 2. Toda desviación debe reflejarse primero en `spec.md` si altera requisitos.
 3. Ningún agente implementa código de producción sin `task.md` derivado de este plan.
+
+### Nota acotada de ejecucion local (2026-11-04)
+
+Para los siete candidatos de docs/traceability-siete-endpoints.md, la solucion real es UTTTGO.Backend.slnx con src/UTTTGO.Api/Modules/Identity, Sellers y Admin y pruebas en tests/UtttGo.UnitTests, UtttGo.IntegrationTests y UtttGo.SecurityTests. El diseno modular de API-039 esta en api-039-list-users/plan.md v0.2.0. Los adaptadores de Supabase, MongoDB, Redis y auditoria siguen sin configurar: el host normal falla cerrado y los resultados QA usan dobles. Esta nota no sustituye el plan historico ni altera API-003/040, middleware o infraestructura.

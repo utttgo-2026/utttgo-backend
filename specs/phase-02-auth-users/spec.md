@@ -216,3 +216,7 @@ Criterios de aceptación:
 1. Cambiar dominio de correo, flujo de vendedor o permisos admin exige nueva versión de este spec y registro en `memoria.md`.
 2. Ningún agente implementa código que contradiga la constitución o este spec.
 3. La resolución de DEC-003 actualizará RF-11, CL-11 y § 8.
+
+### Nota acotada de entrega local (2026-11-04)
+
+Se entregan como candidatos locales API-001/002/004/006/007/008 y API-039; rutas reales, contratos candidatos y evidencia con dobles constan en docs/traceability-siete-endpoints.md y docs/qa-api-*.md. API-039 tiene SDD modular propio api-039-list-users/spec.md v0.2.0 ratificado para codigo local por la responsable tecnica, sin aprobacion integral del equipo. Esta nota no modifica el alcance historico de v1.0 ni contratos de otras funcionalidades; API-003 y API-040 no se implementaron y AC-005 permanece abierto. Las integraciones externas no se verificaron.
