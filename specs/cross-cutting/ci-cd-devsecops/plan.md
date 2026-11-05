@@ -1,6 +1,6 @@
 # plan.md — Diseño de CI/CD DevSecOps transversal · Backend UTTT-GO
 
-> Versión documental **0.3.0** · 2026-11-04 · Estado: **CI-1 autorizada para implementar, ejecución remota pendiente**. Deriva de `spec.md` 0.3.0 (CI-R01..09; CI-AC-01..10), subordinada a `docs/constitution.md` v2.3 y `AGENTS.md`. TASK-AUTH-007/031 abiertos. Referencias globales en `docs/referencias-profesor-backend.md`.
+> Versión documental **0.3.0** · 2026-11-04 · Evidencia CI-1 actualizada 2026-11-05: **push y PR #2 ejecutados; integración real/CD pendientes**. Deriva de `spec.md` 0.3.0 (CI-R01..09; CI-AC-01..10), subordinada para CI-1 a `docs/constitution.md` v2.1 **publicada** (§§ 2/15/17) y `AGENTS.md` en su alcance publicado. v2.3 local no publicada no se ratifica aquí; TASK-AUTH-007/031 abiertos. Referencias globales en `docs/referencias-profesor-backend.md`.
 
 ## 1. Alcance y arquitectura de entrega
 
@@ -8,11 +8,11 @@ CI-1 de PR y push feature sin servicios de aplicación externos ni nube. La solu
 
 Estructura autorizada de CI-1: `.github/workflows/ci-1.yml`, `scripts/ci/nuget_audit.py` y `.semgrep/ci-1.yaml` (regla piloto local), reportes efímeros como artefactos. No instalar `.specify/` ni trasladar `API_SDD/`, `UnitTest/`, Dockerfile, SQL o workflow AWS. IaC solo cuando exista `infra/terraform/` aprobado. `TASK-AUTH-031` sigue siendo cierre integral de fase 02, no una tarea competidora.
 
-**Procedencia de herramientas (selección CI-1, no aprobación integral de versiones):** `actions/checkout@11d5960a326750d5838078e36cf38b85af677262`, `actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9` y `actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02` resuelven los tags v4 consultados en GitHub API; licencias MIT en sus repositorios. Gitleaks v8.30.1 MIT, [release oficial](https://github.com/gitleaks/gitleaks/releases/tag/v8.30.1) y SHA-256 Linux x64 `551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb` (digest declarado por API). Semgrep OSS v1.183.0 [LGPL-2.1 en repositorio](https://github.com/semgrep/semgrep/blob/v1.183.0/LICENSE), imagen Linux amd64 en Docker Hub fijada por digest `sha256:2e45517a85e13a9cca14a2a00df6bb48affd66b8ebfae1b0991cd57578362fb0`; uso separado de la aplicación, sin incorporar su código ni redistribuirlo. Compilación local con SDK .NET preview y Docker Engine indisponible: compatibilidad de Semgrep y SDK estable **pendiente de runner**.
+**Procedencia de herramientas (selección CI-1, no aprobación integral de versiones):** `actions/checkout@11d5960a326750d5838078e36cf38b85af677262`, `actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9` y `actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02` resuelven los tags v4 consultados en GitHub API; licencias MIT en sus repositorios. Gitleaks v8.30.1 MIT, [release oficial](https://github.com/gitleaks/gitleaks/releases/tag/v8.30.1) y SHA-256 Linux x64 `551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb` (digest declarado por API). Semgrep OSS v1.183.0 [LGPL-2.1 en repositorio](https://github.com/semgrep/semgrep/blob/v1.183.0/LICENSE), imagen Linux amd64 en Docker Hub fijada por digest `sha256:2e45517a85e13a9cca14a2a00df6bb48affd66b8ebfae1b0991cd57578362fb0`; uso separado de la aplicación, sin incorporar su código ni redistribuirlo. SDK local .NET preview y Docker Engine indisponible en corte local; en runner Linux ambos steps se ejecutaron exitosamente y la responsable técnica reporta SDK estable `10.0.403` desde el artefacto de PR (sin inspección directa por este agente).
 
 ### Matriz provisional de versiones **solo para identificar CI local**
 
-Fuente: `docs/academic-requirements-phase-02.md` § «Matriz inicial y política de versiones», aprobada **individualmente**, con TASK-AUTH-007 aún abierto. Una ejecución de CI lleva SHA y run ID, **no** DEP ni versión de release nueva.
+Matriz **provisional reproducida aquí**, con antecedente académico local no publicado en el PR. Cotejar el texto original de los puntos 11/15 con el equipo antes de usar esta interpretación como evidencia académica; la aprobación individual declarada no prueba aprobación integral. TASK-AUTH-007 sigue abierto y estos números solo identifican propuestas, no releases aprobados. No añadir automáticamente el material local. Una ejecución de CI lleva SHA y run ID, **no** DEP ni versión de release nueva.
 
 | Componente | Línea base ya documentada | Uso en CI-1 / límite |
 |---|---|---|
@@ -34,14 +34,14 @@ No elevar números por la sola documentación/ejecución de CI. Versiones defini
 | 2 | `python3 scripts/ci/nuget_audit.py`: restore de `UTTTGO.Backend.slnx` con NuGetAudit true, Mode=all, Level=low. | NU1903/4 bloquean; NU1901/2 informan; NU1900 se reintenta una vez y bloquea por indisponibilidad; otros fallos de restore bloquean. |
 | 3 | `dotnet format UTTTGO.Backend.slnx --verify-no-changes --no-restore`. | 0 cambios pendientes; si falla, PR rojo. |
 | 4 | `dotnet build UTTTGO.Backend.slnx -c Release --no-restore`. | 0 errores, build Release para los tres tests; no confundir aviso SDK preview local con objetivo estable de runner. |
-| 5 | `dotnet test tests/UtttGo.UnitTests/UtttGo.UnitTests.csproj -c Release --no-build` y reporte TRX cuando se implemente. | Suite ejecutada, total/fallidas/omitidas visibles; no omitir proyectos. |
+| 5 | `dotnet test tests/UtttGo.UnitTests/UtttGo.UnitTests.csproj -c Release --no-build` con TRX temporal resumido en conteos descargables. | Suite ejecutada, total/fallidas/omitidas visibles; no omitir proyectos ni subir TRX crudo. |
 | 6 | Igual para `tests/UtttGo.IntegrationTests/UtttGo.IntegrationTests.csproj`. | Reporte marcado **integración local con dobles**, no Mongo/Redis/Supabase reales. |
 | 7 | Igual para `tests/UtttGo.SecurityTests/UtttGo.SecurityTests.csproj`. | Reporte marcado **seguridad local con dobles**, no JWT/SAS/distribución reales. |
 | 8 | Gitleaks OSS v8.30.1 (MIT), archivo oficial Linux x64 y digest SHA-256 fijado; commits desde `main` y árbol rastreado. | Hallazgo o error del escáner bloquea; salida cruda privada, resumen sin coincidencias. Base ausente bloquea. |
 | 9 | Semgrep OSS v1.183.0, regla local C# de CORS en `.semgrep/ci-1.yaml`. | Piloto informativo; informe de código de salida y número de hallazgos sin fuente; fallo no equivale a pasada. |
 | 10 | Solo si se modificó `infra/terraform/` **después de aprobarla**: `terraform fmt -check -recursive`, `terraform init -backend=false`, `terraform validate`. | Sin `apply`, estado real ni recursos en PR; cuando la ruta no existe, «no aplica», no «Terraform verde». |
 
-**SCA:** el script de restore evalúa NU1900 (advisories inaccesibles), NU1901/2 (Low/Moderate) y NU1903/4 (High/Critical). `NuGetAuditMode=all` incluye transitivas; un resultado limpio depende de que la fuente de advisories esté disponible. No `tee`/`|| true` en gates. Probar clasificación y reintento localmente; ejecución del runner pendiente. Excepciones solo con issue y aprobación; SBOM/Dependabot posteriores, sin umbrales de cobertura inventados.
+**SCA:** el script de restore evalúa NU1900 (advisories inaccesibles), NU1901/2 (Low/Moderate) y NU1903/4 (High/Critical). `NuGetAuditMode=all` incluye transitivas; un resultado limpio depende de que la fuente de advisories esté disponible. No `tee`/`|| true` en gates. Restore/auditoría ejecutados exitosamente en Linux para push y PR; las pruebas adversariales de NU1900/1903/1904 reales siguen pendientes. Excepciones solo con issue y aprobación; SBOM/Dependabot posteriores, sin umbrales de cobertura inventados.
 
 **Duplicados:** cancelar ejecuciones obsoletas dentro del mismo evento/rama o PR, sin cancelar PR por push. Una rama feature con PR abierto puede provocar dos ejecuciones; no omitir checks basados en una consulta adicional de permisos sin aprobarla.
 
@@ -66,12 +66,13 @@ No elevar números por la sola documentación/ejecución de CI. Versiones defini
 | Verificación al revisar este plan | Evidencia prevista / riesgo |
 |---|---|
 | `spec.md` CI-R01..09 ↔ `plan.md` §§ 1–4 ↔ `task.md` tareas CI-001.. | Autorización CI-1 no cierra TASK-AUTH-007/031 ni aprueba CD. |
-| `python3 scripts/ci/nuget_audit.py`, formato, build Release y tres suites | Comprobación local separada de ejecución remota de GitHub Actions. |
-| Pruebas CI-AC-01..10 contra workflow futuro | PR y push feature completos; canario secreto, advisory High/Critical y servicio caído no dan falso verde; sin credenciales ni ejecución antes de aprobar workflow. |
+| `python3 scripts/ci/nuget_audit.py`, formato, build Release y tres suites | Local + [run push 42111305859](https://github.com/utttgo-2026/utttgo-backend/actions/runs/42111305859) y [run PR 42114158664](https://github.com/utttgo-2026/utttgo-backend/actions/runs/42114158664) `success`. Conteos del artefacto del PR aportados por responsable técnica; descarga desde este entorno HTTP 401. |
+| Pruebas CI-AC-01..10 contra workflow | PR y push feature completos; pruebas negativas de secreto/advisory/servicio caído, protección de rama y aprobación SDD integral aún pendientes. No confundir ejecución verde con todas las AC cerradas. |
 | Viabilidad económica, herramientas y licencias | Costo de runners/servicios y derechos de reutilización requieren constatación, no asumir gratuidad por usar GitHub Actions ni por README ajeno. |
 
 ### Aprobación
 
 - [x] Primera CI local autorizada expresamente por responsable técnica tras conformidad visible de tres participantes; no atribuir unanimidad, roles ni fecha a la captura.
-- [ ] Ejecución GitHub Actions y validación de escáneres en runner.
+- [x] Ejecución GitHub Actions del mismo SHA para push y PR, steps de Gitleaks/NuGetAudit exitosos y Semgrep informativo ejecutado; resumen del artefacto comunicado por responsable técnica.
+- [ ] Piloto adversarial de escáneres, acceso directo al contenido del artefacto por este agente y conciliación de referencias no publicadas.
 - [ ] TASK-AUTH-007/031, CI-2 y CD siguen abiertos.
