@@ -3,6 +3,7 @@
 > Versión 2.0 · 2026-10-29
 > Alineado con `constitution.md` v2.0. Si hay conflicto, gana `constitution.md`.
 > Flujo SDD obligatorio: `constitution.md` → `spec.md` → `plan.md` → `task.md` → implementación.
+> Referencias metodológicas y técnicas del profesor para **todo el backend**: `docs/referencias-profesor-backend.md`; son subordinadas a la constitución y no modifican contratos aprobados.
 
 ---
 

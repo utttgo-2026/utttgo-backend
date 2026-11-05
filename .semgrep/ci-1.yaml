@@ -1,0 +1,8 @@
+# Pilot only: informative until results and false positives are reviewed.
+# Original UTTT-GO rule; no SQL/EF or professor repository code copied.
+rules:
+  - id: utttgo-permissive-cors
+    languages: [csharp]
+    severity: WARNING
+    message: Review permissive CORS; production origins must be explicit.
+    pattern: $POLICY.AllowAnyOrigin()

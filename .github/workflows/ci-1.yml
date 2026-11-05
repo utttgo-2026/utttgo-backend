@@ -1,0 +1,120 @@
+name: CI-1 Backend (local doubles)
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: ['feature/**']
+
+# No cloud credentials, deployment, package publishing or write permissions.
+permissions:
+  contents: read
+
+# Cancel obsolete runs of the SAME event. Never cancel a required PR with a push.
+concurrency:
+  group: ci-1-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      # v4 tags resolved on 2026-11-04; full commit SHAs prevent tag drift.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0 # scan feature commits against main, including PR merge commits
+          persist-credentials: false
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Identify CI evidence (no external service credentials)
+        run: |
+          mkdir -p ci-evidence
+          printf 'CI-1 backend with local doubles only\nSHA: %s\nEvent: %s\nSDK: %s\n' \
+            "$GITHUB_SHA" "$GITHUB_EVENT_NAME" "$(dotnet --version)" > ci-evidence/context.txt
+
+      - name: Restore + NuGetAudit (mandatory, direct and transitive)
+        run: python3 scripts/ci/nuget_audit.py
+      - name: Verify format
+        run: dotnet format UTTTGO.Backend.slnx --verify-no-changes --no-restore
+      - name: Build Release
+        run: dotnet build UTTTGO.Backend.slnx -c Release --no-restore
+      - name: Unit tests (local doubles)
+        run: dotnet test tests/UtttGo.UnitTests/UtttGo.UnitTests.csproj -c Release --no-build --logger 'trx;LogFileName=unit.trx' --results-directory "$RUNNER_TEMP/ci1-tests/unit"
+      - name: Integration tests (local doubles, not external integrations)
+        run: dotnet test tests/UtttGo.IntegrationTests/UtttGo.IntegrationTests.csproj -c Release --no-build --logger 'trx;LogFileName=integration.trx' --results-directory "$RUNNER_TEMP/ci1-tests/integration"
+      - name: Security tests (local doubles, not distributed security)
+        run: dotnet test tests/UtttGo.SecurityTests/UtttGo.SecurityTests.csproj -c Release --no-build --logger 'trx;LogFileName=security.trx' --results-directory "$RUNNER_TEMP/ci1-tests/security"
+
+      - name: Summarize tests without uploading raw TRX
+        if: always()
+        run: python3 scripts/ci/test_summary.py "$RUNNER_TEMP/ci1-tests"
+
+      - name: Secret scan (mandatory; no raw findings in logs or artifacts)
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=8.30.1
+          archive="$RUNNER_TEMP/gitleaks.tar.gz"
+          curl --fail --location --silent --show-error --retry 2 \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${version}/gitleaks_${version}_linux_x64.tar.gz" -o "$archive"
+          printf '%s  %s\n' '551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb' "$archive" | sha256sum --check --status
+          mkdir -p "$RUNNER_TEMP/ci1-bin" "$RUNNER_TEMP/ci1-tracked"
+          tar -xzf "$archive" -C "$RUNNER_TEMP/ci1-bin" gitleaks
+          scanner="$RUNNER_TEMP/ci1-bin/gitleaks"
+          "$scanner" version > /dev/null
+          base=$(git merge-base HEAD origin/main)
+          if [ -z "$base" ]; then
+            printf 'Secret scan: FAIL (no trusted base)\n' > ci-evidence/secrets.txt
+            exit 1
+          fi
+          # Archive only the committed tree, never bin/obj or ignored local files.
+          git archive HEAD | tar -x -C "$RUNNER_TEMP/ci1-tracked"
+          printf 'Secret scan: git commits plus tracked tree; Gitleaks %s\n' "$version" > ci-evidence/secrets.txt
+          if ! "$scanner" git . --log-opts="$base..HEAD" --redact --no-banner > "$RUNNER_TEMP/gitleaks-git.log" 2>&1; then
+            printf 'Secret scan: FAIL (commits; output withheld)\n' >> ci-evidence/secrets.txt
+            exit 1
+          fi
+          if ! "$scanner" dir "$RUNNER_TEMP/ci1-tracked" --redact --no-banner > "$RUNNER_TEMP/gitleaks-tree.log" 2>&1; then
+            printf 'Secret scan: FAIL (tracked tree; output withheld)\n' >> ci-evidence/secrets.txt
+            exit 1
+          fi
+          printf 'Secret scan: PASS (both scans executed)\n' >> ci-evidence/secrets.txt
+
+      - name: SAST C# pilot (informative, not a quality gate)
+        if: always()
+        shell: bash
+        run: |
+          set -u
+          raw="$RUNNER_TEMP/semgrep-private.json"
+          # Pull failures and findings are reported, not silently called a pass.
+          docker run --rm --network none -v "$PWD:/src:ro" -w /src semgrep/semgrep:1.183.0@sha256:2e45517a85e13a9cca14a2a00df6bb48affd66b8ebfae1b0991cd57578362fb0 \
+            semgrep scan --config .semgrep/ci-1.yaml --metrics=off --json > "$raw" 2> "$RUNNER_TEMP/semgrep-error.log"
+          status=$?
+          python3 - "$raw" "$status" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          try:
+              results = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+              summary = {"mode": "pilot-informative", "toolExitCode": int(sys.argv[2]),
+                         "findings": len(results["results"]),
+                         "ruleIds": sorted({r["check_id"] for r in results["results"]})}
+          except (OSError, ValueError, KeyError, TypeError):
+              summary = {"mode": "pilot-informative", "toolExitCode": int(sys.argv[2]),
+                         "status": "scan-unavailable-not-passed"}
+          Path("ci-evidence/semgrep-summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+          print("SAST pilot:", summary.get("status", "findings=" + str(summary.get("findings", 0))))
+          PY
+
+      - name: Upload safe CI evidence (no raw scanner output)
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ci-1-backend-local-doubles
+          path: ci-evidence/
+          if-no-files-found: error
+          retention-days: 7 # limited CI-only evidence; revisit with repository retention policy
