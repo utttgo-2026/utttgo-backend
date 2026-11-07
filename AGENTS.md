@@ -1,8 +1,8 @@
 # AGENTS.md — Backend UTTT-GO
 > Manual operativo de agentes y desarrolladores del backend.
-> Versión 2.0 · 2026-10-29
-> Alineado con `constitution.md` v2.0. Si hay conflicto, gana `constitution.md`.
-> Flujo SDD obligatorio: `constitution.md` → `spec.md` → `plan.md` → `task.md` → implementación.
+> Versión 2.2 · 2026-11-03
+> Alineado con `docs/constitution.md` v2.3. Si hay conflicto, gana `docs/constitution.md`.
+> Flujo SDD obligatorio: `docs/constitution.md` → `spec.md` → `plan.md` → `task.md` → implementación.
 > Referencias metodológicas y técnicas del profesor para **todo el backend**: `docs/referencias-profesor-backend.md`; son subordinadas a la constitución y no modifican contratos aprobados.
 
 ---
@@ -20,6 +20,7 @@
 - **IaC:** Terraform para toda la infraestructura Azure.
 - **Datos:** MongoDB Atlas con `MongoDB.Driver`.
 - **Auth:** Supabase Auth; roles en el perfil local.
+- **Vendedores:** autoactivación al completar nombre de negocio, descripción y punto de recogida; sin aprobación administrativa previa en el MVP (DEC-002). El cliente no asigna roles.
 - **Redis:** Azure Cache for Redis para caché, rate limiting distribuido y blacklist JWT.
 - **Storage:** Azure Blob Storage con URLs SAS generadas exclusivamente por el backend.
 - **Moderación:** Azure AI Content Safety API antes de publicar imágenes.
@@ -29,7 +30,9 @@
 
 ### 1.2 Setup local
 
-Los comandos asumen la estructura objetivo de § 11. Mientras el esqueleto no exista, las tareas de la FASE 0/1 de `plan.md` son las que crean estos archivos.
+La solución y el proyecto **existentes** son `UTTTGO.Backend.slnx` y `src/UTTTGO.Api/UTTTGO.Api.csproj` (Controllers). Ya existen `tests/UtttGo.UnitTests/`, `tests/UtttGo.IntegrationTests/` y `tests/UtttGo.SecurityTests/` **solo con cobertura local simulada de API-001/002**; Docker, `.env.example`, `infra/terraform` y workflows son objetivos **aún no presentes**. No ejecutar sus comandos como si fueran verificaciones realizadas. La conciliación técnica de la solución `.slnx` sustituye la prohibición documental anterior, sin cambiar el stack.
+
+En fase 02, `docs/academic-requirements-phase-02.md` distingue obligaciones del PDF (incluidas **dos instancias y costo cero**) de recomendaciones (Terraform en el PDF, obligatorio por la constitución) y herramientas sugeridas. Su viabilidad simultánea en Azure está **pendiente de evidencia** y es gate antes de infraestructura/despliegue; documentar el riesgo no equivale a demostrar costo cero. TASK-AUTH-001/006 están cerradas por evidencia documental; eso no cierra TASK-AUTH-007.
 
 1. Copiar variables de entorno:
    ```powershell
@@ -40,13 +43,13 @@ Los comandos asumen la estructura objetivo de § 11. Mientras el esqueleto no ex
    ```powershell
    docker compose up -d
    ```
-   Incluye MongoDB 7 (espejo local de Atlas), Redis 7 y Azurite para Blob Storage. No apuntar pruebas locales a Atlas, Redis ni Blob de producción.
+   Cuando se cree Compose, incluirá MongoDB 7 (espejo local de Atlas), Redis 7 y Azurite para Blob Storage. No apuntar pruebas locales a Atlas, Redis ni Blob de producción.
 3. Restaurar y ejecutar:
    ```powershell
-   dotnet restore utttgo-backend.sln
-   dotnet run --project src/UtttGo.Api/UtttGo.Api.csproj
+   dotnet restore UTTTGO.Backend.slnx
+   dotnet run --project src/UTTTGO.Api/UTTTGO.Api.csproj
    ```
-4. Verificar `GET /health`.
+4. Tras implementar la sonda de salud, verificar `GET /health`; **no existe todavía en la plantilla actual**.
 
 Para `dotnet run`, exportar las mismas variables del `.env` o usar secretos locales de desarrollo (`dotnet user-secrets`), nunca comiteados. En Azure, los valores provienen de **Azure Key Vault** y variables de entorno del App Service.
 
@@ -54,17 +57,19 @@ Para `dotnet run`, exportar las mismas variables del `.env` o usar secretos loca
 
 | Objetivo | Comando |
 |---|---|
-| Restaurar | `dotnet restore utttgo-backend.sln` |
-| Compilar Release | `dotnet build utttgo-backend.sln -c Release --no-restore` |
-| Formato | `dotnet format utttgo-backend.sln --verify-no-changes --no-restore` |
+| Restaurar | `dotnet restore UTTTGO.Backend.slnx` |
+| Compilar Release | `dotnet build UTTTGO.Backend.slnx -c Release --no-restore` |
+| Formato | `dotnet format UTTTGO.Backend.slnx --verify-no-changes --no-restore` |
 | Unitarias | `dotnet test tests/UtttGo.UnitTests/UtttGo.UnitTests.csproj -c Release --no-build` |
 | Integración | `dotnet test tests/UtttGo.IntegrationTests/UtttGo.IntegrationTests.csproj -c Release --no-build` |
 | Seguridad | `dotnet test tests/UtttGo.SecurityTests/UtttGo.SecurityTests.csproj -c Release --no-build` |
-| Ejecutar API | `dotnet run --project src/UtttGo.Api/UtttGo.Api.csproj` |
+| Ejecutar API | `dotnet run --project src/UTTTGO.Api/UTTTGO.Api.csproj` |
 | Docker local | `docker compose up -d` / `docker compose down` |
 | Terraform formato | `terraform -chdir=infra/terraform fmt -check -recursive` |
 | Terraform validación | `terraform -chdir=infra/terraform init -backend=false` + `terraform -chdir=infra/terraform validate` |
 | Terraform plan | `terraform -chdir=infra/terraform plan -var-file=envs/dev.tfvars` |
+
+Unitarias, integración y seguridad **locales con dobles** de API-001/002 ya existen y se ejecutan (`docs/qa-api-001.md`, `docs/qa-api-002.md`); **Docker y Terraform son previstos**, sin rutas/archivos actuales. No inferir integraciones externas ni seguridad real verde del build o de pruebas con dobles.
 
 ### 1.4 Orden de CI en PR
 
@@ -120,15 +125,18 @@ restore → format → build → unit → integration → security → secret sc
 | ID | Regla |
 |---|---|
 | BR-001 | **No existe carrito de compras.** La compra es directa e individual. |
-| BR-002 | Cada pedido corresponde a **una única oferta/producto** con su cantidad. |
+| BR-002 | Cada pedido corresponde a **un único producto de un vendedor** con su cantidad. |
 | BR-003 | El **único método de pago es efectivo presencial** en el campus UTTT. No hay pasarela ni datos financieros. |
-| BR-004 | **No existen menús ni horarios.** La disponibilidad depende solo de stock/estado de la oferta. |
-| BR-005 | La propuesta de valor central son las **opciones comparativas tipo Eneba** para un mismo producto. |
-| BR-006 | Se distingue **Producto canónico** (qué se vende) de **Oferta** (quién lo vende, precio y condiciones). |
+| BR-004 | **No existen menús ni horarios.** La disponibilidad depende de existencias/estado del producto; ingredientes no son menú. |
+| BR-005 | La comparación se hace entre **productos independientes de distintos vendedores** encontrados por búsqueda/filtros (ingredientes, precios y calificaciones disponibles). |
+| BR-006 | Cada vendedor posee y administra sus **propios productos/publicaciones**; no hay producto maestro compartido ni ofertas asociadas. |
 | BR-007 | Toda imagen usa **SAS pre-firmada por el backend** y **moderación previa** con Azure AI Content Safety. |
 | BR-008 | Las notificaciones push se envían **solo** por el backend con FCM Admin SDK. |
-| BR-009 | Precio, total, estado, `userId`, `sellerId` y roles **nunca** se confían al cliente. |
-| BR-010 | El total se calcula server-side como `price × quantity` de la oferta seleccionada. |
+| BR-009 | El comprador no decide precio/total/estado ni identidad; el vendedor propietario puede solicitar cambios de precio, stock y publicación, validados por backend; identidades/roles nunca se confían al cliente. |
+| BR-010 | Total server-side = precio vigente del producto elegido × cantidad; definir concurrencia/snapshot en Orders. |
+| BR-011 | Eliminar cuenta elimina información propia, incluyendo productos/publicaciones/historial del vendedor; datos compartidos requieren diseño específico. |
+| BR-012 | Chat conservado mientras el pedido esté en curso; historial eliminado dentro de tres días de completarse. |
+| BR-013 | Recuperación de contraseña por enlace al correo registrado, usando Supabase Auth; ruta backend nueva requiere ficha aprobada. |
 
 ### 3.2 Stack y datos
 
@@ -165,6 +173,8 @@ Antes de pedir revisión de un cambio:
 - [ ] Sin secretos en el diff; secret scanning del CI en verde.
 - [ ] Sin endpoints nuevos fuera de `spec.md` y sin contratos sin ficha.
 
+**Alcance provisional del MVP:** las 42 fichas API-001 a API-042 de `material/UTTT_GO_Punto_4_Especificacion_API_v1.xlsx` siguen sin modificación formal. API-016 contradice el modelo confirmado; se propone retirar/sustituir su función por búsqueda y filtros de API-011, **sin aprobar aún retiro, redirección o cambio de ruta**. Cualquier ruta adicional requiere ficha nueva y aprobación; `GET /health` es sonda operativa. Las diferencias constan en `docs/traceability.md` y se concilian `constitution.md` → `spec.md` → `plan.md` → `task.md`.
+
 **NFR:** no hay umbrales de rendimiento o cobertura aprobados todavía. No inventarlos. Cuando se definan en un `spec.md` de NFR, cada umbral debe ser verificable por comando o test y este archivo se actualiza.
 
 **Configuración:** la tabla de variables vive en `spec.md` § 2 y `.env.example`. `appsettings.*.json` solo documenta claves con código real; secretos fuera de Git.
@@ -175,7 +185,7 @@ Antes de pedir revisión de un cambio:
 
 ### 5.1 Módulos y API
 
-- Módulos previstos: `Identity`, `Users`, `Sellers`, `Catalog`, `Offers`, `Orders`, `Reviews`, `Favorites`, `Notifications`, `Chat`, `Media`, `Admin`.
+- Módulos previstos: `Identity`, `Users`, `Sellers`, `Catalog`, `Orders`, `Reviews`, `Favorites`, `Notifications`, `Chat`, `Media`, `Admin`. No presupone módulo independiente `Offers`.
 - Un módulo no accede a colecciones ni repositorios de otro. Se comunica por interfaces/contratos del módulo dueño.
 - Rutas: `/api/v1/...`; acciones en kebab-case.
 - DTOs explícitos + FluentValidation. No exponer documentos de MongoDB directamente.
@@ -211,7 +221,7 @@ Flujo obligatorio:
 3. El cliente sube directo a un contenedor de staging.
 4. El cliente notifica fin; el backend invoca Azure AI Content Safety.
 5. Seguro → `Approved`; no seguro → se elimina el blob y queda `Rejected`.
-6. Solo un `mediaAssetId` en `Approved` puede asociarse a producto/oferta.
+6. Solo un `mediaAssetId` en `Approved` puede asociarse a un producto publicado.
 
 - SAS de lectura para imágenes aprobadas: corta duración o CDN controlado.
 - Nunca `AZURE_STORAGE_CONNECTION_STRING` ni account key al cliente.
@@ -232,7 +242,7 @@ Flujo obligatorio:
 
 ### 5.7 Pedidos
 
-- Un pedido = una oferta (BR-001, BR-002).
+- Un pedido = un producto de un vendedor (BR-001, BR-002).
 - Pago fijo `Cash`; `Delivered` implica efectivo recibido (BR-003).
 - Máquina de estados de `constitution.md` § 13. Transición inválida = `409 Conflict`.
 
@@ -273,7 +283,7 @@ Flujo obligatorio:
 - Content Safety y FCM se mockean en unitarias/integración; nunca se llaman servicios reales en CI.
 - Proyectos: `UtttGo.UnitTests`, `UtttGo.IntegrationTests`, `UtttGo.SecurityTests`.
 - Casos mínimos:
-  - Unitarias: servicios, validadores, cálculo de total, reglas de oferta/pedido.
+  - Unitarias: servicios, validadores, cálculo de total, propiedad y reglas de producto/pedido.
   - Integración: endpoints contra MongoDB/Redis en contenedores; flujo SAS con Azurite.
   - Seguridad: token inválido/expirado/revocado, rol incorrecto, recurso ajeno, rate limit, blacklist.
   - Media/IA: SAS solo backend, alcance mínimo, moderación antes de publicar, rechazo de contenido no seguro.
@@ -382,7 +392,7 @@ No se importan de la guía de referencia ni se usan en UTTT-GO:
 - MassTransit, SQS, sagas, consumers, DLQ y eventos de bus.
 - NBomber, Pact, Stryker, MutationTest, ChaosTest, ContractTest y Fuzzing.
 - Argon2id, BCrypt local, lockout persistente y 2FA TOTP local (la autenticación es Supabase Auth).
-- `.slnx`, `appsettings.Example.json`, `UseInMemoryDatabase`, AWS, CloudFormation, ALB/EC2/RDS.
+- `appsettings.Example.json`, `UseInMemoryDatabase`, AWS, CloudFormation, ALB/EC2/RDS. La solución real es `.slnx`; no convertirla por una prohibición heredada.
 - Prometheus/Grafana como stack obligatorio.
 - Scripts de endpoints/cobertura/mutación de otro proyecto.
 
@@ -394,9 +404,9 @@ No se importan de la guía de referencia ni se usan en UTTT-GO:
 
 | Ruta | Contenido |
 |---|---|
-| `src/UtttGo.Api/` | Entry point `Program.cs`, configuración y middleware |
-| `src/UtttGo.Api/Modules/{Module}/` | Endpoints, Application, Domain, Infrastructure, Contracts, Validators |
-| `src/UtttGo.Api/Shared/` | Contratos transversales, errores, primitivas |
+| `src/UTTTGO.Api/` | Proyecto real; `Program.cs` de plantilla y Controllers |
+| `src/UTTTGO.Api/Modules/{Module}/` | Objetivo futuro: Controllers, Application, Domain, Infrastructure, Contracts, Validators |
+| `src/UTTTGO.Api/Shared/` | Objetivo futuro: contratos transversales, errores, primitivas |
 | `tests/UtttGo.UnitTests/` | xUnit unitarias |
 | `tests/UtttGo.IntegrationTests/` | xUnit + WebApplicationFactory + Testcontainers |
 | `tests/UtttGo.SecurityTests/` | Seguridad y autorización |
@@ -406,7 +416,7 @@ No se importan de la guía de referencia ni se usan en UTTT-GO:
 | `.github/workflows/` | CI/CD |
 | `docker-compose.yml` | MongoDB, Redis y Azurite locales |
 | `.env.example` | Variables sin valores reales |
-| `utttgo-backend.sln` | Solución .NET (formato `.sln`, no `.slnx`) |
+| `UTTTGO.Backend.slnx` | Solución .NET real, no renombrar sin decisión aprobada |
 
 ---
 
@@ -420,7 +430,7 @@ Una tarea solo se marca completada si:
 - [ ] Tests unitarios, integración y seguridad verdes.
 - [ ] Se cubrieron pruebas de media/SAS y FCM si aplica.
 - [ ] No hay secretos ni valores sensibles en el diff.
-- [ ] Se respetaron las reglas BR-001 a BR-010 y la degradación de Redis.
+- [ ] Se respetaron las reglas BR-001 a BR-013 y la degradación de Redis.
 - [ ] `memoria.md` actualizado.
 - [ ] Matriz de trazabilidad actualizada.
 - [ ] Sin TODOs sin issue ni código muerto.

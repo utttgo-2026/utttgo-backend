@@ -1,5 +1,6 @@
 # constitution.md — Backend UTTT-GO
-> Versión 2.1 · Archivo raíz de la metodología Spec-Driven Development
+> Versión 2.3 · Archivo raíz de la metodología Spec-Driven Development
+> Decisiones funcionales de v2.3 confirmadas por el equipo; **conciliación documental integral pendiente de revisión**. Los contratos API contradictorios no quedan aprobados por este cambio.
 > Todo archivo del proyecto (AGENTS.md, memoria.md, spec.md, plan.md, task.md, skills) debe estar alineado con este documento.
 > Cualquier decisión aquí listada como **innegociable** no puede revertirse sin una nueva versión explícita de este archivo.
 
@@ -12,7 +13,7 @@
 | Nombre | UTTT-GO — Backend API |
 | Tipo | REST API + WebSocket + Push Notifications |
 | Dominio | Venta de alimentos universitarios en la UTTT |
-| Propuesta de valor | Comparación de opciones de compra (ofertas) para un mismo producto |
+| Propuesta de valor | Buscar y comparar alimentos publicados independientemente por distintos vendedores |
 | Versión actual | 2.0 — Arquitectura y reglas de negocio definidas |
 | Repositorio | `utttgo-backend` (por confirmar URL) |
 | Equipo | 4 integrantes del equipo de software UTTT |
@@ -49,23 +50,26 @@ Estas reglas son **duras**: ninguna `spec.md`, `plan.md` ni implementación pued
 
 | ID | Regla | Implicación técnica |
 |---|---|---|
-| **BR-001** | **No existe carrito de compras.** La compra es directa e individual. | Prohibido crear entidades, endpoints o estados de carrito. El checkout se ejecuta sobre una sola oferta. |
-| **BR-002** | Cada pedido corresponde a **una única oferta/producto** con su cantidad. | Un `Order` referencia un solo `offerId`; no hay pedidos multi-vendedor ni multi-producto. |
+| **BR-001** | **No existe carrito de compras.** La compra es directa e individual. | Prohibido crear entidades, endpoints o estados de carrito. El checkout se ejecuta sobre un producto publicado por un vendedor. |
+| **BR-002** | Cada pedido corresponde a **un único producto publicado por un vendedor** con su cantidad. | Un `Order` referencia un solo `productId` y conserva el precio aplicable de forma segura; no hay pedidos multi-vendedor ni multi-producto. El contrato definitivo de Orders requiere conciliación. |
 | **BR-003** | El **único método de pago es efectivo presencial**. | No se integra pasarela de pago. `PaymentMethod` es un valor fijo `Cash`. El backend no procesa, valida ni almacena datos financieros. |
-| **BR-004** | **No existen menús ni horarios.** | Prohibidas entidades, campos y validaciones de menú, horario, franja o disponibilidad temporal. La disponibilidad depende solo de stock/estado de la oferta. |
-| **BR-005** | La propuesta de valor central es la **comparación de opciones de compra (tipo Eneba)** para un mismo producto. | El comprador ve varias ofertas de distintos vendedores para el mismo producto y elige una. |
-| **BR-006** | Se distingue **Producto canónico** (qué se vende) de **Oferta** (quién lo vende, a qué precio y condiciones). | Un producto tiene 1..N ofertas; la comparación se hace entre ofertas del mismo producto. |
+| **BR-004** | **No existen menús ni horarios.** | Prohibidas entidades, campos y validaciones de menú, horario, franja o disponibilidad temporal. La disponibilidad depende del estado y existencias del producto. Los ingredientes del alimento no constituyen un menú. |
+| **BR-005** | La propuesta de valor central es **comparar opciones de distintos vendedores** al buscar un alimento. | La búsqueda y los filtros presentan productos propios de cada vendedor con sus ingredientes, precios y calificaciones disponibles del producto y vendedor; no se exige equivalencia exacta ni producto maestro compartido. |
+| **BR-006** | **Cada vendedor posee y administra sus propios productos/publicaciones.** | El producto pertenece a un vendedor e incluye su precio, existencias y estado. No existe relación obligatoria producto canónico → ofertas de varios vendedores. |
 | **BR-007** | Toda imagen se sube a Azure Blob mediante **URL SAS pre-firmada generada por el backend** y se **modera antes de publicarse**. | El cliente nunca recibe claves de storage; ver § 7. |
 | **BR-008** | Las notificaciones push se envían **exclusivamente** por el backend vía FCM Admin SDK. | Ver § 8. |
-| **BR-009** | Precio, total, estado, `userId` y `sellerId` nunca provienen del cliente. | Se derivan del JWT y de la base de datos. |
-| **BR-010** | El precio mostrado y cobrado es el de la oferta seleccionada. | El total se calcula server-side: `price × quantity`; no se confía en cálculos del cliente. |
+| **BR-009** | El comprador no determina precio, total, estado, `userId`, `sellerId` ni roles. | Un vendedor propietario puede solicitar cambios de precio, existencias y publicación de su producto mediante contratos autorizados y validados; el backend deriva identidades, verifica propiedad y controla transiciones. No se confía en importes/estados aportados durante la compra. |
+| **BR-010** | El precio mostrado y cobrado corresponde al producto del vendedor seleccionado. | El backend consulta el precio vigente y calcula el total como `price × quantity`; la política de concurrencia y snapshot de precio en Orders queda por diseñar. |
+| **BR-011** | Eliminar una cuenta implica eliminar la información perteneciente al usuario. | Para un vendedor incluye productos, publicaciones, contenido e historial propios. El tratamiento de registros compartidos, como pedidos del otro participante, y la ejecución coordinada quedan pendientes de diseño; no se presume retención de datos propios. |
+| **BR-012** | El historial de chat es temporal. | Se conserva mientras el pedido está en curso y se elimina dentro de los tres días posteriores a su finalización. El disparador exacto y mecanismo de purga se definen en el diseño de Chat. |
+| **BR-013** | El usuario puede recuperar una contraseña olvidada por enlace enviado a su correo registrado. | Supabase Auth gestiona credenciales; decidir si el flujo requiere endpoint backend nuevo antes de exponerlo. |
 
 ---
 
 ## 4. Arquitectura: monolito modular
 
 1. **Un solo artefacto desplegable** (API), organizado internamente en módulos de dominio con fronteras explícitas.
-2. **Módulos previstos**: `Identity`, `Users`, `Sellers`, `Catalog` (productos y categorías), `Offers` (ofertas comparables), `Orders`, `Reviews`, `Favorites`, `Notifications`, `Chat`, `Media`, `Admin`.
+2. **Módulos previstos**: `Identity`, `Users`, `Sellers`, `Catalog` (productos por vendedor y categorías), `Orders`, `Reviews`, `Favorites`, `Notifications`, `Chat`, `Media`, `Admin`. La separación técnica de un módulo `Offers` ya no es obligatoria; requiere justificación si se propone.
 3. **Regla de frontera**: un módulo no accede a las colecciones ni a los repositorios de otro módulo. La comunicación es mediante interfaces de aplicación/contratos publicados por el módulo dueño.
 4. **Shared kernel mínimo**: solo tipos transversales (resultados, contratos de error, primitivas). Nada de lógica de negocio compartida.
 5. **Cada módulo** contiene sus propias capas: `Endpoints/Controllers`, `Application/Services`, `Domain`, `Infrastructure/Repositories`, `Contracts/DTOs`, `Validators`.
@@ -78,10 +82,10 @@ Estas reglas son **duras**: ninguna `spec.md`, `plan.md` ni implementación pued
 ## 5. Principios de arquitectura
 
 1. **Separación de responsabilidades** — Endpoints/Controllers reciben peticiones; Services contienen lógica de negocio; Repositories acceden a datos. Nunca lógica de negocio en Controllers.
-2. **Sin confianza en el cliente** — `userId`, `sellerId`, `price`, `total`, `status` y `roles` del body se ignoran o rechazan. Solo se usan valores derivados del JWT o de la base de datos.
+2. **Sin confianza en el cliente** — `userId`, `sellerId`, `total` y `roles` del body se ignoran o rechazan; precio, stock y disponibilidad solicitados por un vendedor se validan y autorizan por propiedad. Para pedidos se toman precio y estado del servidor, nunca de importes enviados por el comprador.
 3. **Validación server-side obligatoria** — Toda entrada pasa por validadores explícitos antes de tocar la base de datos.
 4. **Paginación en todos los listados** — `page` + `pageSize` (máximo configurable). Nunca devolver colecciones ilimitadas.
-5. **Idempotencia donde sea posible** — Operaciones críticas (crear perfil local, registrar oferta, confirmar entrega) deben ser seguras de reintentar.
+5. **Idempotencia donde sea posible** — Operaciones críticas (crear perfil local, publicar producto, confirmar entrega y eliminar cuenta) deben ser seguras de reintentar.
 6. **Logging estructurado** — JSON con `correlationId` en cada request. Ningún log contiene contraseñas, tokens, datos personales sensibles ni claves de Azure/FCM.
 7. **Fail-closed en seguridad** — Ver § 6.3. Si Redis no responde, la revocación de tokens no se ignora silenciosamente.
 8. **Infraestructura como código** — Ningún recurso Azure de staging/producción se crea a mano. Todo vive en Terraform (§ 9).
@@ -121,7 +125,7 @@ Estas reglas son **duras**: ninguna `spec.md`, `plan.md` ni implementación pued
 
 ## 7. Almacenamiento de imágenes y moderación (innegociable)
 
-- **Azure Blob Storage es el único destino** para imágenes de producto/oferta.
+- **Azure Blob Storage es el único destino** para imágenes de producto.
 - **Las URLs SAS solo las genera el backend.** El cliente nunca recibe `AZURE_STORAGE_CONNECTION_STRING`, account key ni SAS de amplio alcance.
 - La SAS debe ser de **alcance mínimo**: un único blob, permiso de escritura/creación, TTL corto (≤ 5 minutos), content-type y tamaño restringidos.
 - **Ningún contenedor es público.** La lectura de imágenes aprobadas se sirve mediante SAS de lectura de corta duración o CDN con acceso controlado.
@@ -131,7 +135,7 @@ Estas reglas son **duras**: ninguna `spec.md`, `plan.md` ni implementación pued
   3. El cliente sube la imagen **directamente** a un contenedor de staging.
   4. El cliente notifica la finalización; el backend invoca **Azure AI Content Safety API**.
   5. Si es segura → estado `Approved`; si no → se elimina el blob y estado `Rejected`.
-  6. Solo un `mediaAssetId` en estado `Approved` puede asociarse a un producto u oferta.
+  6. Solo un `mediaAssetId` en estado `Approved` puede asociarse a un producto publicado.
 - La moderación es **previa a la publicación**; una imagen no moderada nunca es visible.
 - Sin moderación o con error de Content Safety se aplica **fail-closed**: la imagen permanece no publicada.
 
@@ -180,7 +184,7 @@ Estas reglas son **duras**: ninguna `spec.md`, `plan.md` ni implementación pued
 | Dinero | Decimal en MXN; nunca `float` o `double` para precios |
 | IDs | `ObjectId` de MongoDB, representado como `string` en JSON |
 | Enums | PascalCase, valores estables (no cambiar una vez publicados) |
-| Nombres de colecciones MongoDB | camelCase plural (`users`, `products`, `offers`, `orders`) |
+| Nombres de colecciones MongoDB | camelCase plural (`users`, `products`, `orders`); `offers` fue parte del diseño histórico superado |
 | Nombres de endpoints | kebab-case en ruta, camelCase en JSON |
 | Versión de API | Prefijo `/api/v1` obligatorio; cambiar solo con breaking change |
 | Formato / lint | `dotnet format` debe pasar; gate en CI |
@@ -192,7 +196,7 @@ Estas reglas son **duras**: ninguna `spec.md`, `plan.md` ni implementación pued
 | Rol | Descripción | Cómo se asigna |
 |---|---|---|
 | `Buyer` | Comprador — rol por defecto al registrarse | Automático en registro |
-| `Seller` | Vendedor activo | Por solicitud aprobada (`sellerRequests`) |
+| `Seller` | Vendedor activo | Autoactivación al completar nombre de negocio, descripción y punto de recogida; sin aprobación administrativa previa en el MVP (DEC-002). El rol se asigna desde el backend al perfil local, nunca desde el cliente. |
 | `Admin` | Administrador de la plataforma | Asignado manualmente; nunca desde cliente |
 | Ninguno de los anteriores puede ser enviado desde el cliente | — | — |
 
@@ -200,7 +204,7 @@ Estas reglas son **duras**: ninguna `spec.md`, `plan.md` ni implementación pued
 
 ## 13. Máquina de estados de pedido
 
-Cada pedido corresponde a **una sola oferta** (BR-001, BR-002) y el pago es **en efectivo al entregar** (BR-003).
+Cada pedido corresponde a **un solo producto de un vendedor** (BR-001, BR-002) y el pago es **en efectivo al entregar** (BR-003).
 
 ```
 Pending → Accepted → InPreparation → Ready → Delivered   (Delivered = pago en efectivo recibido)
@@ -253,12 +257,15 @@ Ninguna tarea se marca completada sin pruebas ejecutadas.
 
 ## 16. Decisiones: resueltas y abiertas
 
-### 16.1 Resueltas en v2.0
+### 16.1 Resueltas
 
 | ID | Decisión | Resolución |
 |---|---|---|
 | DEC-001 | ¿Carrito o compra directa? | **Resuelta**: no existe carrito (BR-001). |
-| DEC-004 | Comparación de ofertas multivendedor | **Resuelta**: es la propuesta de valor central (BR-005, BR-006). |
+| DEC-002 | ¿Requiere aprobación administrativa para activar vendedor? | **Resuelta en v2.2**: autoactivación tras completar los datos obligatorios del negocio, sin aprobación administrativa previa en el MVP (§ 12). |
+| DEC-003 | Eliminación de cuenta | **Resuelta funcionalmente**: eliminar información perteneciente al usuario; para vendedor incluye productos, publicaciones, contenido e historial. Pendiente diseño de datos compartidos y ejecución. |
+| DEC-004 | Comparación de opciones entre vendedores | **Revisada**: buscar/filtrar productos propios de distintos vendedores; sin producto maestro compartido ni ofertas asociadas a él (BR-005, BR-006). |
+| DEC-005 | Historial de chat temporal | **Resuelta funcionalmente**: conservar durante pedido en curso; eliminar dentro de tres días de completarse. Pendiente diseño de almacenamiento, disparador y purga. |
 | DEC-006 | Patrón de despliegue | **Resuelta**: Azure con Load Balancer, IaC en Terraform e instancias stateless (§ 9). |
 | DEC-007 | Cómputo final en Azure | **Resuelta**: Azure App Service como entorno de cómputo oficial (§ 2, § 9). |
 | DEC-008 | Método de pago | **Resuelta**: efectivo presencial únicamente (BR-003). |
@@ -266,13 +273,13 @@ Ninguna tarea se marca completada sin pruebas ejecutadas.
 | DEC-010 | Moderación de imágenes | **Resuelta**: Azure AI Content Safety previa a publicación (§ 7). |
 | DEC-011 | Canal de notificaciones push | **Resuelta**: FCM Admin SDK exclusivamente (§ 8). |
 
-### 16.2 Abiertas
+### 16.2 Detalles pendientes de diseño (sin reabrir decisiones funcionales)
 
 | ID | Decisión | Estado |
 |---|---|---|
-| DEC-002 | ¿Requiere aprobación administrativa para activar vendedor? | **Abierta** |
-| DEC-003 | Política de retención/anonimización al eliminar cuenta | **Abierta** |
-| DEC-005 | Historial de chat: ¿MongoDB o solo sesión? | **Abierta** (el chat persiste solo si se aprueba) |
+| DEC-003 | Datos compartidos entre usuarios, operaciones activas, consistencia, reintentos y eliminación de identidad/activos | **Pendiente técnico/privacidad**; no contradice BR-011. |
+| DEC-005 | Almacenamiento, definición de pedido completado, cronograma y mecanismo verificable de purga | **Pendiente técnico**; no contradice BR-012. |
+| API-016 | Ficha de comparativa basada en producto maestro | **Pendiente aprobación formal**: proponer retiro/sustitución funcional con API-011 (búsqueda/filtros), sin alterar aún el Excel ni redirigir la ruta. |
 
 ---
 
@@ -283,6 +290,10 @@ Ninguna tarea se marca completada sin pruebas ejecutadas.
 - Introducir carrito, menús, horarios, pasarelas de pago, storage alternativo o notificaciones fuera de FCM.
 - Permitir que el cliente genere URLs SAS o suba imágenes sin moderación previa.
 - Agregar endpoints no listados en la especificación API sin crear primero su ficha.
+
+## Nota de conciliación funcional (2026-11-03)
+
+Las cinco decisiones confirmadas por el equipo sustituyen las premisas de producto canónico compartido, baja lógica como política final y chat indefinido. Esta revisión **no aprueba automáticamente** nuevos payloads, la retirada de API-016 ni una ruta de recuperación de contraseña. Se debe conciliar el inventario Excel antes de implementar contratos contradictorios.
 - Comitear secretos, contraseñas, tokens, connection strings o service accounts.
 - Crear recursos Azure manualmente fuera de Terraform en staging/producción.
 
@@ -295,6 +306,8 @@ Ninguna tarea se marca completada sin pruebas ejecutadas.
 | 1.0 | 2026-10-28 | Creación inicial |
 | 2.0 | 2026-10-29 | .NET 10/C# 14 y monolito modular; Azure + Load Balancer + Terraform; MongoDB Atlas; reglas de negocio (sin carrito, efectivo presencial, sin menús/horarios, comparación de ofertas); SAS + Content Safety obligatorios; FCM Admin SDK; cierre de DEC-001/004/006; nuevas decisiones DEC-008 a DEC-011 |
 | 2.1 | 2026-10-29 | Cierre de DEC-007: Azure App Service como entorno de cómputo oficial en Azure; actualización de § 2 y § 9 |
+| 2.2 | 2026-11-02 | Ratificación del equipo de DEC-002: autoactivación de vendedor en el MVP al completar el perfil de negocio; actualización de § 12 y § 16. DEC-003 y DEC-005 siguen abiertas. |
+| 2.3 | 2026-11-03 | Cinco decisiones funcionales confirmadas por el equipo: productos independientes por vendedor y búsqueda comparativa, eliminación de datos propios, chat temporal, recuperación por enlace y control de publicaciones. DEC-003/005 cerradas funcionalmente; implementación y contratos contradictorios pendientes. |
 
 ---
 

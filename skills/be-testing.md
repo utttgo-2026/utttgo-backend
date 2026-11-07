@@ -1,6 +1,6 @@
 # be-testing.md — Skill Backend UTTT-GO
 > Guía para diseñar pruebas unitarias, de integración y seguridad — niveles, cobertura mínima y criterios de aceptación
-> Alineado con `constitution.md` v1.0.
+> Alineado con `docs/constitution.md` v2.3.
 
 ---
 
@@ -23,6 +23,6 @@ Antes de aplicar cualquier skill, verificar que el `spec.md` correspondiente exi
 
 ## Referencias
 
-- `constitution.md` — Fuente de verdad del proyecto.
+- `docs/constitution.md` — Fuente de verdad del proyecto.
 - `memoria.md` — Log de decisiones previas.
 - `spec.md` del módulo correspondiente — Especificación a implementar.

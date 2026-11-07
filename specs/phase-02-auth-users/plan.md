@@ -1,549 +1,95 @@
-# plan.md — Arquitectura e Implementación: Autenticación y Usuarios · Backend UTTT-GO
-> Fase: `phase-02-auth-users` · Módulo de implementación: `IdentityAndUsers`
-> Versión: 1.1 · Estado: **Aprobado** · Fecha: 2026-10-29
-> Deriva de `specs/phase-02-auth-users/spec.md` v1.0 y se subordina a `constitution.md` v2.1 y `AGENTS.md` v2.0.
-> Este documento **no** contiene código de producción; describe estructura, contratos, integración y estrategia de pruebas.
+# plan.md — Identidad, usuarios y vendedores · Backend UTTT-GO
+> Fase `phase-02-auth-users` · Versión 1.6 · **Borrador de conciliación pendiente de aprobación integral** · 2026-11-04.
+> Deriva de `spec.md` v1.5 y `docs/constitution.md` v2.3. Versiones v1.0/1.1 aprobadas y v1.2–1.5 borrador son antecedentes, no autorización para baja lógica como cumplimiento de BR-011.
 
----
+## 1. Fronteras y estructura
 
-## 1. Objetivo y Alcance del Plan
+`IdentityAndUsers` es dueño de `users` y `sellerProfiles` y gestiona perfiles, roles locales, Supabase Auth y revocación de JWT en Redis. `Catalog` es dueño de productos por vendedor; `Orders` de pedidos, `Reviews` de reseñas, `Chat` de mensajes y `Media` de activos. **Identity no accede a las colecciones ajenas**: contratos de cada módulo coordinan la eliminación de información propia, incluida la del vendedor. El protocolo de fallo/reintentos y el orden de Supabase, MongoDB, Redis y Blob **no están aprobados**.
 
-Materializar el spec `phase-02-auth-users` en el monolito modular `UtttGo.Api`:
+**Estructura real actual:** `UTTTGO.Backend.slnx`, `src/UTTTGO.Api/UTTTGO.Api.csproj` (`net10.0`), Controllers y `Program.cs`; API-001 local candidata en `src/UTTTGO.Api/Modules/Identity/{Controllers,Application,Infrastructure,Contracts,Validators}` y tests unitarios/integración con dobles. La estructura objetivo de los otros módulos/Domain sigue pendiente; los adaptadores externos reales de Supabase/Mongo/Redis **no existen**. Servicios aplican reglas; repositorios Mongo futuros acceden solo a colecciones propias. Supabase sigue siendo proveedor previsto de JWT/contraseñas; roles/estado locales nunca de claims de rol o request. No introducir credenciales locales ni secretos en Git.
 
-- Módulo `IdentityAndUsers` con fronteras internas claras (Auth, Users, Sellers, Admin).
-- Persistencia local de perfiles en MongoDB Atlas con índices justificados.
-- Integración de Supabase Auth con `JwtBearer` y revocación de JWT vía Redis.
-- Contratos HTTP `/api/v1/auth/*`, `/api/v1/users/*`, `/api/v1/sellers/*` y `/api/v1/admin/users/*`.
-- Estrategia de pruebas xUnit + `WebApplicationFactory` + Testcontainers.
-- Trazabilidad explícita de cada sección a los RF/RNF/CL del spec.
+`AGENTS.md`/README se han conciliado documentalmente a estas rutas reales y han retirado la prohibición heredada de `.slnx`, sin renombrar ni convertir solución/proyecto. Los proyectos de tests, Docker, Terraform y workflows son estructura **prevista, aún no encontrada**; no citar comandos contra rutas inexistentes como checks ejecutados.
 
-Fuera de este plan: código de producción, Terraform, despliegue, gestión de ofertas/productos/pedidos y definición final de DEC-003.
+## 2. Datos, estados y eliminación (DEC-003)
 
----
+`users` mantiene `supabaseUserId`, correo y perfil local necesarios mientras exista la cuenta; `sellerProfiles` guarda negocio/recogida. Índices por `supabaseUserId`, correo normalizado y consultas administrativas, más `sellerProfiles.userId` único, se justifican para cuentas activas; **no** implican retener correo o tombstones permanentemente después de la baja. `AccountStatus = Deleted`, `deletedAt` o un registro mínimo de coordinación **no** equivalen a cumplir por sí solos BR-011; revisar su necesidad antes de aprobar el esquema.
 
-## 2. Estructura Interna del Módulo
+**Regla confirmada:** API-005 elimina la información perteneciente al usuario; para vendedor incluye productos, publicaciones, contenido e historial propios. Diseño pendiente que debe figurar en spec técnico antes de implementación:
 
-Ruta raíz: `src/UtttGo.Api/Modules/IdentityAndUsers/`
+1. Clasificar titularidad de perfil, productos, media/blob, favoritos, reseñas, chat, tokens/dispositivos, pedidos y auditoría; documentar qué parte es propia y cuál compartida con otro participante.
+2. Determinar política para pedidos activos y pedidos históricos del comprador/vendedor, así como referencias del otro usuario; no elegir retención global ni borrar derechos del otro por suposición. Determinar tratamiento de reseñas y mensajes asociados a pedido compartido en coordinación con Reviews/Chat.
+3. Diseñar proceso idempotente y seguro ante fallos parciales entre Supabase, módulos, Redis y Blob. Revocar acceso y ocultar recursos al iniciar el proceso; especificar criterio verificable de finalización, respuesta y reintentos sin datos personales en logs.
+4. Definir re-registro con el mismo correo tras borrado y cualquier obligación legal/privacidad con el equipo pertinente, sin declarar retención de información propia como solución aprobada.
 
-```
-IdentityAndUsers/
-├── DependencyInjection.cs              # AddIdentityAndUsers(...)
-├── Endpoints/
-│   ├── AuthEndpoints.cs                # /api/v1/auth/*
-│   ├── UserEndpoints.cs                # /api/v1/users/me
-│   ├── SellerEndpoints.cs              # /api/v1/sellers/*
-│   └── AdminUserEndpoints.cs           # /api/v1/admin/users/*
-├── Application/
-│   ├── Abstractions/
-│   │   ├── IAuthProvider.cs            # Supabase: signUp, signIn, recover, signOut
-│   │   ├── ITokenBlacklist.cs          # revoked:{jti}
-│   │   ├── IUserRepository.cs
-│   │   ├── ISellerProfileRepository.cs
-│   │   └── IMediaAssetValidator.cs     # valida mediaAssetId Approved (Media)
-│   ├── Services/
-│   │   ├── AuthService.cs
-│   │   ├── UserProfileService.cs
-│   │   ├── SellerActivationService.cs
-│   │   └── AdminUserService.cs
-│   └── Mappings/
-│       └── UserMappings.cs             # POCO ↔ DTO (mapeo explícito)
-├── Domain/
-│   ├── Entities/
-│   │   ├── UserProfile.cs
-│   │   └── SellerProfile.cs
-│   ├── Enums/
-│   │   ├── UserRole.cs                 # Buyer | Seller | Admin
-│   │   ├── AccountStatus.cs            # Active | Suspended | Deleted
-│   │   └── SellerStatus.cs             # Active | Inactive
-│   └── Errors/
-│       └── IdentityErrorCodes.cs       # códigos estables del contrato de error
-├── Infrastructure/
-│   ├── Persistence/
-│   │   ├── MongoUserRepository.cs
-│   │   ├── MongoSellerProfileRepository.cs
-│   │   ├── MongoIndexes.cs             # EnsureIndexes al arrancar (idempotente)
-│   │   └── UserClassMap.cs
-│   ├── Supabase/
-│   │   └── SupabaseAuthProvider.cs     # único punto que habla con Supabase Auth
-│   └── Redis/
-│       └── RedisTokenBlacklist.cs
-├── Contracts/
-│   ├── Requests/
-│   │   ├── RegisterRequest.cs
-│   │   ├── LoginRequest.cs
-│   │   ├── RecoverRequest.cs
-│   │   ├── UpdateProfileRequest.cs
-│   │   ├── ActivateSellerRequest.cs
-│   │   └── AdminUserQuery.cs
-│   └── Responses/
-│       ├── AuthTokenResponse.cs
-│       ├── UserProfileResponse.cs
-│       ├── SellerProfileResponse.cs
-│       ├── UserSummaryResponse.cs
-│       └── PagedResponse.cs
-└── Validators/
-    ├── RegisterRequestValidator.cs
-    ├── LoginRequestValidator.cs
-    ├── RecoverRequestValidator.cs
-    ├── UpdateProfileRequestValidator.cs
-    └── ActivateSellerRequestValidator.cs
-```
+La ficha API-005 conserva `DELETE /api/v1/users/me` y confirmación explícita; si será `202` o `204` depende del flujo seguro finalmente aprobado. API-040 continúa suspensión/reactivación administrativa: no es un atajo de eliminación.
 
-Reglas de frontera:
+## 3. Recuperación de contraseña (RF-06 / BR-013)
 
-- `Endpoints` solo orquestan request → service → response; cero lógica de negocio.
-- `Application/Services` contienen reglas (dominio de email, transiciones de estado, autoactivación).
-- `Infrastructure` implementa repositorios y clientes externos; ningún acceso directo a MongoDB/Redis fuera de aquí.
-- `IdentityAndUsers` posee las colecciones `users` y `sellerProfiles`. No accede a colecciones de otros módulos.
-- El avatar se valida contra `IMediaAssetValidator` (contrato publicado por `Media`), sin leer su colección.
-- `Admin` no se asigna por API; se aprovisiona por seed/migración operada del lado servidor.
+**Funcionalidad requerida:** el usuario solicita por su correo registrado un enlace para restablecer contraseña; Supabase Auth administra la credencial. El canal técnico queda pendiente: flujo SDK/proveedor sin endpoint backend **o** una ficha nueva aprobada para un endpoint propio. `POST /api/v1/auth/recover` del plan antiguo no está entre API-001..042 y no se registra como ruta vigente. En cualquiera de las opciones se exigen respuesta sin enumeración de cuentas, enlaces de alcance/vida útil controlados por Supabase y ninguna contraseña/token/enlace sensible en logs. Redirección y configuración del enlace, pruebas y seguridad se especifican según la opción elegida; no asumir que el backend guarda o cambia contraseñas.
 
-**Trazabilidad:** RF-03, RF-04, RF-05, RF-07, RF-08, RF-09, RF-11; RNF-03, RNF-05, RNF-12.
+## 4. Contratos del inventario (método/ruta sin modificar)
 
----
-
-## 3. Modelo de Datos (MongoDB Atlas / POCOs)
-
-### 3.1 Colección `users`
-
-```csharp
-using MongoDB.Bson;
-using MongoDB.Bson.Serialization.Attributes;
-
-public sealed class UserProfile
-{
-    [BsonId]
-    public ObjectId Id { get; set; }
-
-    [BsonElement("supabaseUserId")]
-    public string SupabaseUserId { get; set; } = default!;   // claim "sub"
-
-    [BsonElement("email")]
-    public string Email { get; set; } = default!;
-
-    [BsonElement("normalizedEmail")]
-    public string NormalizedEmail { get; set; } = default!;  // uppercase invariant
-
-    [BsonElement("displayName")]
-    public string DisplayName { get; set; } = default!;
-
-    [BsonElement("phone")]
-    public string? Phone { get; set; }
-
-    [BsonElement("avatarMediaAssetId")]
-    public string? AvatarMediaAssetId { get; set; }
-
-    [BsonElement("role")]
-    [BsonRepresentation(BsonType.String)]
-    public UserRole Role { get; set; } = UserRole.Buyer;
-
-    [BsonElement("status")]
-    [BsonRepresentation(BsonType.String)]
-    public AccountStatus Status { get; set; } = AccountStatus.Active;
-
-    [BsonElement("createdAt")]
-    public DateTime CreatedAt { get; set; }                  // UTC
-
-    [BsonElement("updatedAt")]
-    public DateTime UpdatedAt { get; set; }                  // UTC
-
-    [BsonElement("suspendedAt")]
-    public DateTime? SuspendedAt { get; set; }
-
-    [BsonElement("suspendedBy")]
-    public ObjectId? SuspendedBy { get; set; }
-
-    [BsonElement("deletedAt")]
-    public DateTime? DeletedAt { get; set; }
-}
-```
-
-`UserRole`: `Buyer = 0`, `Seller = 1`, `Admin = 2`.
-`AccountStatus`: `Active = 0`, `Suspended = 1`, `Deleted = 2`.
-
-### 3.2 Colección `sellerProfiles`
-
-```csharp
-public sealed class SellerProfile
-{
-    [BsonId]
-    public ObjectId Id { get; set; }
-
-    [BsonElement("userId")]
-    public ObjectId UserId { get; set; }                     // ref users._id
-
-    [BsonElement("businessName")]
-    public string BusinessName { get; set; } = default!;
-
-    [BsonElement("description")]
-    public string Description { get; set; } = default!;
-
-    [BsonElement("pickupPoint")]
-    public string PickupPoint { get; set; } = default!;
-
-    [BsonElement("status")]
-    [BsonRepresentation(BsonType.String)]
-    public SellerStatus Status { get; set; } = SellerStatus.Active;
-
-    [BsonElement("activatedAt")]
-    public DateTime ActivatedAt { get; set; }
-
-    [BsonElement("updatedAt")]
-    public DateTime UpdatedAt { get; set; }
-}
-```
-
-### 3.3 Índices e invariantes
-
-| Colección | Índice | Tipo | Justificación |
-|---|---|---|---|
-| `users` | `{ supabaseUserId: 1 }` | Único | Idempotencia de creación de perfil y lookup por `sub`. |
-| `users` | `{ normalizedEmail: 1 }` | Único | Evita duplicados (CL-02/CL-03); el correo no se reutiliza. |
-| `users` | `{ status: 1, role: 1, createdAt: -1 }` | Compuesto | Listados/filtros administrativos paginados (RF-07). |
-| `sellerProfiles` | `{ userId: 1 }` | Único | Relación 1:1 usuario↔vendedor; evita doble activación. |
-
-Invariantes de aplicación:
-
-- `SupabaseUserId`, `Email` y `NormalizedEmail` inmutables tras creación (cambio de email delegado a Supabase; fuera de alcance).
-- `Status = Deleted` implica anonimización de `displayName`, `phone`, `avatarMediaAssetId` (RF-11); `email` se conserva para bloquear re-registro (CL-03) hasta DEC-003.
-- `Role = Seller` exige `sellerProfiles.status = Active` (RF-05).
-- `CreatedAt`/`UpdatedAt`/`SuspendedAt`/`DeletedAt` en UTC (RNF-14).
-- Creación de perfil idempotente por `supabaseUserId` (reintentos de registro seguros).
-
-**Trazabilidad:** RF-03, RF-04, RF-05, RF-07, RF-08, RF-11; RNF-03, RNF-08, RNF-14; CL-02, CL-03, CL-11.
-
----
-
-## 4. Contrato Técnico de Endpoints
-
-### 4.1 Convenciones
-
-- Base: `/api/v1`; JSON camelCase; IDs como `string`.
-- Validación con FluentValidation antes de tocar servicios.
-- Autorización: `Buyer`/`Seller` para `/users/me` y `/sellers/*`; `Admin` para `/admin/*`.
-- Errores: contrato único de `constitution.md` § 14.
-
-### 4.2 Endpoints de autenticación
-
-| Método | Ruta | Auth | Request DTO | Éxito | Errores |
-|---|---|---|---|---|---|
-| POST | `/api/v1/auth/register` | Público | `RegisterRequest { email, password, displayName }` | `201 UserProfileResponse` | `400`, `422 EMAIL_DOMAIN_NOT_ALLOWED`, `409 EMAIL_ALREADY_REGISTERED`, `429`, `503` |
-| POST | `/api/v1/auth/login` | Público | `LoginRequest { email, password }` | `200 AuthTokenResponse` | `400`, `401 INVALID_CREDENTIALS`, `403 ACCOUNT_SUSPENDED`, `429`, `503` |
-| POST | `/api/v1/auth/recover` | Público | `RecoverRequest { email }` | `202 Accepted` (uniforme) | `400`, `429`, `503` |
-| POST | `/api/v1/auth/logout` | Autenticado | — | `204 No Content` | `401`, `503` (fail-closed) |
-
-Flujo `register`: validar dominio → `IAuthProvider.SignUpAsync` (Supabase) → crear `users` (idempotente por `sub`) → responder perfil. Si la creación local falla, no se reintenta ciegamente: se registra y se responde `503` (el reintento vuelve a ser idempotente).
-
-Flujo `login`: `IAuthProvider.SignInAsync` → validar perfil local (`status ≠ Deleted`) → si `Suspended` responder `403` → devolver tokens de Supabase. El backend no almacena la contraseña ni el refresh token.
-
-### 4.3 Endpoints de usuario y vendedor
-
-| Método | Ruta | Auth | Request DTO | Éxito | Errores |
-|---|---|---|---|---|---|
-| GET | `/api/v1/users/me` | Autenticado | — | `200 UserProfileResponse` | `401`, `403 ACCOUNT_SUSPENDED` |
-| PATCH | `/api/v1/users/me` | Autenticado | `UpdateProfileRequest { displayName, phone?, avatarMediaAssetId? }` | `200 UserProfileResponse` | `400`, `422`, `401`, `403` |
-| POST | `/api/v1/users/me/delete` | Autenticado | — | `202 Accepted` | `401`, `409 ALREADY_DELETED` |
-| POST | `/api/v1/sellers/activate` | Autenticado | `ActivateSellerRequest { businessName, description, pickupPoint }` | `201 SellerProfileResponse` | `400`, `422`, `409 SELLER_ALREADY_ACTIVE`, `401` |
-
-`PATCH /users/me`: `displayName` obligatorio (no vacío); `phone` opcional con formato; `avatarMediaAssetId` opcional, validado como `Approved` por `IMediaAssetValidator` (si no, `422`).
-
-`/users/me/delete`: baja lógica; anonimiza campos personales y marca `Status = Deleted`; conserva historial (DEC-003 abierta).
-
-`/sellers/activate`: autoactivación; crea `sellerProfiles` 1:1 y cambia `users.role = Seller` en una transacción lógica (orden: crear perfil → actualizar rol; idempotente).
-
-### 4.4 Endpoints administrativos
-
-| Método | Ruta | Auth | Request | Éxito | Errores |
-|---|---|---|---|---|---|
-| GET | `/api/v1/admin/users` | Admin | Query: `search?`, `role?`, `status?`, `page`, `pageSize` | `200 PagedResponse<UserSummaryResponse>` | `400`, `401`, `403` |
-| PATCH | `/api/v1/admin/users/{id}/suspend` | Admin | — | `200 UserSummaryResponse` | `404`, `409 SELF_SUSPENSION`, `401`, `403` |
-| PATCH | `/api/v1/admin/users/{id}/reactivate` | Admin | — | `200 UserSummaryResponse` | `404`, `409 INVALID_STATE_TRANSITION`, `401`, `403` |
-
-`search` coincide por prefijo/contiene sobre `displayName` y `email` (case-insensitive, regex escapada). `pageSize` máximo configurable (default 20, máximo 100).
-
-### 4.5 DTOs (forma)
-
-```csharp
-public sealed record RegisterRequest(string Email, string Password, string DisplayName);
-public sealed record LoginRequest(string Email, string Password);
-public sealed record RecoverRequest(string Email);
-public sealed record UpdateProfileRequest(string DisplayName, string? Phone, string? AvatarMediaAssetId);
-public sealed record ActivateSellerRequest(string BusinessName, string Description, string PickupPoint);
-public sealed record AdminUserQuery(string? Search, string? Role, string? Status, int Page = 1, int PageSize = 20);
-
-public sealed record AuthTokenResponse(string AccessToken, string RefreshToken, int ExpiresIn, string TokenType);
-public sealed record UserProfileResponse(string Id, string Email, string DisplayName, string? Phone,
-    string? AvatarMediaAssetId, string Role, string Status, string? SellerBusinessName, DateTime CreatedAt);
-public sealed record SellerProfileResponse(string UserId, string BusinessName, string Description,
-    string PickupPoint, string Status, DateTime ActivatedAt);
-public sealed record UserSummaryResponse(string Id, string Email, string DisplayName, string Role,
-    string Status, DateTime CreatedAt);
-public sealed record PagedResponse<T>(IReadOnlyList<T> Items, int Page, int PageSize, long TotalItems);
-```
-
-### 4.6 Códigos de error del módulo
-
-| Código HTTP | `code` | Caso |
+| Fichas | Ruta del Excel | Semántica / gate |
 |---|---|---|
-| 400 | `VALIDATION_ERROR` | Formato inválido (FluentValidation). |
-| 401 | `INVALID_CREDENTIALS` | Login fallido en Supabase. |
-| 401 | `TOKEN_REVOKED` / `TOKEN_INVALID` | `jti` en blacklist o JWT inválido. |
-| 403 | `ACCOUNT_SUSPENDED` | Perfil local `Suspended`. |
-| 403 | `FORBIDDEN` | Rol insuficiente. |
-| 404 | `USER_NOT_FOUND` | Recurso admin inexistente. |
-| 409 | `EMAIL_ALREADY_REGISTERED` | Correo duplicado. |
-| 409 | `SELLER_ALREADY_ACTIVE` | Segunda autoactivación. |
-| 409 | `SELF_SUSPENSION` | Admin intenta suspenderse. |
-| 409 | `INVALID_STATE_TRANSITION` | Reactivar cuenta no suspendida / cuenta ya eliminada. |
-| 409 | `ALREADY_DELETED` | Baja repetida. |
-| 422 | `EMAIL_DOMAIN_NOT_ALLOWED` | Dominio distinto de `@uttt.edu.mx`. |
-| 422 | `MEDIA_ASSET_NOT_APPROVED` | Avatar no aprobado/inexistente. |
-| 429 | `RATE_LIMITED` | Rate limit excedido. |
-| 503 | `DEPENDENCY_UNAVAILABLE` | Redis/Mongo/Supabase caídos (fail-closed). |
+| API-001..004 | `POST /api/v1/auth/register`, `POST /api/v1/auth/login`, `POST /api/v1/auth/logout`, `GET /api/v1/auth/me` | Registro/login con Supabase, logout revoca JWT; `/auth/me` consulta identidad/sesión y rol/estado local sin devolver tokens. |
+| API-005..007 | `DELETE /api/v1/users/me`, `GET /api/v1/users/me`, `PATCH /api/v1/users/me` | Eliminación de datos propios condicionada al diseño DEC-003; GET/PATCH son perfil propio, distinto de sesión. |
+| API-008..010 | `GET /api/v1/sellers/{sellerId}`, `POST /api/v1/sellers/activation-requests`, `PATCH /api/v1/sellers/me` | API-008 solo datos públicos (acceso público/autenticado por aprobar), **perfil inactivo visible sin nuevos pedidos** (RN-FIG-06); autoactivación sin Admin y edición del negocio propio. |
+| API-039/040 | `GET /api/v1/admin/users`, `PATCH /api/v1/admin/users/{userId}/status` | Listado paginado; suspensión/reactivación por ruta única, no cambio de rol ni baja administrativa implícita. |
 
-Formato estándar de error (contrato único de `constitution.md` § 14):
+**Detalle SDD modular propuesto, aún no aprobado:** `api-039-list-users/spec.md`, `api-039-list-users/plan.md` y `api-039-list-users/task.md` especifican únicamente API-039; API-040 y las siete rutas prioritarias no cambian.
 
-```json
-{
-  "correlationId": "3f6c2b1e-9a4d-4c1e-8a77-0b2d5f9c1e42",
-  "status": 422,
-  "code": "EMAIL_DOMAIN_NOT_ALLOWED",
-  "message": "El correo debe pertenecer al dominio @uttt.edu.mx.",
-  "details": [
-    { "field": "email", "reason": "dominio no permitido" }
-  ]
-}
-```
+No revivir `/users/me/delete`, `/sellers/activate`, `/admin/users/{id}/suspend` o `/reactivate`; tampoco `/auth/recover` sin ficha. JSON camelCase, IDs string, errores `{ correlationId, status, code, message, details? }` y paginación para listados. Avatar nuevo solo con media aprobada; `mediaAssetId` es **alternativa** a `avatarUrl` de la ficha, no contrato ya adoptado. El borrador previo de `DeletionRequestedResponse` no es contrato definitivo.
 
-Reglas: `correlationId` siempre presente; `code` estable y no traducido; `message` para desarrollador; `details` solo en validación; nunca se incluyen tokens, contraseñas, `jti` ni trazas internas.
+## 4.1 Diseño por endpoint prioritario (propuestas, no DTOs aprobados)
 
-**Trazabilidad:** RF-01, RF-02, RF-03, RF-04, RF-05, RF-06, RF-07, RF-08, RF-09, RF-10, RF-11; RNF-04, RNF-07, RNF-08, RNF-12, RNF-13; CL-01..CL-13.
-
----
-
-## 5. Integración Supabase Auth + JwtBearer + Revocación Redis
-
-### 5.1 Opciones tipadas
-
-`SupabaseOptions`: `Url`, `JwtIssuer`, `JwtAudience`, `JwtSecret` (solo local/HS256) o `JwksUrl`, `ServiceRoleKey` (server-only, nunca al cliente). Valores desde variables de entorno/Key Vault (RNF-10).
-
-### 5.2 Configuración de `AddJwtBearer`
-
-- `Authority`/`MetadataAddress` = `${SUPABASE_URL}/auth/v1/.well-known/openid-configuration` cuando se use JWKS.
-- `TokenValidationParameters`: `ValidateIssuer`, `ValidateAudience`, `ValidateLifetime`, `ValidateIssuerSigningKey = true`, `ClockSkew = 30s`.
-- `Audience` por defecto `authenticated`.
-- `MapInboundClaims = false`; `NameClaimType = "sub"`.
-- En local se permite HS256 con `JwtSecret`; en Azure se prefiere JWKS/asimétrico.
-- `JwtBearerEvents.OnAuthenticationFailed`: responder `401` con contrato de error y `correlationId`.
-
-### 5.3 Revocación de JWT (`revoked:{jti}`)
-
-- `ITokenBlacklist` con `IsRevokedAsync(jti)` y `RevokeAsync(jti, ttl)`.
-- Implementación `RedisTokenBlacklist` con `StackExchange.Redis`.
-- Clave `revoked:{jti}`; TTL = `exp - now`; si `exp` ya pasó, no-op.
-- `JwtRevocationMiddleware` se ejecuta **después** de `UseAuthentication()` y **antes** de `UseAuthorization()`:
-  1. Si no hay principal autenticado → continuar (endpoints públicos).
-  2. Extraer `jti`; si falta → `401`.
-  3. Consultar Redis; si `revoked` → `401 TOKEN_REVOKED`.
-  4. Si Redis falla → **fail-closed** `503 DEPENDENCY_UNAVAILABLE` (RNF-02).
-- Logout: `POST /auth/logout` revoca el `jti` del token actual y responde `204`; Redis caído → `503`.
-
-### 5.4 Estado y rol desde MongoDB
-
-- `LocalProfileMiddleware` (o `IClaimsTransformation`) carga el perfil por `sub`:
-  - Sin perfil → `401` (identidad sin perfil local).
-  - `Status = Suspended` → `403 ACCOUNT_SUSPENDED`.
-  - `Status = Deleted` → `401`.
-  - Añade el rol **desde MongoDB** como claim para las políticas `RequireRole`.
-- El rol del JWT se ignora siempre (RNF-03).
-
-### 5.5 Rate limiting distribuido
-
-- Store Redis con contadores por ventana: clave `ratelimit:auth:{partición}` y `ratelimit:general:{partición}`.
-- `AuthPolicy` más estricta en `/api/v1/auth/*`; `GeneralPolicy` para el resto.
-- Fail-closed: error de Redis en `/auth/*` ⇒ `503`; en general ⇒ `503` con alerta.
-- Respuesta `429 RATE_LIMITED` con contrato de error.
-
-### 5.6 Orden de middleware en `Program.cs`
-
-```
-CorrelationId → ExceptionHandler → HttpsRedirection → CORS
-→ RateLimiter → Authentication(JwtBearer) → JwtRevocation
-→ LocalProfile → Authorization → Endpoints
-```
-
-No se altera este orden sin actualizar este plan y obtener aprobación de AGENT-BE-01/BE-04.
-
-**Trazabilidad:** RF-02, RF-08, RF-10; RNF-01, RNF-02, RNF-03, RNF-04, RNF-10; CL-04, CL-05, CL-06, CL-08.
-
----
-
-## 6. Seguridad y Reglas Duras Aplicadas
-
-| Regla | Aplicación en el módulo |
-|---|---|
-| BR-009 / RNF-03 | `userId`/rol/estado se derivan del `sub` y MongoDB; nunca del body. |
-| RNF-05 | Contraseñas solo viajan a Supabase; no se persisten ni loguean. |
-| RNF-06 | `/auth/recover` responde `202` uniforme siempre. |
-| RNF-10 | Secretos desde Key Vault/env; `ServiceRoleKey` solo backend. |
-| RNF-09 | Auditoría de suspender/reactivar/eliminar con actor, acción, timestamp y `correlationId`, sin datos sensibles. |
-| RNF-13 | Avatar solo `mediaAssetId` `Approved`; sin URLs arbitrarias. |
-| Rate limit | Distribuido y fail-closed en `/auth/*`. |
-| CORS | Orígenes explícitos; prohibido `*` en producción. |
-
----
-
-## 7. Estrategia de Pruebas
-
-Proyectos: `UtttGo.UnitTests`, `UtttGo.IntegrationTests`, `UtttGo.SecurityTests` (comandos de `AGENTS.md` § 1.3).
-
-### 7.1 Unitarias (sin dependencias externas)
-
-- `RegisterRequestValidator`: dominio `@uttt.edu.mx` exacto (RF-01/CL-01).
-- `UpdateProfileRequestValidator`: nombre obligatorio; avatar opcional (RF-04).
-- `ActivateSellerRequestValidator`: campos obligatorios (RF-05/CL-09).
-- `UserProfileService`: anonimización en baja lógica (RF-11/CL-11).
-- `AdminUserService`: transiciones suspender/reactivar y auto-suspensión (RF-08/RF-09/CL-07/CL-10).
-- Mapeos POCO ↔ DTO.
-
-### 7.2 Integración (`WebApplicationFactory` + Testcontainers)
-
-- Contenedores: MongoDB 7 y Redis 7 reales por test run (Testcontainers).
-- Supabase sustituido por `FakeSupabaseAuthProvider` (`IAuthProvider`) en CI; nunca se llama a Supabase real.
-- Semilla de perfiles de prueba con `TestDataFactory`.
-- Casos: registro dominio válido/ inválido, login ok/fallido, perfil propio, autoactivación, listado paginado, suspender/reactivar, baja lógica (T-AUTH-01..03, 07, 09, 10).
-
-### 7.3 Seguridad (`UtttGo.SecurityTests`)
-
-- JWT firmado con clave de prueba (`TokenHelper`): expirado, firma inválida, `jti` revocado, sin `jti` (T-AUTH-04).
-- `403` en `/admin/*` para `Buyer`/`Seller`; usuario no edita perfil ajeno (T-AUTH-06/RNF-12).
-- Suspensión bloquea operaciones; reactivación las restaura (RF-08/RF-09).
-- Recuperación no revela existencia de correo (RF-06/RNF-06, T-AUTH-08).
-- Fail-closed: detener Redis y verificar `503` en logout y `/auth/*` (T-AUTH-05/RNF-02).
-
-### 7.4 Convenciones
-
-- Nombres Given/When/Then derivados del spec.
-- `--no-build` tras build Release; tests limpian claves `revoked:*` y `ratelimit:*`.
-- Content Safety/Media y Supabase mockeados; sin servicios reales en CI.
-
-**Trazabilidad:** T-AUTH-01..T-AUTH-10; RNF-01, RNF-02, RNF-04, RNF-06, RNF-12, RNF-13; CL-01..CL-13.
-
----
-
-## 8. Fases de Implementación (orden sugerido)
-
-| Fase | Contenido | Depende de |
+| API | Controller propuesto en `src/UTTTGO.Api` | Servicio / persistencia / validación / error (ficha «Propuesta a validar») |
 |---|---|---|
-| F1 | Esqueleto del módulo + `DependencyInjection` + registro en `Program.cs` | Fase 00 (esqueleto base) |
-| F2 | POCOs, índices e `IUserRepository`/`ISellerProfileRepository` | F1 |
-| F3 | Configuración `SupabaseOptions` + `AddJwtBearer` + `IAuthProvider` | F1 |
-| F4 | `RedisTokenBlacklist`, `JwtRevocationMiddleware`, `LocalProfileMiddleware` | F3 |
-| F5 | Validadores + `AuthService`/`UserProfileService` + endpoints `/auth/*` y `/users/me` | F2, F4 |
-| F6 | `SellerActivationService` + `/sellers/activate` | F5 |
-| F7 | `AdminUserService` + endpoints `/admin/users/*` + auditoría | F5 |
-| F8 | Rate limiting distribuido `/auth/*` y general | F4 |
-| F9 | Tests unitarios, integración y seguridad; trazabilidad | F5–F8 |
+| 001 | `AuthController` registro | Validar `email,password,displayName`, dominio `uttt.edu.mx`, sin rol/estado de body; `signUp` Supabase desde backend y `users` idempotente por `supabaseUserId` **todavía propuestos**. **Éxito aprobado individualmente:** `202` genérico para nuevo/existente procesable, sin identidad/roles/estado/JWT ni `409` por duplicado; perfil nuevo pendiente hasta OTP. Ficha original propone `201`/`status:Active`; errores `400/422/429/502-503`, texto JSON, sincronización y reintentos aún por aprobar. No declarar entrega de email ni alta completa si falla perfil Mongo. |
+| 002 | `AuthController` login | Delegar contraseña a Supabase; contrastar confirmación actual con usuario autenticado y `sub` de perfil Mongo, reconciliar pendiente confirmado sin levantar suspensión y solo entonces propagar JWT. **Propuesta § 4.2:** `200` con token Supabase/usuario local o `403 EMAIL_VERIFICATION_REQUIRED` **sin tokens** para pendiente; invalidación de cualquier sesión Supabase creada durante intento rechazado por definir/probar. Ficha `400/401/403/429/503` provisionales; refresh TASK-AUTH-003. |
+| 003 | `AuthController` logout | **Confirmado:** JWT `jti/exp` validado, Redis compartido `revoked:{jti}` TTL hasta exp y fail-closed. PDF § 10 exige coordinar logout móvil; § 16 exige sesión persistente salvo logout. **Pendiente:** refresh token Supabase (emitir/almacenar de forma segura en móvil/renovar/revocar), body «si aplica», repetición y borrado móvil de sesión/caché; no afirmar cierre total por solo blacklist. Ficha propone `204`, `401/503`, no HTTP definitivos. |
+| 004 | `AuthController` sesión | Validar JWT firma/issuer/audience/exp + Redis; resolver perfil local por `sub`; proyección de sesión sin tokens. Ficha `200 {id,email,displayName,roles,accountStatus}` y `401/404/503`; no devolver perfil editable de API-006. |
+| 006 | `UsersController` perfil | Lookup `sub`/Mongo, proyección privada propia. Ficha `200 {id,displayName,email,phone,avatarUrl,roles}`, `401/404/503` provisionales. **Propuesta de lectura:** `avatarUrl` de corta duración/acceso controlado solo si Media confirma activo propio aprobado; nunca Blob público. Sin caché de datos personales al inicio (propuesta). |
+| 007 | `UsersController` edición | Lista blanca y propiedad por `sub`; rechazar roles/estados/identidad; `updatedAt` UTC. Ficha propone escritura `displayName,phone,avatarUrl` y `200/400/401/409/503`. **Propuesta de escritura distinta de lectura:** asociar `mediaAssetId` propio aprobado con contrato Media y entregar URL temporal al consultar. Cambiar el campo `avatarUrl` del PATCH **requiere aprobación de ficha/DTO**; nulidad/eliminación, longitud y formato de teléfono pendientes. |
+| 008 | `SellersController` perfil de vendedor | Lookup `sellerId` validado; rol/estado desde perfil local. **RN-FIG-06:** inactivo visible, pero sin nuevos pedidos; inactividad no produce `404`. Ficha propone `200 {sellerId,displayName,ratingAverage,ratingCount,isActive}` y `400/404/503`, sujetos a aprobación. **Propuesta de composición:** perfil/ratings por contratos de Sellers/Reviews y obtener alimentos por API-011 de Catalog; alternativa, lista paginada suministrada por contrato de Catalog, **sin leer colecciones ajenas**. Acceso público/autenticado, ratings ausentes y respuesta definitiva pendientes; email/teléfono siempre excluidos. |
 
-Sin código de producción hasta que esta fase se ejecute vía `task.md`.
+**Modelo NoSQL propuesto por ficha, no esquema final:** `users._id` (`ObjectId`), `supabaseUserId` (identidad), correo normalizado para lookup/unicidad, nombre, rol(es) y estado local, fechas UTC; `sellerProfiles.userId` para datos de negocio. Proponer `PendingEmailVerification` como estado del perfil (no como rol ni autorización JWT) y `Active` solo tras confirmación fiable; nombres/cardinalidad `roles:string[]`/`accountStatus` de ficha frente al modelo histórico singular se aprueban antes de fijar POCOs/índices/DTO. Índice único `supabaseUserId` y estrategia de unicidad del email según política de baja se proponen para reintentos/concurrencia. No guardar OTP, password, JWT, refresh tokens ni indicadores proporcionados por el cliente en Mongo/Redis/caché (excepto `jti` revocado). Otros índices solo por consultas y DEC-003.
 
----
+**Validación y errores:** Controllers reciben HTTPS, validadores aplican **solo DTOs aprobados** y errores siguen el contrato constitucional con `correlationId`. `400/401/403/404/409/422/429/502/503` listados en fichas son propuestas, no ratificación automática: **API-001 ya tiene aprobado individualmente `202` genérico y ausencia de `409` por duplicado**; revisar aún `422` de dominio, demás errores, cuenta no verificada y `404` de API-008 (nunca por inactividad). La denegación por JWT/rol/propiedad y rate limit distribuido sí son requisitos constitucionales; código exacto según contrato ratificado. Redis caído en `/auth/*`/revocación: fail-closed. Rate limit de API-008 como lectura pública **solo si** se aprueba acceso público; protección general distribuida de acuerdo con la constitución. Caché del perfil público opcional, datos no sensibles con invalidación aprobada.
 
-## 9. Riesgos y Decisiones Diferidas
+## 4.2 RF-15 y requisitos académicos transversales
 
-| Riesgo | Mitigación |
-|---|---|
-| Supabase HS256 vs JWKS según proyecto | Soportar ambos; JWKS por defecto en Azure, secreto solo local. |
-| Redis caído bloquea login/logout | Fail-closed por diseño; health check y alertas; reintentos cortos. |
-| Transacción usuario↔vendedor no atómica en MongoDB standalone | Orden idempotente + reintento; en Atlas usar transacción si el clúster lo permite. |
-| Re-registro con correo de cuenta eliminada | Bloqueo por índice único y `Status = Deleted` hasta DEC-003. |
-| Enumeración de correos | Respuesta uniforme en register/recover. |
-| Asignación de `Admin` | Solo seed/migración server-side; jamás por API. |
-| DEC-003 abierta | Anonimización reversible mínima y campos a conservar documentados; se ajusta al cerrar DEC-003. |
+`PB-003/HU-03` y la historia 3 de `UI-Diana Mota Trejo.xlsx` exigen código; el PDF académico **no** lo prescribe. **Propuesta técnica pendiente salvo éxito `202` genérico/antienumeración de API-001 ya aprobados individualmente** (detalle/JSON en `spec.md` § 4.3): API-001 `signUp` email/password desde backend → Supabase envía **Confirm sign up** con `{{ .Token }}` y Confirm Email habilitado → móvil `verifyOtp({email,token,type:'email'})`, `resend({type:'signup',email})` si hace falta → API-002 verifica identidad/confirmación Supabase y habilita perfil local → login exitoso. No usar `signInWithOtp` (passwordless), plantilla Magic link or OTP, OTP en backend ni ruta nueva. Si la semántica del SDK móvil o las exigencias de conciliación obligan a mediación backend, solicitar ficha nueva antes de código; no afirmar que el proyecto Supabase o SMTP estén configurados.
 
----
+**Protocolo de sincronización propuesto (idempotencia y fronteras):**
 
-## 10. Fuera de Alcance del Plan
+1. API-001 normaliza correo y valida dominio antes de `signUp`; **solo si Supabase devuelve identidad inequívoca** usa ese `sub` confiable para insertar perfil `Buyer/PendingEmailVerification` con unicidad por `supabaseUserId`. No usar `sub` del request, `emailVerified`, rol del JWT ni éxito reportado por móvil. Una respuesta sin identificador verificable (p. ej., por política de duplicados/antienumeración del proveedor) **no** autoriza crear perfil ni devolver `userId`; resolver semántica de respuesta pública y recuperación segura en prueba real. Con duplicado concurrente, recuperar solo registro del mismo `sub` tras comprobar pertenencia; decidir antienumeración y diferencia entre retry y nuevo signup antes de aprobar respuesta.
+2. Si Supabase registra identidad pero Mongo no confirma inserción, devolver error fail-closed y dejar trazabilidad operativa **sin datos sensibles** para conciliación segura. Evaluar reintento acotado/compensación administrativa; **no** crear perfil a partir de cualquier JWT ni eliminar usuario Supabase unilateralmente. Si el correo no sale, registro no se declara activado; resolver política de reenvío/errores de entrega en proveedor.
+3. En API-002, autenticar con Supabase y consultar al servidor Auth la confirmación **actual** (`email_confirmed_at`/atributo equivalente verificado según SDK), `id/sub` y correo institucional; cotejar perfil por `supabaseUserId`, no por email del cliente. Si pendiente y confirmado, promover mediante actualización condicional atómica `supabaseUserId + estado PendingEmailVerification` → `Active`. Si otro intento ya promovió, reconsultar y admitir `Active` solo tras volver a verificar condición Supabase; nunca reactivar `Suspended`, `Deleted` o perfil faltante. Error Mongo ⇒ no devolver token, reintento posterior sin repetir OTP.
+4. Antes de autorizar **cada endpoint privado**, validar firma/issuer/audience/exp/jti Redis según constitución; recuperar estado confiable vigente del usuario en Supabase (`getUser` con token validado o comprobación equivalente **solo servidor**) y comparar `sub`, correo institucional y confirmación con perfil local permitido. Para perfil pendiente confirmado puede reconciliarse idempotentemente antes de ejecutar operación solo si la política aprobada lo permite; alternativa conservadora: denegar hasta API-002. Perfil ausente no se auto-crea. Fallo Supabase/Mongo/Redis ⇒ fail-closed; cachear confirmación queda excluido del diseño inicial para no autorizar con estado obsoleto, sujeto a evaluación de latencia/cuotas y aprobación de mecanismo de consulta.
+5. El móvil no habilita localmente al usuario ni usa una eventual sesión de `verifyOtp` para pasar la política backend; tratamiento de sesión de SDK (descarte/cierre/refresh) se decide con TASK-AUTH-003. Probar qué devuelve `signUp`, `verifyOtp` y login cuando Confirm Email está activo; el flujo documental no constituye prueba end-to-end.
 
-- Código de producción, migraciones EF, SQL, carrito, menús u horarios.
-- Terraform, pipelines y despliegue.
-- Verificación de email, OAuth, magic link, 2FA y cambio de contraseña/email en backend.
-- Aprobación administrativa de vendedores (DEC-002 resuelta: autoactivación MVP).
-- Definición final de retención/anonimización (DEC-003).
-- Gestión de ofertas, productos, pedidos, reseñas, chat y notificaciones.
+**Errores y control:** OTP inválido/vencido → perfil pendiente y UX de reintento; reenvío en Supabase sujeto a límites `429` (email del proyecto, usuario/IP), expiración configurable compartida con recuperación/cambio de correo; API-001/002 además bajo rate limit distribuido Redis, fail-closed. Sin entrega real a estudiantes `@uttt.edu.mx` por SMTP no se cierra TASK-AUTH-002: SMTP incorporado es solo para equipo autorizado (2 emails/hora). Aprobar proveedor, cuotas, costo cero y prueba real sin secretos en repositorio. En API-001 **solo** `202` genérico/no `409` por duplicado está aprobado; texto JSON, otros HTTP/errores y antienumeración del `403` de API-002 quedan pendientes, sin modificar fichas Excel ni rutas.
 
----
+Alternativas **no seleccionadas** para decisiones de las otras fichas: API-003 puede revocar JWT y coordinar logout del móvil con Supabase, o además revocar refresh token Supabase cuando se defina su uso; la revocación JWT es obligatoria en ambas. API-006/007 pueden devolver URL de lectura temporal y aceptar identificador de activo propio aprobado (requiere cambio aprobado del PATCH), o conservar `avatarUrl` de escritura solo si Media puede verificar origen y propiedad; ninguna permite URL libre ni Blob público. API-008 **siempre conserva visible al inactivo** (RN-FIG-06); puede entregar resumen/rating y consultar alimentos mediante API-011 de Catalog, o incluir alimentos paginados mediante contrato Catalog. Acceso público/autenticado y tratamiento de ratings/fallos requieren aprobación; no acceso directo a colecciones de Reviews/Catalog. El contrato de pedidos debe impedir nuevas solicitudes al vendedor inactivo.
 
-## 11. Matriz de Trazabilidad Consolidada
+`docs/academic-requirements-phase-02.md` traza PDF §§ 5–11, 13–16/18 y p. 4: SDD/DevSecOps, tests, CI/CD, caché en base/backend/frontend (frontend a coordinar con móvil), logout ambos lados, versionamiento antes de desarrollo, HTTPS, NoSQL, JWT/Redis, rate limiting, middleware, paginación, indexing, serializadores y compresión donde aplique, observabilidad nube, dos instancias, IaC y **costo cero**. Terraform es recomendado por el PDF pero obligatorio en la constitución; Azure/App Service/Redis/Key Vault/AI/Blob siguen vigentes, **sin evidencia de costo cero ni disponibilidad simultánea de dos instancias gratuitas**. Evaluar cuotas/presupuesto y consultar al equipo antes de cualquier cambio constitucional. No crear infraestructura ni estimar precios ficticios.
 
-| Sección del plan | RF | RNF | CL | Tests |
-|---|---|---|---|---|
-| § 2 Estructura del módulo | RF-03..05, 07..09, 11 | RNF-03, 05, 12 | — | — |
-| § 3 Modelo de datos | RF-03..05, 07..09, 11 | RNF-03, 08, 14 | CL-02, CL-03, CL-11 | T-AUTH-03, 07, 10 |
-| § 4 Contratos HTTP | RF-01..11 | RNF-04, 07, 08, 12, 13 | CL-01..CL-13 | T-AUTH-01..10 |
-| § 5 Supabase/JwtBearer/Redis | RF-02, 08, 10 | RNF-01..04, 10 | CL-04..CL-08 | T-AUTH-02, 04, 05, 06 |
-| § 6 Seguridad | RF-01, 04, 06, 11 | RNF-03, 05, 06, 09, 10, 13 | CL-01, CL-12, CL-13 | T-AUTH-01, 06, 08 |
-| § 7 Pruebas | RF-01..11 | RNF-01..14 | CL-01..CL-13 | T-AUTH-01..10 |
+### 4.3 Versionamiento antes de implementar (TASK-AUTH-007, aprobación técnica parcial)
 
-### 11.1 Trazabilidad RF → sección del plan → prueba
+Fuente canónica: `docs/academic-requirements-phase-02.md` § «Matriz inicial y política de versiones». **La responsable técnica del punto 4 aprobó individualmente el 2026-11-04** línea base y política: contrato `/api/v1` `1.0.0-rc.1` (sin declarar fichas aprobadas), backend `0.1.0`, móvil `0.1.0`, Terraform `0.1.0`, configuración `dev`/`staging`/`prod` `0.1.0` **individualmente**, SemVer MAJOR/MINOR/PATCH, DEP correlativo independiente, soporte de versión móvil anterior **mínimo 30 días tras publicar la nueva** (salvo medida extraordinaria por vulnerabilidad documentada) y reversión solo a combinaciones probadas; sin anterior, detener promoción y corregir. La responsable del punto 4 asume releases/coordinación de reversión backend, sin ejecución ni destrucción de infraestructura sin evidencia y autorización operativa. Mantener separadas versiones de componentes, versiones SDD (`spec.md` v1.5/este `plan.md` v1.6/`task.md` v1.5) y DEP. **El ejemplo DEP-0001 es ficticio, no un deploy realizado.**
 
-| RF | Requisito (resumen) | Secciones del plan | Pruebas |
-|---|---|---|---|
-| RF-01 | Registro solo con `@uttt.edu.mx` | §4.2, §4.6, §6 | T-AUTH-01 |
-| RF-02 | Login email+password vía Supabase | §4.2, §5.2, §5.5 | T-AUTH-02 |
-| RF-03 | Perfil local con rol `Buyer` y `sub` | §2, §3.1, §4.2, §5.4 | T-AUTH-03 |
-| RF-04 | Perfil: nombre/email obligatorios, teléfono/avatar opcionales | §2, §3.1, §4.3, §6 | T-AUTH-03, T-AUTH-06 |
-| RF-05 | Autoactivación de vendedor sin aprobación admin | §2, §3.2, §4.3, §7.1 | T-AUTH-09 |
-| RF-06 | Recuperación por email sin enumeración | §4.2, §4.6, §6 | T-AUTH-08 |
-| RF-07 | Admin lista/busca/pagina usuarios | §2, §3.3, §4.4 | T-AUTH-07 |
-| RF-08 | Suspensión bloquea operaciones | §4.4, §5.4, §6 | T-AUTH-06, T-AUTH-07 |
-| RF-09 | Reactivación restaura operaciones | §4.4, §5.4, §7.1 | T-AUTH-07 |
-| RF-10 | Logout revoca `jti` y falla cerrado | §4.2, §5.3, §5.5 | T-AUTH-04, T-AUTH-05 |
-| RF-11 | Baja lógica/anonimización sin borrado duro | §3.1, §4.3, §6, §9 | T-AUTH-10 |
+Antes de implementar API-001/002/003/004/006/007/008: (a) **TASK-AUTH-001/006 `[x]`; 007 abierto** pese a ventana y responsable técnico ya definidos: falta evidencia de aprobación del equipo/delegación; identificar aprobador operativo y autorización por despliegue/reversión, sin atribuirla a la coordinación técnica; (b) después TASK-AUTH-008 aprueba SDD, luego TASK-AUTH-010 concilia DTO/HTTP de cada ficha; (c) cada cambio futuro identifica fichas y nivel MAJOR/MINOR/PATCH del contrato y del backend **por separado**; (d) backend debe conservar compatibilidad con la versión móvil anterior al menos 30 días tras la nueva publicación y probar clientes antiguos; excepción solo por vulnerabilidad que exija medida extraordinaria documentada; (e) cada despliegue registra entorno, versiones efectivas/previas, SHA completo/artefactos, pruebas, responsable, aprobador y reversión; producción no se presume habilitada y no hay Terraform ejecutado. Rutas del Excel intactas; cambio incompatible exige ficha aprobada y no crea `/api/v2` unilateralmente. Promoción sin cambio de artefacto crea nuevo DEP, no versión inventada.
 
-Cada RF del spec queda cubierto al menos por una sección de implementación y una prueba.
+## 5. Seguridad y pruebas propuestas (no ejecutadas)
 
----
+- JWT Supabase: firma, issuer, audience, expiración, `jti` revocado en Redis hasta `exp`; roles locales. Si Redis no responde: revocación y rate limit fail-closed, caché fail-open. Mantener orden del middleware de `Program.cs` aprobado; no modificarlo sin aprobación exigida por AGENTS.
+- Unitarias: validación de dominios/DTOs, proyecciones de sesión/perfil/público, normalización de email, autorización por propiedad y cálculo de TTL; contraseña nunca se guarda ni se registra. El resto del módulo (autoactivación y baja) conserva sus pruebas previstas fuera de los siete.
+- Integración: **cada una de API-001/002/003/004/006/007/008 por separado** con Supabase simulado y Mongo/Redis de prueba; OTP correcto/incorrecto/caducado/reenvío, registro idempotente, fallo parcial y promoción concurrente; JWT emitido a no verificado nunca autoriza; logout y lectura posterior rechazando JWT revocado; perfil propio no equivale a sesión; perfil de vendedor sin PII con acceso público o autenticado según contrato aprobado. Prueba end-to-end contra proyecto Supabase de prueba/SMTP no productivo **pendiente**, sin llamar proveedor real desde CI.
+- Seguridad: token expirado/revocado/firma errónea, JWT válido sin correo confirmado o con estado local pendiente/suspendido, Supabase/Mongo no disponibles, roles locales, rate limit y Redis caído fail-closed, inyección de rol/estado, contraseña/OTP/tokens ausentes de logs, avatar moderado, acceso a perfil ajeno denegado y enumeración pública bajo revisión. T-AUTH-08 y T-AUTH-10 siguen previstos para alcance posterior; no se deshabilitan para cerrar fase.
+- **Antes de cualquier implementación:** TASK-AUTH-001/006 `[x]`; obtener evidencia de aprobación del equipo/delegación para TASK-AUTH-007 tras ventana y responsabilidad técnica ya fijadas; registrar versiones efectivas y DEP en cada despliegue, con aprobador operativo identificado antes de ejecutar. CI/CD futuro: restore → format → build → unit → integration → security → secret scan; sin `.github/workflows/`, tests ni infraestructura encontrados hoy, por lo que no afirmar ejecución ni despliegue. Política y cierre de gate previos, automatización del pipeline posterior (TASK-AUTH-031).
 
-## 12. DoD del Plan
+## 6. Gates
 
-- [ ] Estructura de § 2 creada y compilando.
-- [ ] POCOs e índices de § 3 implementados y `EnsureIndexes` idempotente.
-- [ ] Contratos de § 4 implementados con DTOs y contrato de error único.
-- [ ] JwtBearer + revocación Redis de § 5 con fail-closed verificado.
-- [ ] Rate limiting distribuido activo en `/auth/*`.
-- [ ] T-AUTH-01..T-AUTH-10 en verde.
-- [ ] Sin secretos en el diff; configuración por entorno/Key Vault.
-- [ ] Trazabilidad actualizada en `docs/traceability.md`.
-- [ ] `memoria.md` actualizado con el estado de la fase.
-
----
-
-## 13. Aprobación y Control de Cambios
-
-| Campo | Valor |
-|---|---|
-| Estado | **Aprobado** |
-| Fecha | 2026-10-29 |
-| Versión | 1.1 |
-| Autor | AGENT-BE-01 (Architect) con AGENT-BE-02/BE-03 |
-| Revisores | AGENT-BE-04 (Security Reviewer), AGENT-BE-06 (Memory Keeper) |
-| Aprobado por | Equipo UTTT-GO |
-| Próxima revisión | Al crear `task.md` o al cerrar DEC-003 |
-
-### 13.1 Registro de versiones
-
-| Versión | Fecha | Cambio | Aprobado por |
-|---|---|---|---|
-| 1.0 | 2026-10-29 | Plan de arquitectura, modelo de datos, contratos, integración Supabase/Redis, pruebas y trazabilidad | Equipo UTTT-GO |
-| 1.1 | 2026-10-29 | Se añade ejemplo del formato estándar de error y matriz de trazabilidad RF-01..RF-11 → sección → prueba | Equipo UTTT-GO |
-
-### 13.2 Reglas de control de cambios
-
-1. Cambiar rutas, colecciones, índices o el orden de middleware exige nueva versión de este plan.
-2. Toda desviación debe reflejarse primero en `spec.md` si altera requisitos.
-3. Ningún agente implementa código de producción sin `task.md` derivado de este plan.
-
-### Nota acotada de ejecucion local (2026-11-04)
-
-Para los siete candidatos de docs/traceability-siete-endpoints.md, la solucion real es UTTTGO.Backend.slnx con src/UTTTGO.Api/Modules/Identity, Sellers y Admin y pruebas en tests/UtttGo.UnitTests, UtttGo.IntegrationTests y UtttGo.SecurityTests. El diseno modular de API-039 esta en api-039-list-users/plan.md v0.2.0. Los adaptadores de Supabase, MongoDB, Redis y auditoria siguen sin configurar: el host normal falla cerrado y los resultados QA usan dobles. Esta nota no sustituye el plan historico ni altera API-003/040, middleware o infraestructura.
+1. Completar TASK-AUTH-007 (**aprobación técnica registrada, gate todavía abierto**) antes de TASK-AUTH-008; aprobar `spec.md` v1.5 antes de este plan v1.6, después `task.md` v1.5 y trazabilidad; TASK-AUTH-010 y cualquier código van **después** de esos gates. Revisar siete fichas sin modificarlas.
+2. Para API-001/002, aprobar propuesta TASK-AUTH-002 (Confirm Email, plantilla, SDK móvil, consulta Supabase por petición, estados, reconciliación, anti-enumeración, HTTP/JSON y SMTP/costo cero) y demostrar flujo real antes de declarar tarea hecha; para API-003, refresh/logout móvil; para API-006/007, campos diferenciados de avatar; para API-008, acceso/composición **sin reabrir visibilidad del inactivo**. Diseñar DEC-003 antes de API-005 y ficha nueva si recuperación requiere backend.
+3. Alinear documentación a `UTTTGO.Backend.slnx`/`src/UTTTGO.Api` y aprobar viabilidad académica de costo cero/dos instancias antes de infraestructura. Build Release, formato y suites en verde solo tras existir implementación; **no** se han ejecutado para estas funciones.

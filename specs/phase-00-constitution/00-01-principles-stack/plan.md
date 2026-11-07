@@ -1,6 +1,6 @@
 # plan.md — Arquitectura base · Backend UTTT-GO
 > Plan de ejecución para dejar el esqueleto del proyecto listo.  
-> Alineado con `spec.md` de arquitectura base y `constitution.md` v1.0.  
+> Borrador de conciliación alineado con `specs/phase-00-constitution/00-01-principles-stack/spec.md` v1.2 y `docs/constitution.md` v2.3; aprobación integral pendiente.
 > **No incluye tareas de funcionalidad específica.**
 
 ---
@@ -10,7 +10,7 @@
 Tener el repositorio backend en un estado en el que cualquier miembro del equipo pueda:
 1. Clonar el repositorio.
 2. Copiar `.env.example` a `.env` y completar sus valores locales.
-3. Ejecutar `docker-compose up` + `dotnet run` y obtener una API corriendo.
+3. Ejecutar `docker compose up -d` + `dotnet run` y obtener una API corriendo.
 4. Ejecutar `dotnet test` y ver los proyectos de prueba compilados y listos.
 
 ---
@@ -36,10 +36,10 @@ Tener el repositorio backend en un estado en el que cualquier miembro del equipo
 | Paso | Descripción | Responsable |
 |---|---|---|
 | P1-1 | Crear solución `utttgo-backend.sln` | AGENT-BE-01 |
-| P1-2 | Crear proyecto `UtttGo.Api` (ASP.NET Core 8 Web API) | AGENT-BE-01 |
+| P1-2 | Crear proyecto `UtttGo.Api` (ASP.NET Core 10 Web API) | AGENT-BE-01 |
 | P1-3 | Crear proyectos de prueba vacíos: `UtttGo.UnitTests`, `UtttGo.IntegrationTests`, `UtttGo.SecurityTests` | AGENT-BE-05 |
 | P1-4 | Agregar referencias de proyecto entre Api y proyectos de prueba | AGENT-BE-01 |
-| P1-5 | Crear estructura de carpetas según `spec.md § 1` | AGENT-BE-01 |
+| P1-5 | Crear estructura modular conforme a `AGENTS.md` § 11 y `docs/constitution.md` § 4 | AGENT-BE-01 |
 | P1-6 | Verificar que `dotnet build` pasa sin errores | AGENT-BE-01 |
 
 ---
@@ -93,9 +93,9 @@ Tener el repositorio backend en un estado en el que cualquier miembro del equipo
 
 | Paso | Descripción | Agente |
 |---|---|---|
-| P5-1 | Crear `docker-compose.yml` con servicios MongoDB 7 y Redis 7 | AGENT-BE-01 |
+| P5-1 | Crear `docker-compose.yml` con MongoDB 7, Redis 7 y Azurite para pruebas locales de Blob/SAS | AGENT-BE-01 |
 | P5-2 | Crear `docker-compose.override.yml` (local, no comitear si tiene secretos) | Equipo |
-| P5-3 | Verificar `docker-compose up` levanta ambos servicios sin errores | Equipo |
+| P5-3 | Verificar `docker compose up -d` levanta los tres servicios sin errores y `docker compose down` los detiene al terminar las pruebas locales | Equipo |
 | P5-4 | Verificar conexión de la API a MongoDB y Redis al iniciar | AGENT-BE-03 |
 
 ---
@@ -109,7 +109,7 @@ Tener el repositorio backend en un estado en el que cualquier miembro del equipo
 | P6-2 | Ejecutar `dotnet run` — `GET /health` retorna `200` con estado de Mongo y Redis | Health check verde |
 | P6-3 | Verificar que una petición sin token a `/api/v1/` retorna `401` con contrato de error | Seguridad base |
 | P6-4 | Ejecutar `dotnet test` — proyectos de prueba compilan y tests vacíos pasan | Test runner verde |
-| P6-5 | Revisar que `.env.example` tiene todas las variables del `spec.md § 2` | Revisión manual |
+| P6-5 | Revisar que `.env.example` documenta las variables locales necesarias, sin secretos reales, conforme a `AGENTS.md` § 4 | Revisión manual |
 | P6-6 | Revisar que no hay secretos en ningún archivo del repositorio | AGENT-BE-04 |
 
 ---

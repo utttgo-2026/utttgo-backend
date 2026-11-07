@@ -1,7 +1,7 @@
 # task.md — Arquitectura base · Backend UTTT-GO
 > Lista de tareas atómicas derivadas de `plan.md`.  
 > Cada tarea es ejecutable por un solo agente o miembro del equipo, tiene criterio de "hecho" claro y no solapa con otras.  
-> Alineado con `constitution.md` v1.0. **No ejecutar aún — solo definición.**
+> Borrador de conciliación alineado con `docs/constitution.md` v2.3 y `spec.md` v1.2. **Pendiente de aprobación integral y ejecución — solo definición.**
 
 ---
 
@@ -34,12 +34,12 @@
   - Agente: Equipo.
 
 - [ ] **TASK-BE-004** · Crear `README.md` inicial
-  - Acción: Documentar: propósito del proyecto, requisitos del entorno (SDK .NET 8, Docker, herramientas), instrucciones de setup en 5 pasos.
+  - Acción: Documentar: propósito del proyecto, requisitos del entorno (SDK .NET 10, Docker, herramientas), instrucciones de setup en 5 pasos.
   - Criterio de hecho: Un nuevo miembro puede seguir el README sin preguntar nada adicional.
   - Agente: AGENT-BE-01.
 
 - [ ] **TASK-BE-005** · Crear `.env.example`
-  - Acción: Listar todas las variables del `spec.md § 2` con nombres exactos y valores de ejemplo ficticios (`<valor-aqui>`). Sin valores reales.
+  - Acción: Listar las variables locales necesarias conforme a `AGENTS.md` § 4, con nombres exactos y valores de ejemplo ficticios (`<valor-aqui>`). Sin valores reales.
   - Criterio de hecho: Archivo comiteado; ninguna variable real en el archivo.
   - Agente: AGENT-BE-01.
 
@@ -58,7 +58,7 @@
   - Agente: AGENT-BE-05.
 
 - [ ] **TASK-BE-008** · Crear estructura de carpetas
-  - Acción: Crear carpetas `Controllers/`, `Services/`, `Repositories/`, `Models/`, `DTOs/`, `Middleware/`, `Validators/`, `Configuration/`, `Extensions/` dentro de `UtttGo.Api`. Agregar `.gitkeep` en cada una.
+  - Acción: Crear `src/UtttGo.Api/Modules/` y `src/UtttGo.Api/Shared/` con capas por módulo según `AGENTS.md` § 11 y `docs/constitution.md` § 4; agregar archivos marcadores solo donde sean necesarios.
   - Criterio de hecho: Estructura de carpetas visible en el repositorio.
   - Agente: AGENT-BE-01.
 
@@ -103,8 +103,8 @@
   - Agente: AGENT-BE-04.
 
 - [ ] **TASK-BE-015** · Configurar Rate Limiting
-  - Acción: Crear política `AuthPolicy` (10 req/min) y `GeneralPolicy` (60 req/min) usando `AddRateLimiter` de .NET 8.
-  - Criterio de hecho: Superar el límite en `/auth/*` retorna `429`.
+  - Acción: Crear políticas de rate limiting distribuido con Redis para `/api/v1/auth/*` y rutas públicas; fijar límites numéricos solo en una spec aprobada.
+  - Criterio de hecho: Superar el límite configurado en `/api/v1/auth/*` retorna `429`; Redis caído provoca fail-closed conforme a `docs/constitution.md` § 6.3.
   - Agente: AGENT-BE-04.
 
 - [ ] **TASK-BE-016** · Configurar Serilog
@@ -122,13 +122,13 @@
   - Agente: AGENT-BE-01.
 
 - [ ] **TASK-BE-018** · Implementar GlobalExceptionHandlerMiddleware
-  - Acción: Capturar cualquier excepción no manejada y retornar el contrato de error estándar (`spec.md § 4`) con el `correlationId` del request.
+  - Acción: Capturar cualquier excepción no manejada y retornar el contrato de error estándar (`docs/constitution.md` § 14) con el `correlationId` del request.
   - Criterio de hecho: Una excepción lanzada en un controller retorna `500` con el contrato JSON, no el HTML de Kestrel. El `correlationId` está en la respuesta.
   - Agente: AGENT-BE-01.
   - Seguridad: No incluir stack traces en la respuesta en producción.
 
 - [ ] **TASK-BE-019** · Registrar middleware en Program.cs en orden correcto
-  - Acción: Registrar todos los middlewares en el orden exacto de `spec.md § 3`.
+  - Acción: Registrar los middlewares en el orden aprobado por AGENT-BE-01 y documentado en el spec/plan de la fase base; verificar su compatibilidad con `AGENTS.md` § 3.3.
   - Criterio de hecho: El orden es verificable leyendo `Program.cs`. Un cambio de orden requiere aprobación de AGENT-BE-01.
   - Agente: AGENT-BE-01.
 
@@ -142,8 +142,8 @@
 ## FASE 5 — Docker Compose
 
 - [ ] **TASK-BE-021** · Crear docker-compose.yml
-  - Acción: Incluir servicios `mongodb:7` y `redis:7-alpine` con configuración del `spec.md § 8`.
-  - Criterio de hecho: `docker-compose up` levanta ambos servicios. MongoDB acepta conexiones en `27017`. Redis acepta conexiones en `6379`.
+  - Acción: Incluir servicios MongoDB 7, Redis 7 y Azurite para las pruebas locales de Blob/SAS conforme a `AGENTS.md` § 1.2 y § 7.
+  - Criterio de hecho: `docker compose up -d` levanta los tres servicios; `docker compose down` los detiene al finalizar.
   - Agente: AGENT-BE-01.
 
 - [ ] **TASK-BE-022** · Crear docker-compose.override.yml
@@ -156,7 +156,7 @@
 ## FASE 6 — Verificación final
 
 - [ ] **TASK-BE-023** · Ejecutar checklist de aceptación completo
-  - Acción: Verificar cada criterio del `spec.md § 9` y marcar como cumplido.
+  - Acción: Verificar cada criterio de aceptación de `spec.md` § 6 y marcarlo como cumplido solo con evidencia.
   - Criterio de hecho: Todos los criterios marcados como `[x]` en `spec.md`.
   - Agente: AGENT-BE-04 + AGENT-BE-05.
 
