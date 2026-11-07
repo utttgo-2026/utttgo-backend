@@ -41,7 +41,7 @@ Estructura objetivo, condicionada a aprobar el spec: `src/UtttGo.Api/Modules/Cat
 - Disponibilidad comprable = categoría activa ∧ publicación activa ∧ stock suficiente ∧ vendedor habilitado según política de autorización que se acuerde. Pausa y stock cero son causas diferentes; no introducir horarios.
 - Contrato interno propuesto `IProductPurchaseService` (nombre no vinculante) para reservar/liberar stock del `productId` y consultar precio vigente. La actualización de stock puede ser atómica en un documento `products`; **no** vuelve atómica por sí sola la comprobación de categoría, vendedor ni creación de `orders`. Definir coordinación, reintentos, snapshots de precio e idempotencia de liberación en Orders.
 - Redis: caché fail-open; rate limiting y revocación fail-closed. Invalidar resultados de búsqueda/detalle tras cambios de ingredientes, precio, stock, estado, categoría o calificaciones disponibles. Las invalidaciones fallidas no deben permitir afirmar comprabilidad a partir del caché sin validación backend.
-- Imágenes: SAS solo backend y validación `Approved` de Media; al eliminar cuenta, definir titularidad de blobs antes de borrarlos.
+- Imágenes: URLs presignadas solo backend y validación `Approved` de Media; al eliminar cuenta, definir titularidad de objetos S3 antes de borrarlos.
 - Errores: contrato constitucional `{ correlationId, status, code, message, details? }`; no reutilizar códigos `OFFER_NOT_OWNED`, `OFFER_NOT_AVAILABLE` ni conflicto por duplicado global como si fueran vigentes.
 
 ## 5. Verificación y dependencias

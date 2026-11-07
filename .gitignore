@@ -1,6 +1,6 @@
 # =============================================================================
 # UTTT-GO Backend — .gitignore
-# .NET 10 / C# 14 / ASP.NET Core 10 · VS Code · Docker · Terraform · Azure
+# .NET 10 / C# 14 / ASP.NET Core 10 · VS Code · Docker · Terraform · AWS
 # =============================================================================
 
 # ------------------------- Build / .NET -------------------------
@@ -115,6 +115,7 @@ docker-compose.override.yaml
 *.tfstate.backup
 *.tfvars
 *.tfvars.json
+*.tfplan
 crash.log
 crash.*.log
 override.tf
@@ -123,6 +124,13 @@ override.tf.json
 *_override.tf.json
 .terraformrc
 terraform.rc
+
+# ------------------------- TLS / Let's Encrypt -------------------------
+certbot/www/*
+!certbot/www/.gitkeep
+certbot/conf/
+*.pem
+*.key
 
 # ------------------------- Tests / Cobertura -------------------------
 TestResults/

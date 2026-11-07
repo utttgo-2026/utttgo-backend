@@ -1,6 +1,6 @@
 # plan.md — Diseño de CI/CD DevSecOps transversal · Backend UTTT-GO
 
-> Versión documental **0.3.0** · 2026-11-04 · Evidencia CI-1 actualizada 2026-11-05: **push y PR #2 ejecutados; integración real/CD pendientes**. Deriva de `spec.md` 0.3.0 (CI-R01..09; CI-AC-01..10), subordinada para CI-1 a `docs/constitution.md` v2.1 **publicada** (§§ 2/15/17) y `AGENTS.md` en su alcance publicado. v2.3 local no publicada no se ratifica aquí; TASK-AUTH-007/031 abiertos. Referencias globales en `docs/referencias-profesor-backend.md`.
+> Versión documental **0.5.0** · 2026-11-06 · Deriva de `spec.md` 0.5.0 (CI-R01..12; CI-AC-01..13). **CD-1** (despliegue a la EC2 `3.129.142.54`) autorizado por el propietario de producto e implementado en `.github/workflows/cd-deploy.yml`; ejecución pendiente de secretos, environment, deploy key y primer run. TASK-AUTH-007/031 abiertos.
 
 ## 1. Alcance y arquitectura de entrega
 
@@ -19,7 +19,7 @@ Matriz **provisional reproducida aquí**, con antecedente académico local no pu
 | Contrato REST `/api/v1` | `1.0.0-rc.1` | Candidato documental; CI no aprueba fichas, DTO ni compatibilidad real. |
 | Backend .NET 10 | `0.1.0` | Primer artefacto funcional **previsto**; CI compila SHA sin afirmar release `0.1.0` publicado. |
 | Aplicación móvil | `0.1.0` | Prevista; su CI y build de tienda no se ejecutan ni se acreditan aquí. |
-| Terraform | `0.1.0` | Previsto, archivos aún inexistentes; CI-1 no ejecuta plan/apply ni crea recursos. |
+| Terraform | `0.1.0` | Archivos existentes en `infra/terraform/` y verificados estáticamente (`fmt`, `init -backend=false`, `validate`); CI-1 no ejecuta plan/apply ni crea recursos. |
 | Configuración `dev` / `staging` / `prod` | `0.1.0` **cada una** | Revisiones previstas separadas, sin entornos creados ni valores de secretos. |
 | SDD transversal | `0.3.0` documental | Ratificación CI-1 limitada; independiente de versiones de artefactos; registrar SHA del SDD. |
 | Workflow y ejecución CI-1 | **Sin SemVer propio aprobada** | Al implementarlo identificar archivo+SHA/versión de actions y GitHub run ID/resultado; no reutilizar `DEP-0001` (ejemplo ilustrativo de despliegue, ninguno realizado). |
@@ -36,7 +36,7 @@ No elevar números por la sola documentación/ejecución de CI. Versiones defini
 | 4 | `dotnet build UTTTGO.Backend.slnx -c Release --no-restore`. | 0 errores, build Release para los tres tests; no confundir aviso SDK preview local con objetivo estable de runner. |
 | 5 | `dotnet test tests/UtttGo.UnitTests/UtttGo.UnitTests.csproj -c Release --no-build` con TRX temporal resumido en conteos descargables. | Suite ejecutada, total/fallidas/omitidas visibles; no omitir proyectos ni subir TRX crudo. |
 | 6 | Igual para `tests/UtttGo.IntegrationTests/UtttGo.IntegrationTests.csproj`. | Reporte marcado **integración local con dobles**, no Mongo/Redis/Supabase reales. |
-| 7 | Igual para `tests/UtttGo.SecurityTests/UtttGo.SecurityTests.csproj`. | Reporte marcado **seguridad local con dobles**, no JWT/SAS/distribución reales. |
+| 7 | Igual para `tests/UtttGo.SecurityTests/UtttGo.SecurityTests.csproj`. | Reporte marcado **seguridad local con dobles**, no JWT/presigned/distribución reales. |
 | 8 | Gitleaks OSS v8.30.1 (MIT), archivo oficial Linux x64 y digest SHA-256 fijado; commits desde `main` y árbol rastreado. | Hallazgo o error del escáner bloquea; salida cruda privada, resumen sin coincidencias. Base ausente bloquea. |
 | 9 | Semgrep OSS v1.183.0, regla local C# de CORS en `.semgrep/ci-1.yaml`. | Piloto informativo; informe de código de salida y número de hallazgos sin fuente; fallo no equivale a pasada. |
 | 10 | Solo si se modificó `infra/terraform/` **después de aprobarla**: `terraform fmt -check -recursive`, `terraform init -backend=false`, `terraform validate`. | Sin `apply`, estado real ni recursos en PR; cuando la ruta no existe, «no aplica», no «Terraform verde». |
@@ -55,9 +55,23 @@ No elevar números por la sola documentación/ejecución de CI. Versiones defini
 
 ## 4. Etapas posteriores separadas
 
-**CI-2 real no productiva (CI-R02/05, CI-AC-04):** SDD de cada módulo define consultas, índices, fallos y seguridad; preparar MongoDB 7, Redis 7 y, si aplica, Azurite en contenedores locales, sin Atlas ni Azure de producción. Supabase Auth y OTP/SMTP requieren estrategia de sandbox/cuentas autorizada o dobles claramente etiquetados; FCM y Content Safety se simulan en CI según AGENTS, no se llaman a producción. Pruebas en múltiples instancias y JWT/blacklist/rate limit fail-closed no se declaran verdes hasta verificarse realmente. Esta etapa exige archivos de entorno/test nuevos y aprobación, **no** forma parte de CI-1 documental.
+**CI-2 real no productiva (CI-R02/05, CI-AC-04):** SDD de cada módulo define consultas, índices, fallos y seguridad; preparar MongoDB 7 y Redis 7 en contenedores locales (y emulación de S3 si aplica, sin bucket real), sin Atlas ni servicios cloud de producción. Supabase Auth y OTP/SMTP requieren estrategia de sandbox/cuentas autorizada o dobles claramente etiquetados; FCM y Content Safety se simulan en CI según AGENTS, no se llaman a producción. Pruebas en múltiples instancias y JWT/blacklist/rate limit fail-closed no se declaran verdes hasta verificarse realmente. Esta etapa exige archivos de entorno/test nuevos y aprobación, **no** forma parte de CI-1 documental.
 
-**CD Azure posterior (CI-R03/05/07, CI-AC-06):** constitución ya resolvió Azure App Service y Terraform. Resolver primero viabilidad simultánea de dos instancias y costo cero, accesos/entornos, backend remoto de estado, OIDC/Key Vault, inventario de artefactos, health checks, versión y registro DEP, compatibilidad móvil y aprobador operativo real. Pipeline de despliegue separado con revisión de plan Terraform, aprobación antes de apply y smoke/rollback a combinación probada, sin `destroy` automático. AWS del profesor no es alternativa habilitada: exigiría enmienda constitucional del equipo. No diseñar hoy nombres de secretos, servicios ni costos ficticios.
+**CD-1 implementado (CI-R10/11/12, CI-AC-11..13):** archivo `.github/workflows/cd-deploy.yml`, **separado de `ci-1.yml`** para no alterar sus gates (secret scan, SAST piloto, NuGetAudit y las tres suites siguen intactos). Secuencia:
+
+| Paso | Acción | Gate |
+|---|---|---|
+| 1 | `ci-1.yml` añade `push` a `main` (única edición en CI-1): cada commit desplegable pasa por restore/NuGetAudit, formato, build, tres suites, Gitleaks y Semgrep informativo | Sin CI verde no hay despliegue |
+| 2 | CD-1 se dispara con `workflow_run` sobre CI-1 `completed` y valida `conclusion == success`, evento `push` y rama `main`; `workflow_dispatch` exige motivo | Sin aprobación no hay despliegue (environment `production`) |
+| 3 | Prepara `~/.ssh/id_ec2` desde `EC2_SSH_KEY` (normaliza CRLF) y `known_hosts` desde `EC2_KNOWN_HOSTS` (si falta, `ssh-keyscan` con advertencia) | Falla si faltan secretos; la clave no se imprime |
+| 4 | Por SSH (`EC2_USER@EC2_HOST`), en `DEPLOY_PATH` (por defecto `/opt/utttgo`): `git fetch` del SHA objetivo con fallback a `main` + comparación estricta del commit | No despliega un commit distinto al verificado |
+| 5 | `docker compose pull redis nginx` y `docker compose up -d --build --remove-orphans --scale api=2` | 2 réplicas de la API |
+| 6 | Espera a que todas las réplicas estén `healthy` (240 s) y smoke `GET /api/v1/auth/me` por Nginx (200/401/503) | Falla con logs acotados si no se cumple |
+| 7 | Publica evidencia `ci-evidence/cd-deploy.txt` (SHA, instancia, usuario, resultado, fecha UTC) como artefacto de 7 días | Sin secretos ni logs crudos |
+
+Pendientes de CD-1 que no se cierran con este diseño: environment con aprobadores, secrets del repositorio, deploy key de lectura del repositorio en la instancia, `.env` real en la EC2, backend remoto de estado de Terraform (S3 + DynamoDB), OIDC en lugar de clave SSH a largo plazo, DEP/versionado por despliegue y reversión probada a combinación anterior.
+
+**CD de la nube posterior (CI-R03/05/07, CI-AC-06):** constitución v2.4 (DEC-018) ya resolvió la nube AWS: una EC2 t3.micro con 2 réplicas Compose detrás de Nginx y EIP (`3.129.142.54`, infraestructura aplicada por el propietario). CD-1 cubre el despliegue del contenedor; siguen abiertos el backend remoto de estado (S3 + DynamoDB), la promoción por entornos (`dev/staging/prod`), el inventario de artefactos, el registro DEP por despliegue, la compatibilidad móvil y el aprobador operativo real. No se adoptan CloudFormation, `destroy` programado ni `apply` en PR.
 
 **Móvil:** acordar interfaz documental de versión backend/API/móvil, evidencias de pruebas y compatibilidad, y quién aprueba promoción conjunta. El equipo móvil mantiene su CI/CD SDD separado; el reporte del backend no acredita su cumplimiento académico.
 
@@ -76,3 +90,4 @@ No elevar números por la sola documentación/ejecución de CI. Versiones defini
 - [x] Ejecución GitHub Actions del mismo SHA para push y PR, steps de Gitleaks/NuGetAudit exitosos y Semgrep informativo ejecutado; resumen del artefacto comunicado por responsable técnica.
 - [ ] Piloto adversarial de escáneres, acceso directo al contenido del artefacto por este agente y conciliación de referencias no publicadas.
 - [ ] TASK-AUTH-007/031, CI-2 y CD siguen abiertos.
+- [x] CD-1 autorizado por el propietario de producto (2026-11-06) e implementado; **sin ejecutar** hasta configurar secrets, environment y deploy key.

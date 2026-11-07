@@ -142,8 +142,8 @@
 ## FASE 5 — Docker Compose
 
 - [ ] **TASK-BE-021** · Crear docker-compose.yml
-  - Acción: Incluir servicios MongoDB 7, Redis 7 y Azurite para las pruebas locales de Blob/SAS conforme a `AGENTS.md` § 1.2 y § 7.
-  - Criterio de hecho: `docker compose up -d` levanta los tres servicios; `docker compose down` los detiene al finalizar.
+  - Acción: Incluir servicios MongoDB 7 y Redis 7 (sin Azurite: las imágenes van a S3; pruebas con dobles o emulación) conforme a `AGENTS.md` § 1.2 y § 7.
+  - Criterio de hecho: `docker compose up -d` levanta los dos servicios; `docker compose down` los detiene al finalizar.
   - Agente: AGENT-BE-01.
 
 - [ ] **TASK-BE-022** · Crear docker-compose.override.yml

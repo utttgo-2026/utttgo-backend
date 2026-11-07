@@ -40,7 +40,7 @@ Filtros se combinan en el módulo dueño de `users`; consulta y conteo usan los 
 }
 ```
 
-`id` serializado como string; `items` vacío y `total: 0` si no hay coincidencias. `total` es el número de coincidencias con **todos los filtros aplicados**, antes de paginar; no promete instantánea consistente entre peticiones concurrentes. El `items` de cada usuario incluye **únicamente** `id`, `displayName`, `roles`, `accountStatus`; no incluir `email`, `phone`, avatar/SAS, `supabaseUserId`, `_id` Mongo como campo separado, credenciales, JWT, refresh, tokens de dispositivo ni datos privados de vendedores. No consultar directamente colecciones de Sellers, solicitudes ni otros módulos; HU-049/UI-043 no amplían esta ruta a dichas solicitudes. RF-07 exige rol y estado; los restantes campos y metadatos son decisión local ratificada.
+`id` serializado como string; `items` vacío y `total: 0` si no hay coincidencias. `total` es el número de coincidencias con **todos los filtros aplicados**, antes de paginar; no promete instantánea consistente entre peticiones concurrentes. El `items` de cada usuario incluye **únicamente** `id`, `displayName`, `roles`, `accountStatus`; no incluir `email`, `phone`, avatar/presigned, `supabaseUserId`, `_id` Mongo como campo separado, credenciales, JWT, refresh, tokens de dispositivo ni datos privados de vendedores. No consultar directamente colecciones de Sellers, solicitudes ni otros módulos; HU-049/UI-043 no amplían esta ruta a dichas solicitudes. RF-07 exige rol y estado; los restantes campos y metadatos son decisión local ratificada.
 
 | HTTP | Contrato local ratificado; toda respuesta de error usa `{correlationId,status,code,message,details}` de constitución |
 |---|---|

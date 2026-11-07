@@ -36,13 +36,13 @@ Reglas de negocio del MVP:
 | Arquitectura | Monolito modular con módulos previstos `IdentityAndUsers`, `Catalog`, `Orders`, `Chat`, `Notifications` |
 | Base de datos | MongoDB Atlas 7.x (driver oficial) |
 | Autenticación | Supabase Auth (JWT) + roles y revocación en Redis |
-| Caché | Azure Cache for Redis 7 (`cache:catalog:*`) |
-| Almacenamiento de imágenes | Azure Blob Storage con SAS URLs de corta duración |
-| Moderación de contenido | Azure AI Content Safety |
+| Caché | Redis 7 (contenedor local y en la EC2; sin ElastiCache por costo $0, DEC-018) |
+| Almacenamiento de imágenes | Amazon S3 bucket privado con URLs presignadas del backend |
+| Moderación de contenido | Azure AI Content Safety (servicio externo conservado; DEC-018) |
 | Notificaciones push | Firebase Cloud Messaging (FCM) |
 | Tiempo real | SignalR con backplane de Redis |
-| Infraestructura | Azure App Service + Load Balancer · Terraform |
-| Pruebas | xUnit · Testcontainers (MongoDB/Redis) · Azurite |
+| Infraestructura | AWS: EC2 t3.micro + Elastic IP + Nginx (2 réplicas Docker Compose) · Terraform |
+| Pruebas | xUnit · Testcontainers (MongoDB/Redis) · dobles o emulación S3 |
 
 Las decisiones de arquitectura y las reglas transversales están en [`docs/constitution.md`](docs/constitution.md). El manual operativo de agentes y convenciones está en [`AGENTS.md`](AGENTS.md).
 
@@ -104,9 +104,9 @@ El estado de decisiones, pendientes y mapa de colecciones se mantiene en [`memor
 └── README.md
 ```
 
-Las 42 fichas del Excel no se modifican sin aprobación. `docs/academic-requirements-phase-02.md` coteja el PDF oficial con la fase 02; `docs/traceability.md` vincula sus siete rutas prioritarias a HU/UI/PB. `src/UTTTGO.Api` incluye API-001/002 locales candidatas y `tests/UtttGo.UnitTests/`, `tests/UtttGo.IntegrationTests/` y `tests/UtttGo.SecurityTests/` las verifican **solo con dobles**, sin servicios externos (`docs/qa-api-001.md`, `docs/qa-api-002.md`). `.env.example`, `docker-compose.yml`, `infra/terraform` y `.github/workflows/` **aún no están creados**; las instrucciones para ellos siguen siendo previsiones.
+Las 42 fichas del Excel no se modifican sin aprobación. `docs/academic-requirements-phase-02.md` coteja el PDF oficial con la fase 02; `docs/traceability.md` vincula sus siete rutas prioritarias a HU/UI/PB. `src/UTTTGO.Api` incluye API-001/002 locales candidatas y `tests/UtttGo.UnitTests/`, `tests/UtttGo.IntegrationTests/` y `tests/UtttGo.SecurityTests/` las verifican **solo con dobles**, sin servicios externos (`docs/qa-api-001.md`, `docs/qa-api-002.md`). `infra/terraform` **ya existe** con el stack AWS de DEC-018 (EC2, S3, IAM, CloudWatch, Budget) validado y **aplicado por el propietario** (Elastic IP `3.129.142.54`); falta la evidencia de costo $0 (alerta AWS Budget). `docker-compose.yml`, `Dockerfile`, `nginx/` y `setup.sh` materializan el despliegue en la EC2 (2 réplicas de la API + Redis + Nginx) y están validados localmente, sin ejecución en la instancia todavía.
 
-**Gate académico documental:** el PDF exige SDD, pruebas, CI/CD, dos instancias en nube y costo cero; recomienda Terraform y sugiere herramientas concretas de IA, pero Terraform es **obligatorio por la constitución**, no por el PDF. La matriz académica registra la evaluación **pendiente** de viabilidad simultánea de dos instancias y servicios constitucionales a costo cero: sin cuotas/presupuesto comprobados, no crear infraestructura ni declarar cumplido el requisito. TASK-AUTH-001/006 están cerradas **solo documentalmente**; ni acreditan despliegue ni cierran el riesgo de costo cero.
+**Gate académico documental:** el PDF exige SDD, pruebas, CI/CD, dos instancias en nube y costo cero; recomienda Terraform y sugiere herramientas concretas de IA, pero Terraform es **obligatorio por la constitución**, no por el PDF. El requisito estructural se resolvió con **DEC-018** (constitución v2.4): nube única AWS, una EC2 t3.micro ($0 en Free Tier) con **2 réplicas Docker Compose detrás de Nginx** como las «dos instancias». La evidencia final de costo $0 queda pendiente de la alerta AWS Budget tras el primer apply; ni el cambio de nube ni esta documentación acreditan despliegue.
 
 ---
 
@@ -115,7 +115,7 @@ Las 42 fichas del Excel no se modifican sin aprobación. `docs/academic-requirem
 - [.NET SDK 10](https://dotnet.microsoft.com/) (LTS)
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/) con Docker Compose
 - [Git](https://git-scm.com/)
-- Opcional: Terraform 1.9+, Azure CLI y una cuenta de MongoDB Atlas para entornos remotos
+- Opcional: Terraform 1.9+, AWS CLI (o solo variables de entorno), cuenta MongoDB Atlas y Free Tier de AWS para entornos remotos
 
 Verifica la instalación:
 
@@ -149,41 +149,50 @@ Copy-Item .env.example .env
 cp .env.example .env
 ```
 
-Variables esperadas (los valores reales se solicitan al equipo o se obtienen de Azure Key Vault / Supabase):
+Variables esperadas (los valores reales se solicitan al equipo o se obtienen de variables de entorno seguras / Supabase):
 
 ```dotenv
-ASPNETCORE_ENVIRONMENT=Development
-MONGODB_CONNECTION_STRING=mongodb://localhost:27017
+MONGODB_URI=mongodb://mongo:27017
 MONGODB_DATABASE=utttgo
-REDIS_CONNECTION_STRING=localhost:6379
+REDIS_URL=redis://redis:6379
 SUPABASE_URL=https://<proyecto>.supabase.co
+SUPABASE_ANON_KEY=
+SUPABASE_JWKS_URL=
 SUPABASE_JWT_SECRET=<desde-el-gestor-de-secretos>
-AZURE_STORAGE_CONNECTION_STRING=UseDevelopmentStorage=true
+SUPABASE_JWT_ISSUER=
+SUPABASE_JWT_AUDIENCE=
 AZURE_CONTENT_SAFETY_ENDPOINT=
 AZURE_CONTENT_SAFETY_KEY=
+S3_BUCKET_IMAGES=utttgo-images-local
+AWS_REGION=us-east-2
 FIREBASE_PROJECT_ID=
 ```
 
-> Si `.env.example` o `docker-compose.yml` aún no están presentes en tu copia, se incorporan con el esqueleto de la Fase 0/1. No crees archivos `.env` versionados ni subas credenciales.
+> `.env.example` y `docker-compose.yml` ya existen en el repositorio. No crees archivos `.env` versionados ni subas credenciales.
 
-### 3. Levantar dependencias locales
+### 3. Levantar el stack local
 
 ```powershell
 docker compose up -d
 ```
 
-Servicios previstos cuando se incorpore `docker-compose.yml` (no activos todavía):
-
 | Servicio | Puerto | Uso |
 |---|---|---|
-| MongoDB | `27017` | Base de datos local |
-| Redis | `6379` | Caché, rate limiting y revocación de JWT |
-| Azurite (Blob) | `10000` | Emulador de Azure Blob Storage |
+| `api` (2 réplicas) | interno `8080` | API .NET 10 detrás de Nginx (estado stateless) |
+| `nginx` | `80`, `443` | Proxy inverso y balanceo entre las 2 réplicas |
+| `redis` | interno `6379` | Caché, rate limiting y revocación de JWT |
+| `mongo` (perfil `local`) | `27017` | Espejo local de MongoDB Atlas |
 
-Para detenerlos:
+MongoDB solo arranca con el perfil `local` (en la EC2 se usa Atlas):
 
 ```powershell
-docker compose down
+docker compose --profile local up -d
+```
+
+Para detener todo:
+
+```powershell
+docker compose --profile local down
 ```
 
 ### 4. Restaurar y ejecutar la API
@@ -205,13 +214,58 @@ curl https://localhost:5001/health
 dotnet test
 ```
 
-Las pruebas de integración **previstas** usarán Testcontainers y Azurite; requieren Docker. Aún no existen proyectos de pruebas; comandos previstos para cuando se creen:
+Los proyectos de pruebas existentes (`UtttGo.UnitTests`, `UtttGo.IntegrationTests`, `UtttGo.SecurityTests`) corren **con dobles**; la integración con Testcontainers y con emulación de S3 queda prevista y requiere Docker:
 
 ```powershell
 dotnet test tests/UtttGo.UnitTests/UtttGo.UnitTests.csproj
 dotnet test tests/UtttGo.IntegrationTests/UtttGo.IntegrationTests.csproj
 dotnet test tests/UtttGo.SecurityTests/UtttGo.SecurityTests.csproj
 ```
+
+---
+
+## Despliegue en la EC2 (AWS)
+
+La instancia (EC2 t3.micro, Elastic IP `3.129.142.54`, Ubuntu 24.04) ejecuta el stack con Docker Compose: **2 réplicas de la API** detrás de **Nginx** (balanceo local) y **Redis 7** solo en la red interna. `setup.sh` instala Docker, Docker Compose y Certbot, despliega el stack y emite el TLS:
+
+```bash
+# En la instancia, con el repositorio clonado
+sudo bash setup.sh --domain api.tudominio.mx --email tu@correo.com
+
+# Sin TLS (solo HTTP por la IP)
+sudo bash setup.sh --skip-tls
+```
+
+Requisitos: el dominio debe apuntar con un registro A a `3.129.142.54` (Let's Encrypt no emite certificados para IP desnudas) y el `.env` de la instancia debe tener los valores reales de Atlas, Supabase y S3 (el script lo crea desde `.env.example` si no existe).
+
+```bash
+docker compose ps
+docker compose logs -f api
+docker compose up -d --scale api=2
+```
+
+Notas operativas:
+
+- El script es idempotente: reutiliza el Docker que ya instala el `user_data` de Terraform.
+- El certificado vive en `/etc/letsencrypt` del host y Nginx lo monta en solo lectura; la renovación usa `certbot` con un hook que recarga Nginx.
+- Redis no publica puertos: solo es alcanzable desde la red interna de Compose.
+- El backend toma las credenciales de AWS por el Instance Profile (IMDSv2); por eso Terraform fija `http_put_response_hop_limit = 2` para que los contenedores alcancen IMDS.
+- `app.UseHttpsRedirection()` no redirige dentro del contenedor porque no hay puerto HTTPS configurado: el TLS termina en Nginx. Interpretar `X-Forwarded-Proto` en el backend exige un cambio de middleware aprobado por AGENT-BE-01.
+
+### CD automático (GitHub Actions)
+
+`.github/workflows/cd-deploy.yml` despliega en la EC2 **solo cuando CI-1 (`ci-1.yml`) termina en verde en un push a `main`** (`workflow_run`, con verificación de resultado, evento y rama). Descarga por SSH el SHA exacto verificado, ejecuta `docker compose up -d --build --scale api=2`, espera que las réplicas queden sanas, hace smoke HTTP y publica la evidencia del despliegue. Un despliegue manual (`workflow_dispatch`) exige indicar el motivo.
+
+Secretos que hay que configurar en **Settings → Secrets and variables → Actions**:
+
+| Secreto | Valor |
+|---|---|
+| `EC2_SSH_KEY` | Clave privada completa del usuario de despliegue (con permisos de lectura en el repositorio y acceso a Docker en la instancia) |
+| `EC2_HOST` | `3.129.142.54` |
+| `EC2_USER` | `ubuntu` (o el usuario de despliegue creado en la instancia) |
+| `EC2_KNOWN_HOSTS` | Recomendado: línea `known_hosts` de la instancia (evita aceptar la clave del host sin verificar) |
+
+Variables opcionales: `DEPLOY_PATH` (`/opt/utttgo`) y `EC2_PORT` (`22`). Además, crea el environment `production` con revisores requeridos y registra la clave pública de despliegue como **deploy key de solo lectura** del repositorio en la instancia, para que `git fetch` funcione sin credenciales personales.
 
 ---
 
@@ -230,7 +284,7 @@ dotnet format
 # Dependencias locales
 docker compose up -d
 docker compose ps
-docker compose logs -f mongodb
+docker compose logs -f api
 
 # Limpiar artefactos
 dotnet clean
@@ -240,10 +294,10 @@ dotnet clean
 
 ## Seguridad
 
-- Los secretos se gestionan con variables de entorno locales, Azure Key Vault o el gestor de secretos del equipo; **no** se versionan.
-- `.env`, certificados, credenciales de Firebase/Azure y estados de Terraform están excluidos por `.gitignore`.
+- Los secretos se gestionan con variables de entorno locales (incluidas `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` de Terraform) o el gestor del equipo; **no** se versionan.
+- `.env`, certificados, credenciales de Firebase/AWS/Azure y estados de Terraform están excluidos por `.gitignore`.
 - Los JWT se validan contra Supabase y se revocan por `jti` en Redis.
-- Las SAS URLs de imágenes son de corta duración y se generan solo en el backend.
+- Las URLs presignadas de S3 son de corta duración, de un solo objeto y se generan solo en el backend; el bucket es privado (Block Public Access).
 - Toda imagen de producto pasa por Azure AI Content Safety antes de publicarse.
 - El rate limiting del catálogo público es distribuido y fail-closed.
 - No se almacenan datos financieros: el pago es en efectivo presencial (BR-003).

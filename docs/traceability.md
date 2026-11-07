@@ -40,7 +40,7 @@
 | API-014 | `PATCH /api/v1/products/{productId}` | C RF-04 | C `plan.md` § 3; TASK-CATALOG-002/013; T-CAT-02 | **Decisión posterior confirmada**: dueño edita datos, ingredientes, precio y existencias. Sustituye propuesta anterior de solo descripción/imagen; validar actor Admin y payload de ficha. |
 | API-015 | `PATCH /api/v1/products/{productId}/availability` | C RF-05/09 | C `plan.md` § 3; TASK-CATALOG-002/014; T-CAT-02/05 | **Función confirmada**: vendedor propio pausa publicación; conciliar `Available`/`SoldOut` y reactivación sin confundir pausa con stock cero. |
 | API-016 | `GET /api/v1/products/{productId}/offers` | C RF-07/08; BR-005/006 | C `plan.md` § 3; TASK-CATALOG-003; T-CAT-08 | **Contradicción bloqueante de contrato**: producto compartido/ofertas descartados. Proponer retiro/sustitución funcional mediante búsqueda y filtros de API-011. Ficha y ruta del Excel **siguen intactas** hasta aprobación formal; no implementar ni redirigir sin ella. |
-| API-017 | `POST /api/v1/media/upload-url` | `docs/constitution.md` § 7; sin spec de Media | — | **Pendiente de phase-05**: SAS de un blob, TTL corto y autorización; conservar ruta del Excel. |
+| API-017 | `POST /api/v1/media/upload-url` | `docs/constitution.md` § 7; sin spec de Media | — | **Pendiente de phase-05**: presigned S3 de un objeto, TTL corto y autorización; conservar ruta del Excel. |
 | API-018 | `POST /api/v1/media/{assetId}/complete` | `docs/constitution.md` § 7; sin spec de Media | — | **Pendiente de phase-05**: moderación previa fail-closed; conservar ruta del Excel. |
 | API-019 | `GET /api/v1/categories` | C RF-12 | C `plan.md` § 3; TASK-CATALOG-011; T-CAT-05 | Categorías públicas paginadas; no `/products/categories`. |
 | API-020 | `POST /api/v1/admin/categories` | C RF-12 | C `plan.md` § 3; TASK-CATALOG-011; T-CAT-05 | Admin crea; ficha vigente, DTO por revisar. |
@@ -90,6 +90,20 @@ No son contratos aprobados del MVP por el solo hecho de figurar en un spec, plan
 | C (necesidad nueva) | Ruta de eliminación de producto **sin método/ruta aprobados** | Control del vendedor sobre eliminación confirmado; exige ficha nueva antes de cualquier endpoint público. API-005 solo elimina cuenta, no sustituye eliminación puntual de producto. |
 
 `GET /health` es una sonda **operativa** exigida por `docs/constitution.md` y `AGENTS.md`, no una ficha de endpoint funcional adicional del MVP.
+
+## Infraestructura y despliegue (no son fichas API)
+
+| Origen | Documento | Estado verificable |
+|---|---|---|
+| `docs/constitution.md` v2.4 (DEC-018) | Nube AWS `us-east-2`, EC2 t3.micro + EIP, 2 réplicas Compose + Nginx, S3 privado + presigned, Redis contenedor, Budget | Aprobado por el propietario de producto |
+| `specs/cross-cutting/infra-aws-free-tier/spec.md` v1.1 | Requisitos INFRA-01..15 y criterios INFRA-AC-01..12 | Aprobada |
+| `specs/cross-cutting/infra-aws-free-tier/plan.md` v1.1 | Secuencia P1..P14 y decisiones D-INFRA-01..16 | P1..P12 completados; P13..P14 pendientes |
+| `specs/cross-cutting/infra-aws-free-tier/task.md` v1.1 | INFRA-T01..T15 | T01..T07, T09 `[x]`; T08, T10..T15 `[ ]` |
+| `infra/terraform/{main.tf,variables.tf,terraform.tfvars.example}` | Recursos AWS declarativos | `fmt`, `init -backend=false` y `validate` en verde; **aplicada por el propietario** (EIP `3.129.142.54`); pendiente `apply` del hop limit de IMDS y de la alerta de Budget |
+| `docker-compose.yml`, `Dockerfile`, `nginx/`, `setup.sh` | Despliegue en la EC2: 2 réplicas de la API + Redis interno + Nginx + TLS | `docker compose config`, build de imagen, `nginx -t` y balanceo entre réplicas verificados localmente; **ejecución en la instancia pendiente** |
+| `.github/workflows/ci-1.yml` + `.github/workflows/cd-deploy.yml` | Gate CI (NuGetAudit, formato, build, tres suites, Gitleaks, Semgrep informativo) y CD-1 (SSH al SHA verificado, `docker compose up -d --build --scale api=2`, salud y smoke) | `actionlint` sin errores; **sin run de CD**: faltan secrets, environment con revisores y deploy key en la instancia |
+
+La evidencia de costo $0 depende de la alerta de AWS Budget tras el `apply` (DF02-11); hasta entonces no hay evidencia de costo ni verificación de TLS en la nube.
 
 ## Orden de conciliación y evidencias pendientes
 
