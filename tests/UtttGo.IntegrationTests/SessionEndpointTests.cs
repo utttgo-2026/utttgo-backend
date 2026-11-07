@@ -49,11 +49,11 @@ public sealed class SessionEndpointTests
     }
 
     [Fact]
-    public async Task NoAdaptersConfiguredFailClosed()
+    public async Task InvalidTokenOnDefaultHostIsUnauthorized()
     {
         using var factory = new WebApplicationFactory<Program>();
         using var response = await Get(factory);
-        response.StatusCode.Should().Be(HttpStatusCode.ServiceUnavailable);
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 
     [Theory]

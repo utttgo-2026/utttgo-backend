@@ -24,6 +24,55 @@ public sealed class LoginServiceTests
         result.Response!.User.Roles.Should().Equal("Seller");
     }
 
+    [Fact]
+    public async Task ConfirmedPendingBuyerIsActivatedAndCanLogIn()
+    {
+        var profiles = new ActivatingProfiles(Active with { AccountStatus = "PendingEmailVerification" });
+        var result = await new LoginService(new TestGate(), new TestSupabase(Authenticated), profiles,
+            new TestJwtGate()).LoginAsync(Email, "private-password", default);
+
+        result.Outcome.Should().Be(LoginOutcome.Success);
+        result.Response!.User.AccountStatus.Should().Be("Active");
+        profiles.Activations.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task UnconfirmedPendingBuyerIsNotActivated()
+    {
+        var profiles = new ActivatingProfiles(Active with { AccountStatus = "PendingEmailVerification" });
+        var result = await new LoginService(new TestGate(),
+            new TestSupabase(Authenticated with { EmailConfirmed = false }), profiles, new TestJwtGate())
+            .LoginAsync(Email, "private-password", default);
+
+        result.Outcome.Should().Be(LoginOutcome.InvalidCredentials);
+        profiles.Activations.Should().Be(0);
+    }
+
+    [Theory]
+    [InlineData("Suspended")]
+    [InlineData("Deleted")]
+    public async Task ConfirmedButNonPendingProfileIsNeverActivated(string status)
+    {
+        var profiles = new ActivatingProfiles(Active with { AccountStatus = status });
+        var result = await new LoginService(new TestGate(), new TestSupabase(Authenticated), profiles,
+            new TestJwtGate()).LoginAsync(Email, "private-password", default);
+
+        result.Outcome.Should().Be(LoginOutcome.InvalidCredentials);
+        profiles.Activations.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task ConcurrentSuspensionDuringActivationDoesNotIssueToken()
+    {
+        var profiles = new ActivatingProfiles(Active with { AccountStatus = "PendingEmailVerification" },
+            changedStatus: "Suspended");
+        var result = await new LoginService(new TestGate(), new TestSupabase(Authenticated), profiles,
+            new TestJwtGate()).LoginAsync(Email, "private-password", default);
+
+        result.Response.Should().BeNull();
+        profiles.Activations.Should().Be(1);
+    }
+
     [Theory]
     [InlineData(false, false)]
     [InlineData(true, false)]
@@ -37,7 +86,6 @@ public sealed class LoginServiceTests
     }
 
     [Theory]
-    [InlineData("PendingEmailVerification")]
     [InlineData("Suspended")]
     [InlineData("Deleted")]
     public async Task InactiveProfileNeverReturnsToken(string status)
@@ -183,6 +231,24 @@ public sealed class LoginServiceTests
     {
         public Task<LocalLoginProfile?> FindBySubjectAsync(string subject, CancellationToken cancellationToken) =>
             throws ? throw new ExternalDependencyUnavailableException() : Task.FromResult(profile);
+    }
+
+    private sealed class ActivatingProfiles(LocalLoginProfile profile, string? changedStatus = null)
+        : ILoginProfileRepository
+    {
+        public int Activations { get; private set; }
+
+        public Task<LocalLoginProfile?> FindBySubjectAsync(string subject, CancellationToken cancellationToken) =>
+            Task.FromResult<LocalLoginProfile?>(profile);
+
+        public Task<LocalLoginProfile?> ActivatePendingAsync(LocalLoginProfile pending,
+            CancellationToken cancellationToken)
+        {
+            Activations++;
+            return Task.FromResult<LocalLoginProfile?>(changedStatus is null
+                ? pending with { AccountStatus = "Active" }
+                : pending with { AccountStatus = changedStatus });
+        }
     }
 
     private sealed class TestJwtGate(bool valid = true, bool throws = false) : ILoginJwtGate
