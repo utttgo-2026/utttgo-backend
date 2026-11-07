@@ -1,306 +1,48 @@
-# task.md — Tareas atómicas: Autenticación y Usuarios · Backend UTTT-GO
-> Fase: `phase-02-auth-users` · Módulo: `IdentityAndUsers`
-> Versión: 1.0 · Estado: **Aprobado** · Fecha: 2026-10-29
-> Deriva de `specs/phase-02-auth-users/spec.md` v1.0 y `specs/phase-02-auth-users/plan.md` v1.1.
-> Cada tarea está dimensionada a **20–30 minutos**. No se escribe código de producción fuera de estas tareas.
+# task.md — Autenticación y usuarios · Backend UTTT-GO
+> Fase `phase-02-auth-users` · Versión 1.5 · **Spec v1.5 aprobada individualmente solo para implementación local incremental; aprobación integral del equipo pendiente** · 2026-11-04.
+> Deriva de `spec.md` v1.5 → `plan.md` v1.6 → implementación local en curso (API-001). **0 tareas de implementación completadas**: integraciones reales y gates pendientes.
 
----
+## Convenciones y evidencia
 
-## Convenciones
+Cada tarea indica dependencia y «Hecho cuando» verificable. IDs TASK-AUTH de versiones anteriores permanecen como historial Git; los IDs de este borrador son propuestas y no acreditan haber ejecutado tareas homónimas previas. Rutas, DTOs y códigos de las fichas API son **propuestas a validar** salvo método/ruta del inventario y reglas constitucionales. El orden de los bloques es obligatorio, pero tareas independientes dentro de un bloque pueden diseñarse en paralelo. Los comandos que citen proyecto/tests **no se declaran exitosos** hasta que existan y se ejecuten. Estado inicial de todas las casillas: `[ ]`.
 
-- Formato: `- [ ] TASK-AUTH-xxx — Título`.
-- `RF:` requisitos de `spec.md` cubiertos.
-- `Hecho cuando:` condición única, explícita y verificable (comando, prueba o archivo).
-- Una tarea no se marca hasta cumplir su "Hecho cuando" y dejar build/tests en verde.
-- Las tareas se ejecutan en el orden listado salvo que se indique dependencia alternativa.
+## Bloque A — gates SDD y académico, sin implementación
 
----
+- [x] **TASK-AUTH-001 — Auditar siete fichas y fuentes.** API-001/002/003/004/006/007/008; RF-01..04/10/12/13/15. Depende de: ninguna. Hecho cuando: `spec.md` § 4.2 y `docs/traceability.md` registran para cada ID la ruta/método exactos, HU-Figma, UI, PB/HU-backlog y referencia PDF o «sin vínculo», sin mezclar numeraciones; comparación contra hoja «Inventario endpoints» confirma 42 rutas inalteradas.
+- [ ] **TASK-AUTH-002 — Resolver verificación por código (NO completada).** API-001/002, RF-03/15; PB-003/HU-03 e historia 3 de UI-Diana; propuesta `spec.md` § 4.3 y `plan.md` § 4.2. Depende de: 001. Hecho cuando: equipo aprueba Confirm Email, plantilla Confirm sign up con `{{ .Token }}` sin enlace, `verifyOtp(type:'email')`/`resend(type:'signup')` en móvil, estado local pendiente → activo, consulta confiable de confirmación para **cada ruta privada** aun con JWT, reconciliación idempotente/fail-closed Supabase–Mongo y comportamiento del SDK/sesión; aprueba JSON/HTTP/antienumeración de API-001/002 contra `status:Active` de ficha; se prueba OTP erróneo/vencido/reenvío/fallos parciales y SMTP real `@uttt.edu.mx` compatible con costo cero. Si se exige nueva ruta backend, aprobar ficha adicional primero. No marcar hecho por este borrador ni implementar activación inmediata.
+- [ ] **TASK-AUTH-003 — Resolver refresh token y sesiones.** API-002/003, RF-02/10; PDF §§ 10/16. Depende de: 001. Hecho cuando: se aprueba si se emite/recibe/renueva/revoca refresh token con Supabase, si va en body de API-003, semántica de logout repetido y borrado móvil de credenciales/caché frente a sesión persistente; pruebas planificadas rechazan JWT revocado en todas las instancias y evitan reingreso por renovación. JWT `jti` en Redis sigue obligatorio incluso si no hay refresh token.
+- [ ] **TASK-AUTH-004 — Resolver avatar controlado.** API-006/007, RF-04/13, BR-007. Depende de: 001. Hecho cuando: el equipo aprueba por separado DTO de **lectura** (`avatarUrl` temporal/controlado de ficha, propuesta) y de **escritura** (`avatarUrl` de ficha frente a `mediaAssetId` propio aprobado, propuesta que cambia el PATCH); aclara nulidad/eliminación, contrato Media, acceso a Blob privado y pruebas; nunca URL arbitraria ni cambio tácito del Excel.
+- [ ] **TASK-AUTH-005 — Resolver composición de perfil vendedor.** API-008, RF-13; RN-FIG-06 y PB-012/HU-12. Depende de: 001. Hecho cuando: se confirma **perfil visible si inactivo y sin pedidos nuevos, sin `404` por inactividad**; se aprueban acceso público/autenticado, ratings ausentes, productos mediante API-011 de Catalog o lista paginada por contrato Catalog, contratos Reviews/Catalog, DTO y códigos HTTP sin PII.
+- [x] **TASK-AUTH-006 — Conciliar requisitos académicos y rutas reales.** PDF §§ 5–11, 13–16/18, p. 4. Depende de: 001. Hecho cuando: `docs/academic-requirements-phase-02.md`, `AGENTS.md` y README distinguen requisitos obligatorios de recomendaciones, `UTTTGO.Backend.slnx`/`src/UTTTGO.Api` reales de tests/IaC aún inexistentes, y registran evaluación de costo cero/dos instancias como gate sin infraestructura creada.
+  - [x] Obligaciones frente a recomendaciones: matriz académica §§ 5–11, 13–16/18, p. 4; `AGENTS.md` § 1.2 y README «Gate académico documental» diferencian Terraform recomendado en PDF de obligatorio por constitución.
+  - [x] Rutas reales frente a previstas: `UTTTGO.Backend.slnx` y `src/UTTTGO.Api/UTTTGO.Api.csproj` presentes; `tests/` e `infra/terraform/` ausentes, registrados en `AGENTS.md` § 1.2 y README «Estructura».
+  - [x] Dos instancias/costo cero: matriz académica § 15 y `plan.md` § 4.2 registran evaluación de riesgo y **gate pendiente de evidencia de cuotas/presupuesto**, sin afirmar viabilidad ni infraestructura creada.
+  - [x] Prerrequisito TASK-AUTH-001 `[x]`: las siete fichas y fuentes constan en `spec.md` § 4.2 y `docs/traceability.md`; sus 42 pares método/ruta coinciden con la hoja «Inventario endpoints». No confundir el gate documental de 006 con la factibilidad operativa de DF02-11.
+- [ ] **TASK-AUTH-007 — Aprobar matriz y política de versiones ANTES del desarrollo.** PDF § 11 y § 15; matriz en `docs/academic-requirements-phase-02.md` y referencias `spec.md` § 5 / `plan.md` § 4.3. Depende de: 006 (**cumplida `[x]`**). **Aprobación individual registrada, no cierre:** responsable técnica del punto 4, declaraciones en esta conversación fechadas **2026-11-04**, aprobó REST `/api/v1` `1.0.0-rc.1`, backend/móvil/Terraform `0.1.0`, config `dev`/`staging`/`prod` `0.1.0` separadas, MAJOR/MINOR/PATCH, DEP correlativo independiente, registro SHA/fecha/responsable/aprobación/evidencia/reversión y rollback solo a combinación probada; sin anterior, detener promoción y corregir. **Nuevas decisiones aprobadas:** mantener soporte a la versión móvil anterior **al menos 30 días después de publicar la nueva**, salvo medida extraordinaria exigida por vulnerabilidad de seguridad y documentada; la responsable del punto 4 asume responsabilidad técnica de releases del backend y coordinación de su reversión, **sin autorizar ejecución de rollback ni destrucción de infraestructura sin evidencia y aprobación operativa**. Hecho cuando: existe evidencia identificable de **aprobación del equipo** o delegación formal (la aprobación individual no la acredita), se identifica aprobación operativa por despliegue/reversión y se cierra prerequisito TASK-AUTH-006. `DEP-0001` solo ejemplo; **no** marcar completada mientras falte cualquiera. **Gate previo a TASK-AUTH-008/010 y cualquier código.**
+- [ ] **TASK-AUTH-008 — Aprobar documentos en orden.** RF-01..15. Depende de: 002..007. Hecho cuando: equipo aprueba `spec.md` v1.5 → `plan.md` v1.6 → este `task.md` v1.5 y matriz/política de versiones, con trazabilidad/decisiones abiertas actualizadas; decisiones funcionales ya confirmadas no se reabren.
 
-## Bloque 0 — Preparación
+## Bloque B — preparación técnica futura (bloqueado hasta TASK-AUTH-008)
 
-- [ ] **TASK-AUTH-001 — Crear estructura del módulo `IdentityAndUsers`**
-  - RF: RF-03, RF-04, RF-05, RF-07, RF-08, RF-09, RF-11
-  - Depende de: fase 00 (esqueleto base).
-  - Hecho cuando: existen las carpetas `Endpoints`, `Application`, `Domain`, `Infrastructure`, `Contracts`, `Validators` bajo `src/UtttGo.Api/Modules/IdentityAndUsers/`, con `DependencyInjection.cs` registrado en `Program.cs`, y `dotnet build -c Release` compila sin errores.
+- [ ] **TASK-AUTH-010 — Diseñar DTOs y validadores de siete fichas.** API-001/002/003/004/006/007/008. Depende de: 007/008. Hecho cuando: equipo aprueba payload/response, códigos HTTP, acceso y estados por ficha, distinguiendo propuestas Excel de reglas confirmadas, y lista blanca contra mass assignment. Build `UTTTGO.Backend.slnx` **solo tras futura implementación**; sin contrato ratificado ni matriz de versiones aprobada no escribir código.
+- [ ] **TASK-AUTH-011 — Configurar Supabase y perfiles locales.** API-001/002/004/006. Depende de: 010. Hecho cuando: tests unitarios/integración verifican delegación de contraseña por HTTPS sin persistencia/logs, Confirm Email y plantilla OTP configurados según decisión, lookup `sub`→perfil, roles locales, inserción/promoción idempotentes y fallo parcial con Mongo de prueba; probar aparte entrega SMTP no productiva institucional y costo cero antes de desplegar, sin secretos versionados.
+- [ ] **TASK-AUTH-012 — JWT, Redis y seguridad distribuida.** API-002/003/004/006/007. Depende de: 011. Hecho cuando: tests de seguridad validan firma/issuer/audience/exp, roles locales, confirmación vigente en Supabase y estado Mongo para toda ruta privada **incluso con JWT válido**, y `revoked:{jti}` TTL; Supabase/Mongo/Redis caídos dan fail-closed, sin estado de blacklist/rate limit en memoria local; middleware no cambia de orden sin aprobación exigida.
 
-- [ ] **TASK-AUTH-002 — Definir opciones tipadas del módulo**
-  - RF: RF-01, RF-07
-  - Depende de: TASK-AUTH-001.
-  - Hecho cuando: existen `IdentityAndUsersOptions` (`AllowedEmailDomain`, `DefaultPageSize`, `MaxPageSize`) y `SupabaseOptions` enlazadas desde configuración, con validación al arranque que falla si falta `AllowedEmailDomain`.
+## Bloque C — endpoint por endpoint, solo después de gates y base aprobada
 
----
+- [ ] **TASK-AUTH-020 — API-001 registro.** RF-01/03/15; Figma HU-004/UI-004; PB-002/HU-02 + PB-003/HU-03. Depende de: 002/010/011/012. Hecho cuando: `POST /api/v1/auth/register` crea perfil `Buyer` pendiente sin JWT según DTO aprobado; pruebas cubren dominio exacto, roles inyectados, contraseña inválida, duplicado/anti-enumeración, entrega no asumida y fallo Supabase/Mongo; código correcto/erróneo/vencido se prueba en flujo integral (backend solo con ficha aprobada); no asumir `Active`/`422` definitivos.
+- [ ] **TASK-AUTH-021 — API-002 login.** RF-02/15; Figma HU-003/UI-003; PB-004/HU-04. Depende de: 020/011/012/003. Hecho cuando: login con Supabase consulta confirmación actual, promueve solo perfil pendiente propio mediante cambio condicional idempotente y devuelve JWT solo al habilitado; tests cubren concurrencia, credenciales inválidas, perfil faltante/suspendido/no verificado aun con JWT, rate limit y Redis/Supabase/Mongo caídos; ausencia de contraseña/OTP/tokens en logs y response/refresh/HTTP ratificados antes del código.
+- [ ] **TASK-AUTH-022 — API-004 sesión.** RF-12; Figma HU-028/UI-024 indirecta; PB-021/HU-21 indirecta. Depende de: 021/012. Hecho cuando: `GET /api/v1/auth/me` devuelve identidad y estado local sin token, perfil inexistente según ficha, token revocado/expirado rechazado y prueba contrasta su respuesta con API-006.
+- [ ] **TASK-AUTH-023 — API-006 perfil propio.** RF-03/04/12; Figma HU-028/UI-024; PB-021/HU-21. Depende de: 022/004. Hecho cuando: `GET /api/v1/users/me` solo devuelve perfil propio permitido, no claims ajenos ni secretos, avatar según contrato aprobado y tests `401/404/503` sin exponer documento Mongo.
+- [ ] **TASK-AUTH-024 — API-007 editar perfil.** RF-04; Figma HU-029/UI-025; PB-022/HU-22. Depende de: 023/004. Hecho cuando: `PATCH /api/v1/users/me` actualiza solo campos aprobados, rechaza roles/estados/identidad/usuario ajeno, valida avatar moderado, preserva campos omitidos e invalida caché solo si se aprobó cachear perfiles; tests de errores de ficha.
+- [ ] **TASK-AUTH-025 — API-003 logout.** RF-10; PDF profesor §§ 10/16. Depende de: 021/022/003/012. Hecho cuando: `POST /api/v1/auth/logout` responde según HTTP aprobado, JWT queda revocado hasta exp en Redis compartido, otra instancia lo rechaza y Redis caído falla cerrado; refresh token/Supabase, repetición y borrado de sesión/caché móvil se prueban según decisión aprobada, sin prometer logout global por solo JWT.
+- [ ] **TASK-AUTH-026 — API-008 perfil vendedor.** RF-13; Figma HU-015/UI-014/RN-FIG-06; PB-012/HU-12. Depende de: 005/012; catálogo/reviews solo mediante contratos aprobados. Hecho cuando: `GET /api/v1/sellers/{sellerId}` mantiene visible al inactivo sin nuevos pedidos, nunca `404` solo por inactividad; composición/HTTP/acceso aprobados (API-011 del módulo Catalog o lista paginada por contrato), sin email/teléfono ni lecturas directas de colecciones ajenas; tests activo/inactivo, ID inválido y rate limit según acceso aprobado.
 
-## Bloque 1 — Dominio, modelos MongoDB y DTOs con FluentValidation
+## Bloque D — verificación y alcance diferido
 
-- [ ] **TASK-AUTH-003 — Crear enums de dominio**
-  - RF: RF-03, RF-08, RF-09, RF-11
-  - Hecho cuando: `UserRole` (`Buyer`, `Seller`, `Admin`), `AccountStatus` (`Active`, `Suspended`, `Deleted`) y `SellerStatus` (`Active`, `Inactive`) compilan y tienen prueba unitaria que fija sus valores numéricos.
+- [ ] **TASK-AUTH-030 — Suite y contrato de error por ruta.** API siete; RNF-01..17. Depende de: 020..026. Hecho cuando: unitarias, integración con Mongo/Redis locales y seguridad incluyen al menos un caso de éxito/error por ficha, `correlationId`, fallo de Supabase/Redis/Mongo, OTP y reenvío mockeados, JWT prematuro rechazado, anti-enumeración, logs sin secretos, y se registran resultados reales; prueba separada de SMTP real a correo institucional y costo cero antes de aprobar entrega; PDF profesor §§ 7/15.
+- [ ] **TASK-AUTH-031 — Automatizar y verificar CI/CD futuro.** PDF §§ 5, 8, 11, 15, 18. Depende de: 007/030. Hecho cuando: se verifica en CI la **política de versiones ya aprobada antes de programar** (TASK-AUTH-007), y los checks restore/format/build/unit/integration/security/secret scan, gate y reversión producen evidencia real; workflow/configuración solo en tarea posterior expresamente autorizada.
+- [ ] **TASK-AUTH-032 — Cierre de trazabilidad.** Depende de: 030/031. Hecho cuando: matriz API↔HU-Figma↔UI↔PB/HU↔PDF↔RF↔tarea↔prueba actualizada, `memoria.md` refleja decisiones, diff sin secretos y formatos/tests reales verdes; no marcar sin evidencia.
 
-- [ ] **TASK-AUTH-004 — Implementar POCO `UserProfile` y class map**
-  - RF: RF-03, RF-04, RF-11
-  - Hecho cuando: `UserProfile` contiene los campos de `plan.md` §3.1 (`supabaseUserId`, `email`, `normalizedEmail`, `displayName`, `phone`, `avatarMediaAssetId`, `role`, `status`, fechas UTC y campos de suspensión/baja), y una prueba de serialización BSON conserva `_id`, enums como string y fechas UTC.
+**Otros contratos de fase 02 conservados fuera de prioridad:** API-005/009/010/039/040, eliminación de cuenta DEC-003 y recuperación por enlace RF-06 siguen previstos. La función RF-15 no añade endpoint por inferencia. No ejecutar tests de producción ni declarar completadas tareas de implementación por cerrar documentación.
 
-- [ ] **TASK-AUTH-005 — Implementar POCO `SellerProfile`**
-  - RF: RF-05
-  - Hecho cuando: `SellerProfile` contiene `userId`, `businessName`, `description`, `pickupPoint`, `status`, `activatedAt` y `updatedAt`, y una prueba de serialización BSON redondea el documento sin pérdida.
-
-- [ ] **TASK-AUTH-006 — Declarar índices idempotentes**
-  - RF: RF-03, RF-07
-  - Depende de: TASK-AUTH-004, TASK-AUTH-005.
-  - Hecho cuando: `MongoIndexes.EnsureIndexesAsync` crea los índices de `plan.md` §3.3 (único `supabaseUserId`, único `normalizedEmail`, compuesto `status+role+createdAt`, único `sellerProfiles.userId`) y ejecutarlo dos veces no lanza error.
-
-- [ ] **TASK-AUTH-007 — Implementar `IUserRepository` y `MongoUserRepository` (lectura/creación)**
-  - RF: RF-03, RF-04, RF-07
-  - Depende de: TASK-AUTH-006.
-  - Hecho cuando: existen `GetBySupabaseUserIdAsync`, `GetByIdAsync`, `CreateIdempotentAsync` (no duplica por `supabaseUserId`) y `ExistsByNormalizedEmailAsync`, con pruebas de integración contra MongoDB Testcontainer en verde.
-
-- [ ] **TASK-AUTH-008 — Extender `IUserRepository` (actualización y listado paginado)**
-  - RF: RF-04, RF-07, RF-08, RF-09, RF-11
-  - Depende de: TASK-AUTH-007.
-  - Hecho cuando: existen `UpdateProfileAsync`, `UpdateStatusAsync`, `AnonymizeAsync` y `QueryPagedAsync(search, role, status, page, pageSize)` con `totalItems` correcto y test de paginación/filtros en verde.
-
-- [ ] **TASK-AUTH-009 — Implementar `ISellerProfileRepository` y su repositorio**
-  - RF: RF-05
-  - Depende de: TASK-AUTH-006.
-  - Hecho cuando: existen `GetByUserIdAsync`, `CreateAsync` y `ExistsByUserIdAsync`; dos llamadas a `CreateAsync` para el mismo `userId` no crean duplicados y la prueba lo verifica.
-
-- [ ] **TASK-AUTH-010 — Definir DTOs de request y response**
-  - RF: RF-01, RF-02, RF-03, RF-04, RF-05, RF-06, RF-07, RF-08, RF-09, RF-10, RF-11
-  - Depende de: TASK-AUTH-003.
-  - Hecho cuando: existen los registros de `plan.md` §4.5 (`RegisterRequest`, `LoginRequest`, `RecoverRequest`, `UpdateProfileRequest`, `ActivateSellerRequest`, `AdminUserQuery`, `AuthTokenResponse`, `UserProfileResponse`, `SellerProfileResponse`, `UserSummaryResponse`, `PagedResponse<T>`) y `dotnet build -c Release` compila.
-
-- [ ] **TASK-AUTH-011 — Centralizar códigos de error del módulo**
-  - RF: RF-01, RF-02, RF-06, RF-07, RF-08, RF-09, RF-10, RF-11
-  - Depende de: TASK-AUTH-010.
-  - Hecho cuando: `IdentityErrorCodes` expone los códigos de `plan.md` §4.6 y una prueba unitaria verifica que cada código mapea a su `HttpStatusCode` esperado.
-
-- [ ] **TASK-AUTH-012 — Implementar `RegisterRequestValidator`**
-  - RF: RF-01
-  - Depende de: TASK-AUTH-010.
-  - Hecho cuando: acepta `@uttt.edu.mx` exacto (case-insensitive, sin subdominios) y rechaza otros dominios, email inválido, password fuera de rango y `displayName` vacío; pruebas unitarias en verde.
-
-- [ ] **TASK-AUTH-013 — Implementar `LoginRequestValidator` y `RecoverRequestValidator`**
-  - RF: RF-02, RF-06
-  - Depende de: TASK-AUTH-010.
-  - Hecho cuando: ambos validadores exigen email con formato válido y password no vacío (login), y las pruebas unitarias cubren campos faltantes y formatos inválidos.
-
-- [ ] **TASK-AUTH-014 — Implementar `UpdateProfileRequestValidator`**
-  - RF: RF-04
-  - Depende de: TASK-AUTH-010.
-  - Hecho cuando: exige `displayName` no vacío, acepta `phone` y `avatarMediaAssetId` nulos, y rechaza `phone` con formato inválido; pruebas unitarias en verde.
-
-- [ ] **TASK-AUTH-015 — Implementar `ActivateSellerRequestValidator`**
-  - RF: RF-05
-  - Depende de: TASK-AUTH-010.
-  - Hecho cuando: exige `businessName`, `description` y `pickupPoint` no vacíos con longitudes máximas definidas, y las pruebas unitarias cubren cada campo faltante.
-
----
-
-## Bloque 2 — Servicios de Aplicación e integración con Supabase Auth y Redis
-
-- [ ] **TASK-AUTH-016 — Definir `IAuthProvider` e implementar `SupabaseAuthProvider` (sign up / sign in)**
-  - RF: RF-02, RF-03
-  - Depende de: TASK-AUTH-002, TASK-AUTH-010.
-  - Hecho cuando: `IAuthProvider.SignUpAsync` y `SignInAsync` usan únicamente Supabase Auth y devuelven `sub` y tokens; una prueba con `HttpMessageHandler` falso verifica request/response y no se registra la contraseña en logs.
-
-- [ ] **TASK-AUTH-017 — Añadir recuperación de contraseña a `IAuthProvider`**
-  - RF: RF-06
-  - Depende de: TASK-AUTH-016.
-  - Hecho cuando: `RecoverAsync` invoca el endpoint de recuperación de Supabase y responde de forma uniforme; prueba con handler falso verifica que un correo inexistente no cambia la respuesta.
-
-- [ ] **TASK-AUTH-018 — Implementar `ITokenBlacklist` y `RedisTokenBlacklist`**
-  - RF: RF-10
-  - Depende de: TASK-AUTH-002.
-  - Hecho cuando: `RevokeAsync(jti, ttl)` escribe `revoked:{jti}` con TTL igual al restante hasta `exp` e `IsRevokedAsync` lo detecta; prueba de integración con Redis Testcontainer en verde y no-op cuando `ttl <= 0`.
-
-- [ ] **TASK-AUTH-019 — Implementar `AuthService.RegisterAsync`**
-  - RF: RF-01, RF-03
-  - Depende de: TASK-AUTH-012, TASK-AUTH-016, TASK-AUTH-007.
-  - Hecho cuando: registra en Supabase, crea el perfil local idempotente con rol `Buyer` y estado `Active`; un segundo registro con el mismo `sub` no duplica y devuelve el perfil existente; pruebas unitarias en verde.
-
-- [ ] **TASK-AUTH-020 — Implementar `AuthService.LoginAsync`**
-  - RF: RF-02, RF-08
-  - Depende de: TASK-AUTH-013, TASK-AUTH-016, TASK-AUTH-007.
-  - Hecho cuando: autentica contra Supabase, rechaza `Status = Deleted`, devuelve `403 ACCOUNT_SUSPENDED` si `Status = Suspended` y tokens en caso contrario; pruebas unitarias en verde.
-
-- [ ] **TASK-AUTH-021 — Implementar `AuthService.RecoverAsync`**
-  - RF: RF-06
-  - Depende de: TASK-AUTH-013, TASK-AUTH-017.
-  - Hecho cuando: siempre responde aceptación uniforme, sin consultar ni revelar la existencia del correo, y la prueba unitaria confirma el mismo resultado para correo existente e inexistente.
-
-- [ ] **TASK-AUTH-022 — Implementar `AuthService.LogoutAsync`**
-  - RF: RF-10
-  - Depende de: TASK-AUTH-018.
-  - Hecho cuando: revoca el `jti` del token actual con TTL hasta `exp`; si falta `jti` o Redis falla, lanza el error que el middleware traduce a `401`/`503` (fail-closed); prueba unitaria en verde.
-
-- [ ] **TASK-AUTH-023 — Implementar `UserProfileService` (consulta y actualización)**
-  - RF: RF-04, RF-13
-  - Depende de: TASK-AUTH-014, TASK-AUTH-007, `IMediaAssetValidator`.
-  - Hecho cuando: `GetMeAsync` devuelve el perfil por `sub` y `UpdateMeAsync` actualiza solo campos permitidos; un `avatarMediaAssetId` no aprobado produce `422 MEDIA_ASSET_NOT_APPROVED`; pruebas unitarias en verde.
-
-- [ ] **TASK-AUTH-024 — Implementar baja lógica/anonimización de cuenta**
-  - RF: RF-11
-  - Depende de: TASK-AUTH-008.
-  - Hecho cuando: la baja marca `Status = Deleted`, anonimiza `displayName`, `phone` y `avatarMediaAssetId`, conserva `email` para bloquear re-registro y no borra el documento; prueba unitaria verifica que no existe borrado duro.
-
-- [ ] **TASK-AUTH-025 — Implementar `SellerActivationService`**
-  - RF: RF-05
-  - Depende de: TASK-AUTH-015, TASK-AUTH-009, TASK-AUTH-008.
-  - Hecho cuando: crea `sellerProfiles` 1:1, cambia `users.role` a `Seller` y es idempotente; una segunda activación responde `409 SELLER_ALREADY_ACTIVE`; pruebas unitarias en verde.
-
-- [ ] **TASK-AUTH-026 — Implementar `AdminUserService` (listado)**
-  - RF: RF-07
-  - Depende de: TASK-AUTH-008.
-  - Hecho cuando: lista usuarios con `search`, `role`, `status`, `page` y `pageSize`, aplica el máximo configurado y devuelve `PagedResponse`; prueba unitaria de filtros/paginación en verde.
-
-- [ ] **TASK-AUTH-027 — Implementar `AdminUserService` (suspender/reactivar) + auditoría**
-  - RF: RF-08, RF-09
-  - Depende de: TASK-AUTH-026.
-  - Hecho cuando: suspender cambia a `Suspended` y reactivar a `Active`; auto-suspensión responde `409 SELF_SUSPENSION`, reactivar una cuenta no suspendida responde `409 INVALID_STATE_TRANSITION`, y se registra auditoría con actor, acción, timestamp y `correlationId` sin datos sensibles.
-
----
-
-## Bloque 3 — Endpoints HTTP y Middlewares
-
-- [ ] **TASK-AUTH-028 — Configurar `AddJwtBearer` para Supabase**
-  - RF: RF-02, RF-10
-  - Depende de: TASK-AUTH-002.
-  - Hecho cuando: la autenticación valida issuer, audience, expiración y firma; `MapInboundClaims = false` y `NameClaimType = "sub"`; un JWT válido de prueba se autentica y uno inválido se rechaza con `401` y contrato de error.
-
-- [ ] **TASK-AUTH-029 — Implementar `JwtRevocationMiddleware`**
-  - RF: RF-10
-  - Depende de: TASK-AUTH-018, TASK-AUTH-028.
-  - Hecho cuando: rechaza `401 TOKEN_REVOKED` si `jti` está en Redis, exige `jti` en tokens autenticados y responde `503 DEPENDENCY_UNAVAILABLE` si Redis falla (fail-closed); pruebas de integración en verde.
-
-- [ ] **TASK-AUTH-030 — Implementar `LocalProfileMiddleware`**
-  - RF: RF-03, RF-08
-  - Depende de: TASK-AUTH-028, TASK-AUTH-007.
-  - Hecho cuando: carga el perfil por `sub`, añade el rol desde MongoDB (nunca del JWT), responde `403 ACCOUNT_SUSPENDED` para suspendidos y `401` para perfiles inexistentes o eliminados; pruebas de integración en verde.
-
-- [ ] **TASK-AUTH-031 — Implementar rate limiting distribuido en Redis**
-  - RF: RF-02, RF-10
-  - Depende de: TASK-AUTH-002, TASK-AUTH-018.
-  - Hecho cuando: `AuthPolicy` y `GeneralPolicy` usan claves `ratelimit:{policy}:{partición}`, exceder el límite devuelve `429 RATE_LIMITED` con contrato de error y Redis caído en `/auth/*` responde `503` (fail-closed).
-
-- [ ] **TASK-AUTH-032 — Implementar endpoints `/api/v1/auth/*`**
-  - RF: RF-01, RF-02, RF-06, RF-10
-  - Depende de: TASK-AUTH-019, TASK-AUTH-020, TASK-AUTH-021, TASK-AUTH-022.
-  - Hecho cuando: `register`, `login`, `recover` y `logout` responden con los códigos de `plan.md` §4.2 y sus DTOs; pruebas de integración de los cuatro endpoints en verde.
-
-- [ ] **TASK-AUTH-033 — Implementar endpoints `/api/v1/users/me`**
-  - RF: RF-04, RF-11
-  - Depende de: TASK-AUTH-023, TASK-AUTH-024, TASK-AUTH-030.
-  - Hecho cuando: `GET`, `PATCH` y `POST /delete` operan solo sobre el perfil del `sub` autenticado, respetan códigos de `plan.md` §4.3 y un usuario no puede modificar otro perfil; pruebas de integración en verde.
-
-- [ ] **TASK-AUTH-034 — Implementar endpoint `/api/v1/sellers/activate`**
-  - RF: RF-05
-  - Depende de: TASK-AUTH-025, TASK-AUTH-030.
-  - Hecho cuando: la autoactivación responde `201 SellerProfileResponse` con perfil completo, `422` con campos faltantes y `409` en segunda activación; pruebas de integración en verde.
-
-- [ ] **TASK-AUTH-035 — Implementar endpoints `/api/v1/admin/users/*`**
-  - RF: RF-07, RF-08, RF-09
-  - Depende de: TASK-AUTH-026, TASK-AUTH-027, TASK-AUTH-030.
-  - Hecho cuando: listar/suspender/reactivar exigen rol `Admin` desde MongoDB, respetan códigos de `plan.md` §4.4 y un no-admin recibe `403`; pruebas de integración en verde.
-
-- [ ] **TASK-AUTH-036 — Integrar middleware y orden de pipeline**
-  - RF: RF-02, RF-08, RF-10
-  - Depende de: TASK-AUTH-029, TASK-AUTH-030, TASK-AUTH-031.
-  - Hecho cuando: `Program.cs` aplica el orden de `plan.md` §5.6 (`CorrelationId → ExceptionHandler → Https → CORS → RateLimiter → Authentication → JwtRevocation → LocalProfile → Authorization → Endpoints`) y una prueba de humo confirma `401` sin token y `200` con token válido.
-
-- [ ] **TASK-AUTH-037 — Homologar el contrato único de error en el módulo**
-  - RF: RF-01, RF-04, RF-05, RF-06, RF-07, RF-08, RF-09, RF-10, RF-11
-  - Depende de: TASK-AUTH-011, TASK-AUTH-032..035.
-  - Hecho cuando: todas las respuestas de error del módulo incluyen `correlationId`, `status`, `code`, `message` y `details?` con la forma de `plan.md` §4.6; prueba de contrato recorre al menos un error de cada endpoint.
-
----
-
-## Bloque 4 — Pruebas Unitarias, de Integración y de Seguridad
-
-- [ ] **TASK-AUTH-038 — Pruebas unitarias de validadores de autenticación**
-  - RF: RF-01, RF-02, RF-06
-  - Depende de: TASK-AUTH-012, TASK-AUTH-013.
-  - Hecho cuando: las pruebas cubren dominio permitido/rechazado, email inválido, password inválido y recuperación uniforme, y `dotnet test` del proyecto unitario queda en verde.
-
-- [ ] **TASK-AUTH-039 — Pruebas unitarias de validadores de perfil y vendedor**
-  - RF: RF-04, RF-05
-  - Depende de: TASK-AUTH-014, TASK-AUTH-015.
-  - Hecho cuando: las pruebas cubren campos obligatorios, opcionales y longitudes, y el proyecto unitario queda en verde.
-
-- [ ] **TASK-AUTH-040 — Pruebas unitarias de servicios**
-  - RF: RF-03, RF-08, RF-09, RF-11
-  - Depende de: TASK-AUTH-019..027.
-  - Hecho cuando: las pruebas cubren registro idempotente, login con suspensión, baja lógica sin borrado duro y transiciones administrativas, y el proyecto unitario queda en verde.
-
-- [ ] **TASK-AUTH-041 — Montar harness de integración (Testcontainers + `WebApplicationFactory`)**
-  - RF: RF-01, RF-02, RF-03, RF-04, RF-05, RF-06, RF-07, RF-08, RF-09, RF-10, RF-11
-  - Depende de: TASK-AUTH-036.
-  - Hecho cuando: el harness levanta MongoDB 7 y Redis 7 con Testcontainers, inyecta `FakeSupabaseAuthProvider`, siembra perfiles con `TestDataFactory` y limpia claves `revoked:*`/`ratelimit:*` entre pruebas.
-
-- [ ] **TASK-AUTH-042 — Pruebas de integración de autenticación**
-  - RF: RF-01, RF-02, RF-03, RF-06, RF-10
-  - Depende de: TASK-AUTH-041, TASK-AUTH-032.
-  - Hecho cuando: cubren registro válido/ inválido, login ok/fallido, recuperación uniforme, logout y rechazo de token revocado; pruebas en verde (T-AUTH-01, 02, 03).
-
-- [ ] **TASK-AUTH-043 — Pruebas de integración de usuarios, vendedores y admin**
-  - RF: RF-04, RF-05, RF-07, RF-08, RF-09, RF-11
-  - Depende de: TASK-AUTH-041, TASK-AUTH-033..035.
-  - Hecho cuando: cubren perfil propio, autoactivación, listado paginado, suspender/reactivar y baja lógica; pruebas en verde (T-AUTH-07, 09, 10).
-
-- [ ] **TASK-AUTH-044 — Pruebas de seguridad de JWT y revocación**
-  - RF: RF-10
-  - Depende de: TASK-AUTH-041.
-  - Hecho cuando: cubren token ausente, expirado, firma inválida, sin `jti` y con `jti` en blacklist; todos devuelven `401` con contrato de error (T-AUTH-04).
-
-- [ ] **TASK-AUTH-045 — Pruebas de seguridad de autorización por recurso y rol**
-  - RF: RF-04, RF-07, RF-08, RF-09
-  - Depende de: TASK-AUTH-041.
-  - Hecho cuando: cubren `403` para no-admin en `/admin/*`, usuario que intenta editar perfil ajeno y suspensión que bloquea operaciones; pruebas en verde (T-AUTH-06).
-
-- [ ] **TASK-AUTH-046 — Pruebas de seguridad de fail-closed, rate limit y enumeración**
-  - RF: RF-06, RF-10
-  - Depende de: TASK-AUTH-041.
-  - Hecho cuando: con Redis detenido, logout y `/auth/*` responden `503`; exceder el límite responde `429`; y `recover` no revela existencia de correo (T-AUTH-05, 08).
-
----
-
-## Bloque 5 — Cierre y trazabilidad
-
-- [ ] **TASK-AUTH-047 — Actualizar matriz de trazabilidad**
-  - RF: RF-01..RF-11
-  - Depende de: TASK-AUTH-042..046.
-  - Hecho cuando: `docs/traceability.md` mapea cada RF a endpoint, tarea y prueba, sin RF huérfano ni prueba sin RF.
-
-- [ ] **TASK-AUTH-048 — Verificación final de calidad**
-  - RF: RF-01..RF-11
-  - Depende de: todas las anteriores.
-  - Hecho cuando: `dotnet build -c Release`, `dotnet format --verify-no-changes` y las suites unitaria, integración y seguridad pasan en verde; no hay secretos en el diff.
-
-- [ ] **TASK-AUTH-049 — Registrar cierre de la fase en `memoria.md`**
-  - RF: RF-01..RF-11
-  - Depende de: TASK-AUTH-048.
-  - Hecho cuando: `memoria.md` registra el estado final de la fase, los RF cubiertos y cualquier desviación aprobada.
-
----
-
-## Orden de ejecución
-
-```
-Bloque 0 → Bloque 1 → Bloque 2 → Bloque 3 → Bloque 4 → Bloque 5
-```
-
-Dentro de cada bloque, respetar el orden numérico. Las tareas de pruebas de seguridad (044–046) pueden paralelizarse tras TASK-AUTH-041.
-
----
-
-## Criterios de cierre de la fase
-
-- [ ] Las 49 tareas marcadas.
-- [ ] RF-01 a RF-11 cubiertos por al menos una tarea y una prueba.
-- [ ] T-AUTH-01 a T-AUTH-10 en verde.
-- [ ] Build Release y `dotnet format` en verde.
-- [ ] `docs/traceability.md` y `memoria.md` actualizados.
-- [ ] Sin código de producción fuera de este `task.md` ni secretos en el repositorio.
-
-### Nota acotada de evidencia local (2026-11-04)
-
-La autorizacion expresa de codigo local para API-039 y sus tareas de candidato estan registradas en api-039-list-users/task.md v0.2.0; los otros seis candidatos se enlazan en docs/traceability-siete-endpoints.md. Los reportes docs/qa-api-001.md, qa-api-002.md, qa-api-004.md, qa-api-006.md, qa-api-007.md, qa-api-008.md y qa-api-039.md documentan pruebas locales con dobles (320 verdes en total). No se completan tareas integrales o de servicios reales de esta fase, API-003/040 ni AC-005. La aprobacion integral del equipo continua pendiente.
+**API-039:** la propuesta SDD desglosada vive en `api-039-list-users/spec.md` → `plan.md` → `task.md`; no hay aprobación de implementación ni cierre de AC-005/API-040 por estos documentos.

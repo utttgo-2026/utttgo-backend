@@ -70,7 +70,7 @@ public sealed class AdminUsersEndpointTests
     {
         using var factory = new WebApplicationFactory<Program>();
         using var response = await Get(factory, "?page=1&pageSize=1");
-        response.StatusCode.Should().Be(HttpStatusCode.ServiceUnavailable);
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 
     [Theory]

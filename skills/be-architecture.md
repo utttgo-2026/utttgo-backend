@@ -1,6 +1,6 @@
 # be-architecture.md — Skill Backend UTTT-GO
-> Guía para decisiones de arquitectura en ASP.NET Core 8 — capas, DI, patrones y restricciones del constitution.md
-> Alineado con `constitution.md` v1.0.
+> Guía para decisiones de arquitectura en ASP.NET Core 10 — capas, DI, patrones y restricciones de `docs/constitution.md`.
+> Alineado con `docs/constitution.md` v2.3.
 
 ---
 
@@ -23,6 +23,6 @@ Antes de aplicar cualquier skill, verificar que el `spec.md` correspondiente exi
 
 ## Referencias
 
-- `constitution.md` — Fuente de verdad del proyecto.
+- `docs/constitution.md` — Fuente de verdad del proyecto.
 - `memoria.md` — Log de decisiones previas.
 - `spec.md` del módulo correspondiente — Especificación a implementar.

@@ -1,6 +1,6 @@
 # be-api-design.md — Skill Backend UTTT-GO
 > Guía para convertir fichas de endpoint en specs verificables — contratos, Given/When/Then, errores y decisiones abiertas
-> Alineado con `constitution.md` v1.0.
+> Alineado con `docs/constitution.md` v2.3.
 
 ---
 
@@ -23,6 +23,6 @@ Antes de aplicar cualquier skill, verificar que el `spec.md` correspondiente exi
 
 ## Referencias
 
-- `constitution.md` — Fuente de verdad del proyecto.
+- `docs/constitution.md` — Fuente de verdad del proyecto.
 - `memoria.md` — Log de decisiones previas.
 - `spec.md` del módulo correspondiente — Especificación a implementar.

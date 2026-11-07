@@ -70,11 +70,11 @@ public sealed class UpdateOwnProfileEndpointTests
     }
 
     [Fact]
-    public async Task UnconfiguredDependenciesFailClosed()
+    public async Task InvalidTokenOnDefaultHostIsUnauthorized()
     {
         using var factory = new WebApplicationFactory<Program>();
         using var response = await Patch(factory, "{\"displayName\":\"New Name\"}");
-        response.StatusCode.Should().Be(HttpStatusCode.ServiceUnavailable);
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 
     [Theory]

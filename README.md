@@ -2,7 +2,7 @@
 
 API RESTful en **.NET 10 (Monolito Modular)** para la plataforma de venta de alimentos universitarios de la **Universidad Tecnológica de Tula-Tepeji (UTTT)**.
 
-El backend expone el catálogo de productos canónicos, las ofertas comparables por vendedor, la autenticación de usuarios y los contratos base para pedidos, chat y notificaciones. El proyecto se construye bajo **Spec-Driven Development (SDD)**: la constitución, las especificaciones, los planes y las tareas son la fuente de verdad antes de escribir código de producción.
+El backend planifica un catálogo de productos independientes de cada vendedor, búsqueda y filtros para comparar alimentos de distintos vendedores, autenticación y contratos para pedidos, chat y notificaciones. El proyecto sigue **Spec-Driven Development (SDD)**: constitución, specs, planes y tareas anteceden al código. El inventario API de 42 fichas sigue pendiente de conciliación formal para los contratos afectados.
 
 ---
 
@@ -10,8 +10,8 @@ El backend expone el catálogo de productos canónicos, las ofertas comparables 
 
 UTTT-GO conecta a estudiantes, docentes y personal de la UTTT con vendedores de alimentos dentro y alrededor del campus. El backend:
 
-- Publica un **catálogo de productos canónicos** (un producto puede tener varias ofertas).
-- Permite comparar **ofertas tipo Eneba**: precio, vendedor, punto de entrega y disponibilidad.
+- Prevê un **catálogo de productos propios de cada vendedor**, con ingredientes, precio, existencias y disponibilidad.
+- Permite buscar/filtrar opciones de distintos vendedores por datos y calificaciones disponibles; API-016 de ofertas compartidas requiere retiro/sustitución formal.
 - Reserva stock de forma **atómica** al crear un pedido y lo libera al rechazar o cancelar.
 - Autentica con **Supabase Auth** y autoriza por rol y por recurso.
 - Modera las imágenes de producto con **Azure AI Content Safety**.
@@ -22,8 +22,9 @@ Reglas de negocio del MVP:
 - Sin carrito (BR-001).
 - Pago en efectivo presencial (BR-003).
 - Sin menús, horarios ni franjas de entrega (BR-004).
-- Un producto canónico **no** contiene precio ni stock: esos datos viven en la oferta.
-- Una oferta `SoldOut` no es comprable; la comparativa solo muestra ofertas disponibles.
+- Cada producto pertenece a un vendedor y contiene precio/stock; el comprador no fija esos importes al pedir.
+- Productos pausados, agotados o en categorías inactivas no son comprables; la eliminación de producto necesita ficha API nueva.
+- Al eliminar cuenta se elimina información propia; chat temporal se purga dentro de tres días de completarse el pedido; recuperación por enlace al correo registrado.
 
 ---
 
@@ -32,7 +33,7 @@ Reglas de negocio del MVP:
 | Capa / Servicio | Tecnología |
 |---|---|
 | Runtime | .NET 10 LTS · C# 14 · ASP.NET Core 10 |
-| Arquitectura | Monolito modular con módulos `IdentityAndUsers`, `CatalogAndOffers`, `Orders`, `Chat`, `Notifications` |
+| Arquitectura | Monolito modular con módulos previstos `IdentityAndUsers`, `Catalog`, `Orders`, `Chat`, `Notifications` |
 | Base de datos | MongoDB Atlas 7.x (driver oficial) |
 | Autenticación | Supabase Auth (JWT) + roles y revocación en Redis |
 | Caché | Azure Cache for Redis 7 (`cache:catalog:*`) |
@@ -77,7 +78,7 @@ implementación + pruebas
 |---|---|---|
 | `phase-00-constitution` | Principios, stack y reglas transversales | [`spec.md`](specs/phase-00-constitution/00-01-principles-stack/spec.md) |
 | `phase-02-auth-users` | Autenticación, usuarios y perfiles de vendedor | [`spec.md`](specs/phase-02-auth-users/spec.md) · [`plan.md`](specs/phase-02-auth-users/plan.md) · [`task.md`](specs/phase-02-auth-users/task.md) |
-| `phase-03-catalog-offers` | Catálogo de productos y ofertas comparables | [`spec.md`](specs/phase-03-catalog-offers/spec.md) · [`plan.md`](specs/phase-03-catalog-offers/plan.md) · [`task.md`](specs/phase-03-catalog-offers/task.md) |
+| `phase-03-catalog-offers` (nombre histórico) | Productos independientes por vendedor; API-016 pendiente de retiro/sustitución formal | [`spec.md`](specs/phase-03-catalog-offers/spec.md) · [`plan.md`](specs/phase-03-catalog-offers/plan.md) · [`task.md`](specs/phase-03-catalog-offers/task.md) |
 
 El estado de decisiones, pendientes y mapa de colecciones se mantiene en [`memoria.md`](memoria.md).
 
@@ -96,13 +97,16 @@ El estado de decisiones, pendientes y mapa de colecciones se mantiene en [`memor
 ├── skills/                      # Guías operativas reutilizables
 ├── AGENTS.md                    # Manual de agentes, roles y comandos
 ├── memoria.md                   # Decisiones, historial y pendientes
-├── .env.example                 # Plantilla de variables (sin secretos)
-├── docker-compose.yml           # MongoDB, Redis y Azurite locales
+├── UTTTGO.Backend.slnx          # Solución real (.NET 10)
+├── src/UTTTGO.Api/              # Proyecto real, Controllers y plantilla de API
+├── material/                    # PDF académico, historias y 42 fichas originales
 ├── .gitignore
 └── README.md
 ```
 
-El código de producción se incorporará en `src/` y las pruebas en `tests/` conforme avancen las fases (`src/UtttGo.Api`, `tests/UtttGo.UnitTests`, `tests/UtttGo.IntegrationTests`, `tests/UtttGo.SecurityTests`).
+Las 42 fichas del Excel no se modifican sin aprobación. `docs/academic-requirements-phase-02.md` coteja el PDF oficial con la fase 02; `docs/traceability.md` vincula sus siete rutas prioritarias a HU/UI/PB. `src/UTTTGO.Api` incluye API-001/002 locales candidatas y `tests/UtttGo.UnitTests/`, `tests/UtttGo.IntegrationTests/` y `tests/UtttGo.SecurityTests/` las verifican **solo con dobles**, sin servicios externos (`docs/qa-api-001.md`, `docs/qa-api-002.md`). `.env.example`, `docker-compose.yml`, `infra/terraform` y `.github/workflows/` **aún no están creados**; las instrucciones para ellos siguen siendo previsiones.
+
+**Gate académico documental:** el PDF exige SDD, pruebas, CI/CD, dos instancias en nube y costo cero; recomienda Terraform y sugiere herramientas concretas de IA, pero Terraform es **obligatorio por la constitución**, no por el PDF. La matriz académica registra la evaluación **pendiente** de viabilidad simultánea de dos instancias y servicios constitucionales a costo cero: sin cuotas/presupuesto comprobados, no crear infraestructura ni declarar cumplido el requisito. TASK-AUTH-001/006 están cerradas **solo documentalmente**; ni acreditan despliegue ni cierran el riesgo de costo cero.
 
 ---
 
@@ -134,7 +138,7 @@ cd utttgo-backend
 
 ### 2. Crear el archivo de entorno
 
-Copia la plantilla y completa los valores locales. **Nunca comitees `.env`.**
+Copia la plantilla **cuando se cree** y completa los valores locales. **Nunca comitees `.env`.**
 
 ```powershell
 Copy-Item .env.example .env
@@ -168,7 +172,7 @@ FIREBASE_PROJECT_ID=
 docker compose up -d
 ```
 
-Servicios expuestos por defecto:
+Servicios previstos cuando se incorpore `docker-compose.yml` (no activos todavía):
 
 | Servicio | Puerto | Uso |
 |---|---|---|
@@ -185,11 +189,11 @@ docker compose down
 ### 4. Restaurar y ejecutar la API
 
 ```powershell
-dotnet restore
-dotnet run --project src/UtttGo.Api/UtttGo.Api.csproj
+dotnet restore UTTTGO.Backend.slnx
+dotnet run --project src/UTTTGO.Api/UTTTGO.Api.csproj
 ```
 
-La API queda disponible en `https://localhost:5001` (o el puerto indicado por `launchSettings.json`). Verifica el estado:
+La URL/puerto depende de `launchSettings.json`. **Cuando se implemente** la sonda operativa, verifica `GET /health` (la plantilla aún no la expone):
 
 ```powershell
 curl https://localhost:5001/health
@@ -201,7 +205,7 @@ curl https://localhost:5001/health
 dotnet test
 ```
 
-Las pruebas de integración usan Testcontainers y Azurite; requieren Docker en ejecución. Para ejecutar solo una suite:
+Las pruebas de integración **previstas** usarán Testcontainers y Azurite; requieren Docker. Aún no existen proyectos de pruebas; comandos previstos para cuando se creen:
 
 ```powershell
 dotnet test tests/UtttGo.UnitTests/UtttGo.UnitTests.csproj

@@ -1,7 +1,7 @@
 # spec.md — Constitución: Principios y Stack · Backend UTTT-GO
 > Fase: `phase-00-constitution` · Módulo: `00-01-principles-stack`
-> Versión: 1.0 · Estado: **Aprobado** · Fecha: 2026-10-29
-> Documento subordinado a `constitution.md` v2.1. En caso de conflicto, prevalece la constitución.
+> Versión: 1.2 · Estado: **Borrador de conciliación** · 2026-11-03 (v1.1 aprobada; v1.2 pendiente de revisión integral)
+> Documento subordinado a `docs/constitution.md` v2.3. En caso de conflicto, prevalece la constitución.
 
 ---
 
@@ -20,8 +20,8 @@ Alcance:
 
 Referencias:
 
-- `constitution.md` v2.1 — fuente de verdad del proyecto.
-- `AGENTS.md` v2.0 — roles, sub-agentes y reglas operativas.
+- `docs/constitution.md` v2.3 — fuente de verdad del proyecto.
+- `AGENTS.md` v2.2 — roles, sub-agentes y reglas operativas.
 - `memoria.md` — decisiones, dependencias y glosario.
 - `specs/phase-00-constitution/00-01-principles-stack/plan.md` y `task.md` — ejecución de esta fase.
 
@@ -41,12 +41,16 @@ Referencias:
 | REQ-008 | **Redis** se usa para caché, rate limiting distribuido y blacklist JWT, con namespaces separados y comportamiento fail-closed donde corresponde. | Obligatorio | `constitution.md` § 6 |
 | REQ-009 | Las imágenes se suben **solo** a **Azure Blob Storage** mediante URLs SAS pre-firmadas generadas por el backend y se moderan antes de publicarse con **Azure AI Content Safety**. | Obligatorio | `constitution.md` § 7 |
 | REQ-010 | Las notificaciones push se envían **solo** desde el backend con **Firebase Cloud Messaging (FCM Admin SDK)**. El cliente nunca conoce el service account. | Obligatorio | `constitution.md` § 8 |
-| REQ-011 | **No existe carrito de compras**: la compra es directa e individual. Cada pedido corresponde a una única oferta/producto con su cantidad. | Obligatorio | `constitution.md` § 3 |
+| REQ-011 | **No existe carrito de compras**: la compra es directa e individual. Cada pedido corresponde a un producto de un vendedor con su cantidad. | Obligatorio | `constitution.md` § 3 |
 | REQ-012 | El **único método de pago es efectivo presencial** en el campus UTTT. No se integra pasarela de pago ni se almacenan datos financieros. | Obligatorio | `constitution.md` § 3 |
-| REQ-013 | **No existen menús ni horarios**. La propuesta de valor son las **opciones comparativas tipo Eneba** sobre un mismo producto, distinguiendo producto canónico de oferta. | Obligatorio | `constitution.md` § 3 |
-| REQ-014 | Precio, total, estado, `userId`, `sellerId` y roles nunca se confían al cliente; se derivan del JWT o de la base de datos. | Obligatorio | `constitution.md` § 5 |
+| REQ-013 | **No existen menús ni horarios**. La propuesta de valor es comparar productos independientes de distintos vendedores mediante búsqueda/filtros con ingredientes, precio y calificaciones disponibles, sin producto maestro compartido. | Obligatorio | `constitution.md` § 3 |
+| REQ-014 | El vendedor dueño puede solicitar cambios validados de precio/stock/estado de su producto; el comprador nunca fija precio/total/identidades/roles de la compra. | Obligatorio | `constitution.md` § 3, § 5 |
 | REQ-015 | Secretos solo en **Azure Key Vault** o variables de entorno; prohibido en código, configuración comiteada, Terraform con valores reales o logs. | Obligatorio | `constitution.md` § 6 |
 | REQ-016 | Ningún módulo genera código de producción sin un `spec.md` aprobado y trazabilidad en `plan.md`/`task.md`. | Obligatorio | `AGENTS.md` § 1, § 2 |
+| REQ-017 | La activación de vendedor es automática al completar nombre de negocio, descripción y punto de recogida en el MVP; no requiere aprobación administrativa previa ni acepta roles enviados por el cliente (DEC-002). | Obligatorio | `docs/constitution.md` § 12, § 16 |
+| REQ-018 | Eliminar cuenta elimina información propia, incluyendo publicaciones/contenido/historial de vendedor; datos compartidos requieren diseño técnico (DEC-003). | Obligatorio | `docs/constitution.md` § 3, § 16 |
+| REQ-019 | Chat temporal: mensajes conservados durante pedido activo y eliminados dentro de tres días de completarse (DEC-005). | Obligatorio | `docs/constitution.md` § 3, § 16 |
+| REQ-020 | Recuperación de contraseña mediante enlace enviado al correo registrado, credenciales en Supabase; ruta backend nueva requiere ficha aprobada. | Obligatorio | `docs/constitution.md` § 3 |
 
 ---
 
@@ -58,9 +62,9 @@ Referencias:
 |---|---|---|
 | **Stateless** | La API no guarda estado de sesión en memoria del proceso; el estado efímero vive en Redis. El balanceador puede enrutar cualquier request a cualquier instancia. SignalR usa backplane. | Pruebas de integración con múltiples instancias/health probes; revisión de que no existan campos estáticos de sesión. |
 | **Fail-closed** | Si Redis no responde, la blacklist y el rate limit de `/auth/*` rechazan la operación. Sin moderación aprobada, la imagen no se publica. | Pruebas de caída de Redis y de Content Safety; matriz de degradación de `constitution.md` § 6.3. |
-| **Sin confianza en el cliente** | `price`, `total`, `status`, `userId`, `sellerId` y roles enviados por el cliente se ignoran o rechazan; todo se valida y calcula server-side. | Pruebas de seguridad con payloads manipulados; revisión de autorización por recurso. |
-| **Compra directa en efectivo** | No hay carrito ni checkout múltiple. Se compra una oferta; `PaymentMethod` es fijo `Cash`; la entrega implica efectivo recibido. | Pruebas de negocio: un pedido = una oferta, ausencia de carrito y de pasarela de pago. |
-| **Opciones comparativas tipo Eneba** | El comprador compara ofertas de distintos vendedores para el mismo producto canónico y elige una. El producto no contiene precio ni vendedor; la oferta sí. | Pruebas de catálogo/comparativa; revisión de modelo `Product` vs `Offer`. |
+| **Sin confianza en el cliente** | El vendedor propietario solicita cambios validados de precio/stock/estado de su publicación; el comprador no fija precio/total/roles/identidades. | Pruebas de autorización por recurso y payloads manipulados. |
+| **Compra directa en efectivo** | No hay carrito ni checkout múltiple. Se compra un producto de un vendedor; `PaymentMethod` es fijo `Cash`; entrega implica efectivo recibido. | Un pedido = un producto, ausencia de carrito/pasarela. |
+| **Opciones comparativas** | El comprador busca/filtra publicaciones propias de vendedores distintos; no hay producto maestro compartido. | Pruebas de catálogo, homónimos por vendedor y filtros. |
 
 ### 3.2 Stack obligatorio por capa
 
@@ -102,14 +106,15 @@ Los tests de esta spec son de gobernanza y verificación de cumplimiento; no son
 |---|---|---|---|
 | T-001 | Build | Compilación en .NET 10 y formato correcto | `dotnet build -c Release`, `dotnet format --verify-no-changes` |
 | T-002 | Estático | Ausencia de tecnologías prohibidas (SQL Server, EF, MassTransit, SQS, NBomber, Pact, Argon2id, `.slnx`) | Revisión/script de búsqueda en specs y código |
-| T-003 | Negocio | Ausencia de carrito, menús, horarios y pasarela de pago; un pedido = una oferta; `PaymentMethod = Cash` | Pruebas unitarias/integración del módulo Orders y revisión de specs |
+| T-003 | Negocio | Ausencia de carrito, menús, horarios y pasarela; un pedido = un producto; `PaymentMethod = Cash` | Pruebas unitarias/integración de Orders y revisión de specs |
 | T-004 | Seguridad | JWT inválido/expirado/revocado rechazado; roles desde MongoDB; autorización por recurso | `UtttGo.SecurityTests` |
 | T-005 | Resiliencia | Blacklist y rate limit fail-closed; caché fail-open; matriz de degradación de Redis | Pruebas de integración con Redis caído |
 | T-006 | Media/IA | SAS solo backend, alcance mínimo, contenedor privado, moderación previa y rechazo de contenido no seguro | Pruebas con Azurite + Content Safety mockeado |
 | T-007 | Push | FCM solo backend, service account no expuesto, depuración de tokens, idempotencia | Pruebas con FCM mockeado |
 | T-008 | IaC | `terraform fmt -check` y `terraform validate`; sin secretos ni estado en Git | Pipeline/CI y revisión de `infra/terraform` |
-| T-009 | Trazabilidad | Cada REQ se mapea a constitución, spec de módulo y test | Matriz `docs/traceability.md` |
+| T-009 | Trazabilidad | Cada REQ se mapea a constitución, spec de módulo y test, incluidos REQ-018..020 | Matriz `docs/traceability.md` |
 | T-010 | Secretos | Ningún secreto en el diff; referencias a Key Vault/variables de entorno | Secret scanning del CI + revisión manual |
+| T-011 | Vendedores | Autoactivación sin aprobación previa, con datos de negocio completos y rol asignado solo por el backend (REQ-017). | `specs/phase-02-auth-users/spec.md` RF-05 y T-AUTH-09; pruebas de integración y seguridad previstas |
 
 ---
 
@@ -117,7 +122,7 @@ Los tests de esta spec son de gobernanza y verificación de cumplimiento; no son
 
 - [ ] **AC-001** El stack implementado coincide exactamente con la tabla de § 3.2 y con `constitution.md` § 2.
 - [ ] **AC-002** El backend compila en .NET 10 y `dotnet format --verify-no-changes` pasa.
-- [ ] **AC-003** Las reglas BR-001 a BR-010 de la constitución están reflejadas en requisitos y pruebas.
+- [ ] **AC-003** Las reglas BR-001 a BR-013 de la constitución están reflejadas en requisitos y pruebas.
 - [ ] **AC-004** No existen artefactos ni endpoints de carrito, menús, horarios o pasarela de pago.
 - [ ] **AC-005** El logout revoca el JWT en Redis y el sistema falla cerrado si Redis no responde.
 - [ ] **AC-006** El rate limiting es distribuido con Redis y responde `429` con el contrato de error.
@@ -125,8 +130,9 @@ Los tests de esta spec son de gobernanza y verificación de cumplimiento; no son
 - [ ] **AC-008** Las notificaciones push salen exclusivamente del backend con FCM Admin SDK.
 - [ ] **AC-009** La infraestructura Azure se declara en Terraform y no hay cambios manuales en staging/producción.
 - [ ] **AC-010** No hay secretos, connection strings ni service accounts en el repositorio.
-- [ ] **AC-011** Existen pruebas de gobernanza T-001 a T-010 y la trazabilidad está actualizada.
-- [ ] **AC-012** Este spec está marcado como **Aprobado**, con fecha 2026-10-29, y registrado en `memoria.md`.
+- [ ] **AC-011** Existen pruebas de gobernanza T-001 a T-011 y la trazabilidad está actualizada.
+- [ ] **AC-012** La revisión documental de v1.2 está aprobada por el equipo y registrada en `memoria.md`; v1.1 ya fue aprobada.
+- [ ] **AC-013** La autoactivación de vendedor de DEC-002 respeta la constitución § 12 y se verifica con T-011.
 
 ---
 
@@ -135,7 +141,7 @@ Los tests de esta spec son de gobernanza y verificación de cumplimiento; no son
 Este spec **no**:
 
 - Define endpoints, DTOs, esquemas de MongoDB, índices ni contratos HTTP; eso corresponde a los specs de módulo.
-- Resuelve las decisiones abiertas DEC-002, DEC-003 y DEC-005.
+- Define por su cuenta la política técnica de datos compartidos DEC-003 o almacenamiento/purga DEC-005; decisiones funcionales ya constan en `docs/constitution.md` v2.3.
 - Autoriza escribir código de producción sin un `spec.md` de módulo aprobado.
 - Define umbrales numéricos de rendimiento o cobertura; esos irán en un spec NFR.
 - Cubre interfaz de usuario, aplicación móvil, runbooks de operación o soporte.
@@ -148,12 +154,12 @@ Este spec **no**:
 
 | Campo | Valor |
 |---|---|
-| Estado | **Aprobado** |
-| Fecha | 2026-10-29 |
-| Versión | 1.0 |
+| Estado | **Borrador de conciliación** (v1.1 aprobada) |
+| Fecha | 2026-11-03 |
+| Versión | 1.2 |
 | Autor | AGENT-BE-01 (Architect) |
 | Revisores | AGENT-BE-04 (Security Reviewer), AGENT-BE-06 (Memory Keeper) |
-| Aprobado por | Equipo UTTT-GO |
+| Aprobado por | Equipo UTTT-GO (v1.1); v1.2 pendiente de aprobación integral |
 | Próxima revisión | Al cambiar la constitución o al cerrar la fase 00 |
 
 ### 8.1 Registro de versiones
@@ -161,6 +167,8 @@ Este spec **no**:
 | Versión | Fecha | Cambio | Aprobado por |
 |---|---|---|---|
 | 1.0 | 2026-10-29 | Formalización del spec constitucional: principios, stack obligatorio, tests, criterios de aceptación y límites | Equipo UTTT-GO |
+| 1.1 | 2026-11-02 | Alineación con `docs/constitution.md` v2.2: REQ-017 incorpora DEC-002 ratificada; DEC-003 y DEC-005 continúan abiertas. | Equipo UTTT-GO (confirmación comunicada por la usuaria) |
+| 1.2 | 2026-11-03 | REQ-011/013/014 y nuevos REQ-018..020 alineados a decisiones funcionales de producto propio, eliminación, chat y recuperación por enlace. | Pendiente aprobación integral |
 
 ### 8.2 Reglas de control de cambios
 

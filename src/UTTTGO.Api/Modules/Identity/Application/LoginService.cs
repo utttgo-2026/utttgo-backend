@@ -36,9 +36,9 @@ public sealed class LoginService(
                 !string.Equals(identity.Email, email, StringComparison.OrdinalIgnoreCase))
                 return new LoginResult(LoginOutcome.InvalidCredentials);
 
-            // Do not auto-create or promote a profile from a login response or a JWT.
+            // Never create a missing profile or trust identity/roles from the token.
             var profile = await profiles.FindBySubjectAsync(identity.Subject, cancellationToken);
-            if (profile is null || profile.AccountStatus != "Active" ||
+            if (profile is null || profile.AccountStatus is not ("Active" or "PendingEmailVerification") ||
                 string.IsNullOrWhiteSpace(profile.Id) ||
                 !string.Equals(profile.SupabaseUserId, identity.Subject, StringComparison.Ordinal) ||
                 !string.Equals(profile.Email, identity.Email, StringComparison.OrdinalIgnoreCase) ||
@@ -52,6 +52,15 @@ public sealed class LoginService(
             if (!await jwtGate.IsValidAndNotRevokedAsync(identity.AccessToken, identity.Subject,
                     cancellationToken))
                 return new LoginResult(LoginOutcome.InvalidCredentials);
+
+            if (profile.AccountStatus == "PendingEmailVerification")
+            {
+                profile = await profiles.ActivatePendingAsync(profile, cancellationToken);
+                if (profile is null || profile.AccountStatus != "Active" ||
+                    !string.Equals(profile.SupabaseUserId, identity.Subject, StringComparison.Ordinal) ||
+                    !string.Equals(profile.Email, identity.Email, StringComparison.OrdinalIgnoreCase))
+                    return new LoginResult(LoginOutcome.InvalidCredentials);
+            }
 
             return new LoginResult(LoginOutcome.Success,
                 new LoginResponse(identity.AccessToken, identity.ExpiresIn, "Bearer",

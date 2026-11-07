@@ -72,11 +72,11 @@ public sealed class OwnProfileEndpointTests
     }
 
     [Fact]
-    public async Task NoConfiguredAuthDependenciesFailClosed()
+    public async Task InvalidTokenOnDefaultHostIsUnauthorized()
     {
         using var factory = new WebApplicationFactory<Program>();
         using var response = await Get(factory);
-        response.StatusCode.Should().Be(HttpStatusCode.ServiceUnavailable);
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 
     [Theory]
