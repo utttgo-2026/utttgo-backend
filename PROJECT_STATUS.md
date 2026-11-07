@@ -15,9 +15,15 @@ utttgo-backend/
 ├── .github/
 │   └── workflows/
 ├── .semgrep/
+├── certbot/
+│   └── www/
 ├── ci-evidence/
 ├── docs/
+├── infra/
+│   └── terraform/
 ├── material/
+├── nginx/
+│   └── conf.d/
 ├── scripts/
 │   └── ci/
 ├── skills/
@@ -34,9 +40,14 @@ utttgo-backend/
 │   ├── UtttGo.IntegrationTests/
 │   ├── UtttGo.SecurityTests/
 │   └── UtttGo.UnitTests/
+├── .dockerignore
+├── .env.example
 ├── AGENTS.md
+├── Dockerfile
+├── docker-compose.yml
 ├── memoria.md
 ├── README.md
+├── setup.sh
 └── UTTTGO.Backend.slnx
 ```
 
@@ -99,7 +110,7 @@ Archivos existentes en este árbol de trabajo (algunos son cambios locales todav
 
 | Archivo(s) | Contenido y estado |
 |---|---|
-| `docs/constitution.md` | Fuente de autoridad del stack, reglas BR-001..013, seguridad, arquitectura y decisiones abiertas. Su v2.3 local indica conciliación documental integral pendiente. |
+| `docs/constitution.md` | Fuente de autoridad del stack, reglas BR-001..013, seguridad, arquitectura y decisiones abiertas. Su v2.4 (DEC-018) fija la nube AWS; la conciliación documental integral sigue pendiente. |
 | `AGENTS.md` | Instrucciones de operación SDD, convenciones, pruebas, roles y límites para desarrollo del backend. Subordina contratos y stack a la constitución. |
 | `memoria.md` | Historial vivo de decisiones, dependencias, estado de fases e integraciones faltantes. Distingue propuestas documentales de implementaciones probadas con dobles. |
 | `docs/academic-requirements-phase-02.md` | Matriz de exigencias académicas y política/versiones propuestas para la fase 02. Mantiene abiertos los gates de aprobación, costo cero y dos instancias. |
@@ -123,15 +134,25 @@ Archivos existentes en este árbol de trabajo (algunos son cambios locales todav
 | `specs/phase-03-catalog-offers/plan.md` | Modelo, rutas, seguridad, caché y pruebas propuestas para catálogo. Integraciones y aprobaciones siguen pendientes. |
 | `specs/phase-03-catalog-offers/task.md` | Gates documentales y tareas de catálogo bloqueadas hasta conciliar/aprobar contratos. No existen handlers de catálogo en el proyecto actual. |
 | `specs/phase-07-chat-realtime/spec.md` | Borrador funcional de historial temporal de chat por pedido y contratos pendientes. La persistencia, purga y pruebas todavía requieren diseño. |
+| `specs/cross-cutting/infra-aws-free-tier/spec.md` | Requisitos de la infraestructura AWS de DEC-018 (EC2, EIP, SG, S3, IAM, CloudWatch, Budget) y criterios de aceptación. Aprobada; `plan`/`apply` pendientes. |
+| `specs/cross-cutting/infra-aws-free-tier/plan.md` | Secuencia de implementación, decisiones de diseño y verificaciones de la IaC. Los pasos de código están completos; los de despliegue siguen pendientes del propietario. |
+| `specs/cross-cutting/infra-aws-free-tier/task.md` | Tareas INFRA-T01..T15 con evidencia: IaC aplicada por el propietario y stack de despliegue verificado localmente; pendientes `setup.sh` en la EC2, TLS, alerta de Budget, backend remoto de estado y presigned en el backend. |
+| `infra/terraform/` | IaC declarativa de AWS (proveedor AWS `us-east-2`): EC2 t3.micro Ubuntu 24.04 con IMDSv2, EIP, SG 22/80/443, Instance Profile (CloudWatch + SSM opcional), log group, bucket S3 privado con CORS y Budget condicional. Verificada con `fmt`, `init -backend=false` y `validate`; **aplicada por el propietario** (EIP `3.129.142.54`); falta un `apply` para el hop limit de IMDS y la alerta de Budget. |
+| `.github/workflows/ci-1.yml` | CI con dobles: restore/NuGetAudit, formato, build Release, tres suites, resumen, Gitleaks (bloqueante), Semgrep (piloto informativo) y evidencia. Única edición reciente: `push` a `main` para habilitar el gate del CD. |
+| `.github/workflows/cd-deploy.yml` | CD-1: se ejecuta solo con CI-1 verde en `push` a `main` (o manual con motivo); despliega por SSH el SHA verificado con `docker compose up -d --build --scale api=2`, espera réplicas sanas y publica evidencia. **Implementado y validado con actionlint, pero sin ejecutar**: faltan secrets, environment con revisores y deploy key en la instancia. |
+| `Dockerfile` / `.dockerignore` | Imagen de la API .NET 10 (SDK 10 → ASP.NET 10, usuario `app`, sin secretos). Construida localmente con `docker compose build api`. |
+| `docker-compose.yml` | Despliegue en la EC2: `api` con `deploy.replicas: 2`, `redis:7-alpine` sin puertos publicados en red interna, `nginx:alpine` con 80/443, `mongo:7` solo en perfil `local`. Validado con `docker compose config` y prueba local de balanceo entre las 2 réplicas. |
+| `nginx/` | `nginx.conf`, `conf.d/default.conf` (balanceo por DNS de Docker, WebSocket, desafío ACME) y `conf.d/tls.conf.template` (443 + redirección). Sintaxis validada con `nginx -t` en la imagen real. |
+| `setup.sh` | Script de la EC2 (Ubuntu 24.04): instala Docker, Docker Compose y Certbot, prepara `.env`, levanta 2 réplicas + Redis + Nginx, emite el TLS con hook de renovación y verifica. **No ejecutado todavía en la instancia.** |
 | `specs/cross-cutting/ci-cd-devsecops/spec.md` | Requisitos transversales de CI/CD, seguridad y aceptación; registra evidencia CI-1, no integración externa ni CD aprobados. |
 | `specs/cross-cutting/ci-cd-devsecops/plan.md` | Secuencia de quality gates CI-1 y fases posteriores. Separa evidencia de push/PR de futura integración real/despliegue. |
 | `specs/cross-cutting/ci-cd-devsecops/task.md` | Tareas y evidencia de CI-1; aprobación integral, piloto adversarial y CD permanecen pendientes. |
 
-`material/` contiene documentos fuente PDF, DOCX y XLSX, incluido el Excel de 42 fichas; no son archivos `spec.md` implementados. También hay un directorio `.github/workflows/` y artefactos `ci-evidence/`: no deben confundirse con despliegue Azure operativo.
+`material/` contiene documentos fuente PDF, DOCX y XLSX, incluido el Excel de 42 fichas; no son archivos `spec.md` implementados. También hay un directorio `.github/workflows/` y artefactos `ci-evidence/`: no deben confundirse con un despliegue en la nube operativo.
 
 ## 6. Faltantes o configuraciones a revisar
 
-- No hay `.env.example` ni `docker-compose.yml` para MongoDB/Redis/Azurite local; no se definieron en código las variables o clientes de Atlas, Redis y Supabase. La tabla de variables prevista en SDD no está materializada.
+- `.env.example` existe (Atlas, Redis, Supabase, S3 y región AWS) y `docker-compose.yml` ya está materializado (2 réplicas de la API + Redis + Nginx; MongoDB solo en perfil `local`); el estado de Terraform en `infra/terraform` es local y el despliegue no se ha ejecutado en la EC2; no se definieron en código los clientes reales de Atlas, Redis, S3 y Supabase. La tabla de variables prevista en SDD no está materializada en `appsettings`.
 - Falta la implementación de `MongoDB.Driver`, `StackExchange.Redis`, autenticación/JWT real de Supabase, índices, persistencia y rate limiting distribuido. Los adaptadores actuales son deliberadamente **fail-closed**, no errores de contraseña o puertos comprobados.
 - `Program.cs` configura `UseAuthorization()` pero no `AddAuthentication()`/`UseAuthentication()` ni política CORS; la autenticación candidata se hace mediante servicios en los handlers y no prueba el middleware JWT exigido para toda la API.
 - No hay `/health` para sondear MongoDB y Redis; no hay configuración de producción comprobada para HTTPS/CORS. `AllowedHosts: "*"` en `appsettings.json` es control de hosts, **no** una política CORS.
@@ -144,6 +165,6 @@ Archivos existentes en este árbol de trabajo (algunos son cambios locales todav
 
 1. **Integraciones críticas inexistentes:** sin clientes reales MongoDB, Redis y Supabase, las siete rutas de negocio probadas devuelven `503`.
 2. **Seguridad productiva incompleta:** no hay middleware de autenticación JWT real, blacklist/revocación Redis ni rate limiting distribuido verificable.
-3. **Falta configuración local reproducible:** `.env.example`, Compose y conexiones/variables consumidas por código no existen; no se pueden probar flujos externos de punta a punta en aislamiento.
+3. **Falta configuración local reproducible:** `docker-compose.yml` y conexiones/variables consumidas por código no existen; no se pueden probar flujos externos de punta a punta en aislamiento.
 4. **Gates SDD y académicos sin cierre integral:** contratos y viabilidad de infraestructura/despliegue requieren revisión y evidencia adicionales; no convertir candidatos locales en contratos finales.
 5. **Operación y alcance incompletos:** faltan `/health`, HTTPS/CORS comprobados, módulos previstos y eliminación de la ruta de plantilla fuera de `/api/v1`; el SDK local es preview.

@@ -1,7 +1,7 @@
 # AGENTS.md — Backend UTTT-GO
 > Manual operativo de agentes y desarrolladores del backend.
-> Versión 2.2 · 2026-11-03
-> Alineado con `docs/constitution.md` v2.3. Si hay conflicto, gana `docs/constitution.md`.
+> Versión 2.3 · 2026-11-06
+> Alineado con `docs/constitution.md` v2.4 (DEC-018: nube AWS). Si hay conflicto, gana `docs/constitution.md`.
 > Flujo SDD obligatorio: `docs/constitution.md` → `spec.md` → `plan.md` → `task.md` → implementación.
 > Referencias metodológicas y técnicas del profesor para **todo el backend**: `docs/referencias-profesor-backend.md`; son subordinadas a la constitución y no modifican contratos aprobados.
 
@@ -15,24 +15,24 @@
 
 - **Runtime:** .NET 10 LTS, C# 14, ASP.NET Core 10.
 - **Arquitectura:** monolito modular con fronteras por módulo.
-- **Nube:** Microsoft Azure. Cómputo en **Azure App Service** (DEC-007 resuelta a favor de App Service).
-- **Balanceo:** Azure Load Balancer / Application Gateway. La API es stateless.
-- **IaC:** Terraform para toda la infraestructura Azure.
+- **Nube:** Amazon AWS, región `us-east-2`. Cómputo en **una EC2 t3.micro** (Ubuntu 24.04) con Elastic IP (DEC-018).
+- **Balanceo:** Nginx en la instancia con **2 réplicas Docker Compose** de la API («dos instancias» del PDF académico a costo $0). La API es stateless.
+- **IaC:** Terraform con proveedor AWS en `infra/terraform`.
 - **Datos:** MongoDB Atlas con `MongoDB.Driver`.
 - **Auth:** Supabase Auth; roles en el perfil local.
 - **Vendedores:** autoactivación al completar nombre de negocio, descripción y punto de recogida; sin aprobación administrativa previa en el MVP (DEC-002). El cliente no asigna roles.
-- **Redis:** Azure Cache for Redis para caché, rate limiting distribuido y blacklist JWT.
-- **Storage:** Azure Blob Storage con URLs SAS generadas exclusivamente por el backend.
-- **Moderación:** Azure AI Content Safety API antes de publicar imágenes.
+- **Redis:** contenedor Redis 7 en el `docker-compose.yml` de la instancia (sin ElastiCache por costo $0, DEC-018) para caché, rate limiting distribuido y blacklist JWT.
+- **Storage:** Amazon S3 bucket **privado** con URLs presignadas generadas exclusivamente por el backend.
+- **Moderación:** Azure AI Content Safety API antes de publicar imágenes (se conserva como servicio externo; DEC-018).
 - **Push:** Firebase Cloud Messaging con FCM Admin SDK, únicamente desde el backend.
 - **Tiempo real:** SignalR con backplane obligatorio.
 - **API:** prefijo `/api/v1`.
 
 ### 1.2 Setup local
 
-La solución y el proyecto **existentes** son `UTTTGO.Backend.slnx` y `src/UTTTGO.Api/UTTTGO.Api.csproj` (Controllers). Ya existen `tests/UtttGo.UnitTests/`, `tests/UtttGo.IntegrationTests/` y `tests/UtttGo.SecurityTests/` **solo con cobertura local simulada de API-001/002**; Docker, `.env.example`, `infra/terraform` y workflows son objetivos **aún no presentes**. No ejecutar sus comandos como si fueran verificaciones realizadas. La conciliación técnica de la solución `.slnx` sustituye la prohibición documental anterior, sin cambiar el stack.
+La solución y el proyecto **existentes** son `UTTTGO.Backend.slnx` y `src/UTTTGO.Api/UTTTGO.Api.csproj` (Controllers). Ya existen `tests/UtttGo.UnitTests/`, `tests/UtttGo.IntegrationTests/` y `tests/UtttGo.SecurityTests/` **solo con cobertura local simulada de API-001/002**. El despliegue en la EC2 **ya existe como configuración**: `Dockerfile`, `docker-compose.yml` (2 réplicas de la API + Redis interno + Nginx; MongoDB solo en perfil `local`), `nginx/` y `setup.sh` (Docker, Compose, Certbot, TLS); validado localmente con `docker compose config`, build de imagen, `nginx -t` y prueba de balanceo entre réplicas, **sin ejecutarse todavía en la instancia**. Los workflows de CD siguen siendo objetivo **aún no implementado**. `infra/terraform` **existe y fue aplicado por el propietario** (DEC-018: EC2, EIP, SG, S3, IAM, CloudWatch, Budget; Elastic IP `3.129.142.54`), con la alerta de Budget y el ajuste de hop limit de IMDS pendientes de un nuevo `apply`. No ejecutar sus comandos como si fueran verificaciones realizadas. La conciliación técnica de la solución `.slnx` sustituye la prohibición documental anterior, sin cambiar el stack.
 
-En fase 02, `docs/academic-requirements-phase-02.md` distingue obligaciones del PDF (incluidas **dos instancias y costo cero**) de recomendaciones (Terraform en el PDF, obligatorio por la constitución) y herramientas sugeridas. Su viabilidad simultánea en Azure está **pendiente de evidencia** y es gate antes de infraestructura/despliegue; documentar el riesgo no equivale a demostrar costo cero. TASK-AUTH-001/006 están cerradas por evidencia documental; eso no cierra TASK-AUTH-007.
+En fase 02, `docs/academic-requirements-phase-02.md` distingue obligaciones del PDF (incluidas **dos instancias y costo cero**) de recomendaciones (Terraform en el PDF, obligatorio por la constitución) y herramientas sugeridas. La viabilidad se resolvó con **DEC-018** (cambio a AWS: una EC2 + 2 réplicas Compose + Nginx); la **evidencia final de costo $0 queda pendiente** de la alerta AWS Budget tras el primer apply. TASK-AUTH-001/006 están cerradas por evidencia documental; eso no cierra TASK-AUTH-007.
 
 1. Copiar variables de entorno:
    ```powershell
@@ -43,7 +43,7 @@ En fase 02, `docs/academic-requirements-phase-02.md` distingue obligaciones del 
    ```powershell
    docker compose up -d
    ```
-   Cuando se cree Compose, incluirá MongoDB 7 (espejo local de Atlas), Redis 7 y Azurite para Blob Storage. No apuntar pruebas locales a Atlas, Redis ni Blob de producción.
+   El `docker-compose.yml` de la raíz ya existe: API en **2 réplicas** (`deploy.replicas: 2`), `redis:7-alpine` **sin puertos publicados** en red interna, `nginx:alpine` con 80/443 y `mongo:7` solo bajo el perfil `local` (espejo local de Atlas). No apuntar pruebas locales a Atlas, Redis ni S3 de producción.
 3. Restaurar y ejecutar:
    ```powershell
    dotnet restore UTTTGO.Backend.slnx
@@ -51,7 +51,7 @@ En fase 02, `docs/academic-requirements-phase-02.md` distingue obligaciones del 
    ```
 4. Tras implementar la sonda de salud, verificar `GET /health`; **no existe todavía en la plantilla actual**.
 
-Para `dotnet run`, exportar las mismas variables del `.env` o usar secretos locales de desarrollo (`dotnet user-secrets`), nunca comiteados. En Azure, los valores provienen de **Azure Key Vault** y variables de entorno del App Service.
+Para `dotnet run`, exportar las mismas variables del `.env` o usar secretos locales de desarrollo (`dotnet user-secrets`), nunca comiteados. En la EC2, los valores son variables de entorno del contenedor (`.env` del servidor, fuera de Git); la sonda de salud y el despliegue se coordinan con el `docker-compose.yml` futuro.
 
 ### 1.3 Comandos canónicos
 
@@ -64,12 +64,12 @@ Para `dotnet run`, exportar las mismas variables del `.env` o usar secretos loca
 | Integración | `dotnet test tests/UtttGo.IntegrationTests/UtttGo.IntegrationTests.csproj -c Release --no-build` |
 | Seguridad | `dotnet test tests/UtttGo.SecurityTests/UtttGo.SecurityTests.csproj -c Release --no-build` |
 | Ejecutar API | `dotnet run --project src/UTTTGO.Api/UTTTGO.Api.csproj` |
-| Docker local | `docker compose up -d` / `docker compose down` |
+| Docker local | `docker compose up -d` / `docker compose down` (MongoDB local: `docker compose --profile local up -d`) |
 | Terraform formato | `terraform -chdir=infra/terraform fmt -check -recursive` |
 | Terraform validación | `terraform -chdir=infra/terraform init -backend=false` + `terraform -chdir=infra/terraform validate` |
-| Terraform plan | `terraform -chdir=infra/terraform plan -var-file=envs/dev.tfvars` |
+| Terraform plan | `terraform -chdir=infra/terraform plan` |
 
-Unitarias, integración y seguridad **locales con dobles** de API-001/002 ya existen y se ejecutan (`docs/qa-api-001.md`, `docs/qa-api-002.md`); **Docker y Terraform son previstos**, sin rutas/archivos actuales. No inferir integraciones externas ni seguridad real verde del build o de pruebas con dobles.
+Unitarias, integración y seguridad **locales con dobles** de API-001/002 ya existen y se ejecutan (`docs/qa-api-001.md`, `docs/qa-api-002.md`); **Terraform existe ahora y está validado** con `terraform init -backend=false`, `fmt -check` y `validate`; su `plan/apply` corre localmente el propietario con sus credenciales, sin secretos en Git, y la Dockerización de despliegue sigue prevista. No inferir integraciones externas ni seguridad real verde del build o de pruebas con dobles.
 
 ### 1.4 Orden de CI en PR
 
@@ -130,7 +130,7 @@ restore → format → build → unit → integration → security → secret sc
 | BR-004 | **No existen menús ni horarios.** La disponibilidad depende de existencias/estado del producto; ingredientes no son menú. |
 | BR-005 | La comparación se hace entre **productos independientes de distintos vendedores** encontrados por búsqueda/filtros (ingredientes, precios y calificaciones disponibles). |
 | BR-006 | Cada vendedor posee y administra sus **propios productos/publicaciones**; no hay producto maestro compartido ni ofertas asociadas. |
-| BR-007 | Toda imagen usa **SAS pre-firmada por el backend** y **moderación previa** con Azure AI Content Safety. |
+| BR-007 | Toda imagen usa **URL presignada de S3 generada por el backend** y **moderación previa** con Azure AI Content Safety. |
 | BR-008 | Las notificaciones push se envían **solo** por el backend con FCM Admin SDK. |
 | BR-009 | El comprador no decide precio/total/estado ni identidad; el vendedor propietario puede solicitar cambios de precio, stock y publicación, validados por backend; identidades/roles nunca se confían al cliente. |
 | BR-010 | Total server-side = precio vigente del producto elegido × cantidad; definir concurrencia/snapshot en Orders. |
@@ -143,19 +143,19 @@ restore → format → build → unit → integration → security → secret sc
 - No introducir SQL Server, EF Core, migraciones EF, MassTransit, SQS, sagas, DLQ ni bases relacionales.
 - MongoDB no usa migraciones: los índices y validaciones se declaran en el `spec.md` de cada módulo.
 - Redis es obligatorio para blacklist JWT, caché y rate limiting distribuido.
-- Las imágenes no se guardan en MongoDB ni en disco local; solo en Azure Blob Storage.
-- Terraform es la única vía para crear/modificar infraestructura Azure de staging/producción.
+- Las imágenes no se guardan en MongoDB ni en disco local; solo en un bucket S3 privado.
+- Terraform es la única vía para crear/modificar infraestructura AWS de staging/producción.
 - Prohibido el estado de Terraform (`*.tfstate`, `*.tfstate.backup`, `*.tfvars` con secretos) en Git.
 
 ### 3.3 Seguridad
 
 - El logout revoca el JWT agregando su `jti` a la blacklist de Redis: `revoked:{jti}` con TTL hasta `exp`.
 - Si Redis no responde, la blacklist y el rate limit de `/auth/*` son **fail-closed**.
-- Las SAS solo las genera el backend, con alcance de un blob, TTL corto y permisos mínimos.
-- Ningún contenedor de Blob es público.
+- Las URLs presignadas solo las genera el backend, con alcance de un objeto S3, TTL corto y permisos mínimos.
+- Ningún objeto del bucket de imágenes es público (Block Public Access activado).
 - Sin moderación aprobada no hay publicación de imagen: **fail-closed**.
 - El cliente nunca conoce el service account de FCM ni envía push directamente.
-- Secretos solo en Azure Key Vault o variables de entorno. Nunca en código, `appsettings`, `.env` comiteado, Terraform con valores reales ni logs.
+- Secretos solo en variables de entorno de la instancia/contenedor. Nunca en código, `appsettings`, `.env` comiteado, Terraform con valores reales ni logs.
 - No tocar el orden del pipeline de middleware de `Program.cs` sin aprobación de AGENT-BE-01 y actualización de `spec.md`.
 - No relajar rate limits en producción; solo configuración explícita no-productiva.
 
@@ -168,7 +168,7 @@ Antes de pedir revisión de un cambio:
 - [ ] `dotnet build -c Release --no-restore` con 0 errores.
 - [ ] `dotnet format --verify-no-changes` sin diferencias.
 - [ ] Unitarias, integración y seguridad en verde.
-- [ ] Pruebas de media/SAS y notificaciones FCM actualizadas si el cambio las impacta.
+- [ ] Pruebas de media/presigned y notificaciones FCM actualizadas si el cambio las impacta.
 - [ ] `terraform fmt -check -recursive` y `terraform validate` en verde si cambió `infra/terraform`.
 - [ ] Sin secretos en el diff; secret scanning del CI en verde.
 - [ ] Sin endpoints nuevos fuera de `spec.md` y sin contratos sin ficha.
@@ -212,26 +212,26 @@ Antes de pedir revisión de un cambio:
 - Prohibido cachear contraseñas, tokens completos o datos personales sensibles.
 - Las claves de prueba deben limpiarse entre tests; no depender de estado global.
 
-### 5.4 Imágenes: SAS + moderación
+### 5.4 Imágenes: presigned S3 + moderación
 
 Flujo obligatorio:
 
 1. El cliente pide intención de subida al backend.
-2. El backend valida JWT, MIME, extensión y tamaño; crea `mediaAssets` en `PendingUpload` y devuelve una SAS de escritura de un solo blob.
-3. El cliente sube directo a un contenedor de staging.
+2. El backend valida JWT, MIME, extensión y tamaño; crea `mediaAssets` en `PendingUpload` y devuelve una **presigned PUT** de un solo objeto.
+3. El cliente sube directo a la carpeta de staging del bucket S3 privado (CORS configurado en Terraform).
 4. El cliente notifica fin; el backend invoca Azure AI Content Safety.
-5. Seguro → `Approved`; no seguro → se elimina el blob y queda `Rejected`.
+5. Seguro → `Approved`; no seguro → se elimina el objeto y queda `Rejected`.
 6. Solo un `mediaAssetId` en `Approved` puede asociarse a un producto publicado.
 
-- SAS de lectura para imágenes aprobadas: corta duración o CDN controlado.
-- Nunca `AZURE_STORAGE_CONNECTION_STRING` ni account key al cliente.
+- Presigned GET de lectura para imágenes aprobadas: corta duración, generada por el backend.
+- Nunca access keys de AWS ni session tokens al cliente; el backend usa el Instance Profile de la EC2.
 - Error de Content Safety = no publicación (fail-closed).
 
 ### 5.5 FCM
 
 - Envío exclusivo desde el backend con FCM Admin SDK.
 - `deviceTokens` por usuario; tokens inválidos se eliminan tras el error de FCM.
-- El service account vive en Key Vault; nunca en Git.
+- El service account vive solo en variables de entorno de la instancia; nunca en Git.
 - Envíos idempotentes y derivados de eventos de dominio (estado de pedido, chat).
 
 ### 5.6 SignalR
@@ -258,9 +258,9 @@ Flujo obligatorio:
 - HTTPS en todos los entornos.
 - `correlationId` en logs y respuestas de error.
 - Logs sin contraseñas, tokens, `jti`, datos personales sensibles ni claves.
-- SAS: alcance mínimo, un blob, TTL ≤ 5 minutos, content-type y tamaño restringidos.
+- Presigned: alcance mínimo, un objeto, TTL ≤ 5 minutos, content-type y tamaño restringidos.
 - Moderación previa obligatoria; sin excepciones por entorno.
-- Terraform sin secretos en código; valores sensibles desde Key Vault.
+- Terraform sin secretos en código; credenciales del usuario solo por variables de entorno locales (`AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`), nunca comiteadas.
 - SAST y escaneo de dependencias: recomendados en CI; se vuelven bloqueantes cuando el equipo los habilite formalmente.
 
 ### 6.1 Degradación de Redis
@@ -279,14 +279,14 @@ Flujo obligatorio:
 - xUnit + FluentAssertions + Moq/NSubstitute.
 - `WebApplicationFactory` para integración y seguridad.
 - Testcontainers para MongoDB y Redis.
-- Azurite para pruebas de Blob/SAS en local.
+- Emulación S3 (LocalStack o Moto) o dobles para pruebas de imágenes en local; sin acceso al bucket real desde CI.
 - Content Safety y FCM se mockean en unitarias/integración; nunca se llaman servicios reales en CI.
 - Proyectos: `UtttGo.UnitTests`, `UtttGo.IntegrationTests`, `UtttGo.SecurityTests`.
 - Casos mínimos:
   - Unitarias: servicios, validadores, cálculo de total, propiedad y reglas de producto/pedido.
-  - Integración: endpoints contra MongoDB/Redis en contenedores; flujo SAS con Azurite.
+   - Integración: endpoints contra MongoDB/Redis en contenedores; flujo presigned con emulador S3 o dobles.
   - Seguridad: token inválido/expirado/revocado, rol incorrecto, recurso ajeno, rate limit, blacklist.
-  - Media/IA: SAS solo backend, alcance mínimo, moderación antes de publicar, rechazo de contenido no seguro.
+   - Media/IA: presigned solo backend, alcance mínimo, moderación antes de publicar, rechazo de contenido no seguro.
   - Notificaciones: FCM mockeado, depuración de tokens, idempotencia.
   - Aceptación: Given/When/Then derivados del `spec.md`.
 - No se usan Pact, NBomber, Stryker ni ChaosTest en esta fase.
@@ -297,28 +297,28 @@ Flujo obligatorio:
 
 ## 8. Observabilidad
 
-- Serilog con consola JSON en desarrollo y sink de Azure Monitor/Application Insights en Azure (cuando se habilite).
+- Serilog con consola JSON en desarrollo y entrega de logs a CloudWatch Logs desde la instancia (cuando se habilite el agente o el sink en la app).
 - `correlationId` en cada evento de log del ciclo de vida.
 - `GET /health` verifica MongoDB y Redis; devuelve `503` si una dependencia crítica falla.
 - Logs de moderación y FCM con resultado y `correlationId`, sin payloads sensibles.
 - No se adopta Prometheus/Grafana en esta fase.
-- No loggear tokens, SAS completas, `jti` ni service accounts.
+- No loggear tokens, presigned completas, `jti`, access keys ni service accounts.
 
 ---
 
 ## 9. Despliegue y operación
 
-- **Azure App Service** detrás de Load Balancer/Application Gateway con health probes.
-- API stateless; estado efímero en Redis.
-- SignalR con backplane para múltiples instancias.
-- Terraform en `infra/terraform` con:
-  - Backend remoto de estado y bloqueo.
-  - Entornos `dev`, `staging`, `prod`.
-  - App Service, load balancer, Key Vault, Blob Storage, Azure Cache for Redis, Content Safety, networking, diagnósticos y alarmas.
-- MongoDB Atlas se aprovisiona por su mecanismo documentado; connection strings en Key Vault.
-- FCM service account en Key Vault.
-- CI/CD con GitHub Actions y OIDC hacia Azure; sin credenciales estáticas.
-- Prohibido crear o modificar recursos Azure a mano en staging/producción.
+- **Una EC2 t3.micro** (Ubuntu 24.04) con **Elastic IP fija**; costo objetivo $0 (Free Tier). Nginx en la instancia reparte tráfico entre **2 réplicas Docker Compose** de la API; el requisito académico de «dos instancias» se cumple internamente (DEC-018).
+- API stateless; estado efímero en Redis (contenedor del mismo Compose).
+- SignalR con backplane Redis para las 2 réplicas.
+- Terraform en `infra/terraform` (proveedor AWS, región `us-east-2`):
+  - Estado local fuera de Git en el MVP; backend remoto (S3 + DynamoDB) es refactor obligatorio antes de producción.
+  - EC2 + EIP, Security Group (22/80/443), bucket S3 privado (CORS, Block Public Access, SSE), rol/Instance Profile IAM (CloudWatch Logs, opcional SSM), log group y alerta AWS Budget.
+  - Sin secretos: las credenciales del propio dueño llegan por variables de entorno, nunca por código.
+- MongoDB Atlas se aprovisiona por su mecanismo documentado; connection strings solo por variables de entorno de la instancia.
+- FCM service account en variables de entorno de la instancia.
+- CI/CD futuro con GitHub Actions e OIDC hacia AWS sin credenciales estáticas; mientras tanto `apply` manual local del propietario con su aprobación.
+- Prohibido crear o modificar recursos a mano en staging/producción (cambios solo por Terraform).
 - Promoción entre entornos por pipeline, no manual.
 - Redis: timeouts cortos, retry exponencial y comportamiento de degradación de § 6.1.
 - Contenedores: verificar herramientas disponibles antes de sondear desde dentro de la imagen.
@@ -334,7 +334,7 @@ Flujo obligatorio:
 | AGENT-BE-01 | Architect | Arquitectura, módulos, ADRs, Terraform y alineación con la constitución |
 | AGENT-BE-02 | API Designer | Contratos, endpoints, Given/When/Then y specs verificables |
 | AGENT-BE-03 | Data Modeler | Colecciones MongoDB, índices, Redis y fronteras de datos |
-| AGENT-BE-04 | Security Reviewer | JWT, autorización por recurso, rate limit, SAS, Content Safety y secretos |
+| AGENT-BE-04 | Security Reviewer | JWT, autorización por recurso, rate limit, presigned, Content Safety y secretos |
 | AGENT-BE-05 | Test Engineer | Unitarias, integración, seguridad, media/IA y notificaciones |
 | AGENT-BE-06 | Memory Keeper | `memoria.md`, decisiones, glosario y log de cambios |
 
@@ -353,7 +353,7 @@ Solo se integran los que tienen sentido directo para UTTT-GO:
 
 #### `security-reviewer`
 - **Propósito:** gate de seguridad previo a push/PR; revisa sin editar.
-- **Verifica:** JWT + blacklist Redis, autorización por recurso, rate limit, SAS (alcance/TTL), Content Safety, Blob no público, FCM server-only, secretos, CORS, logs y contrato de error.
+- **Verifica:** JWT + blacklist Redis, autorización por recurso, rate limit, presigned (alcance/TTL), Content Safety, S3 no público, FCM server-only, secretos, CORS, logs y contrato de error.
 - **Salida:** hallazgos por severidad y bloqueantes.
 - **Límites:** no modifica código ni specs; reporta para que AGENT-BE-04 y el autor corrijan.
 - **Dueño:** AGENT-BE-04.
@@ -392,7 +392,7 @@ No se importan de la guía de referencia ni se usan en UTTT-GO:
 - MassTransit, SQS, sagas, consumers, DLQ y eventos de bus.
 - NBomber, Pact, Stryker, MutationTest, ChaosTest, ContractTest y Fuzzing.
 - Argon2id, BCrypt local, lockout persistente y 2FA TOTP local (la autenticación es Supabase Auth).
-- `appsettings.Example.json`, `UseInMemoryDatabase`, AWS, CloudFormation, ALB/EC2/RDS. La solución real es `.slnx`; no convertirla por una prohibición heredada.
+- `appsettings.Example.json`, `UseInMemoryDatabase`, CloudFormation y servicios gestionados no adoptados (ECS/EKS, ALB, ElastiCache, RDS); el alcance AWS de DEC-018 se limita a Free Tier nativo: una EC2, S3, IAM, CloudWatch y Nginx/Compose en la instancia. La solución real es `.slnx`; no convertirla por una prohibición heredada.
 - Prometheus/Grafana como stack obligatorio.
 - Scripts de endpoints/cobertura/mutación de otro proyecto.
 
@@ -410,11 +410,15 @@ No se importan de la guía de referencia ni se usan en UTTT-GO:
 | `tests/UtttGo.UnitTests/` | xUnit unitarias |
 | `tests/UtttGo.IntegrationTests/` | xUnit + WebApplicationFactory + Testcontainers |
 | `tests/UtttGo.SecurityTests/` | Seguridad y autorización |
-| `infra/terraform/` | IaC Azure, entornos y backend remoto |
+| `infra/terraform/` | IaC AWS Free Tier de DEC-018 (EC2, EIP, SG, S3, IAM, CloudWatch, Budget) |
+| `Dockerfile` / `.dockerignore` | Imagen de la API .NET 10 (multi-stage, usuario no root, sin secretos) |
+| `docker-compose.yml` | Despliegue en la EC2: 2 réplicas de la API + Redis interno + Nginx; MongoDB solo en perfil `local` |
+| `nginx/` | Proxy inverso: balanceo entre réplicas, WebSocket, ACME y plantilla TLS |
+| `setup.sh` | Preparación de la EC2 (Ubuntu 24.04): Docker, Compose, Certbot, despliegue y TLS |
 | `docs/` | `constitution.md`, `traceability.md` |
 | `skills/` | Skills de agentes |
 | `.github/workflows/` | CI/CD |
-| `docker-compose.yml` | MongoDB, Redis y Azurite locales |
+| `docker-compose.yml` | MongoDB y Redis locales; 2 réplicas API + Nginx en EC2 pendientes de despliegue |
 | `.env.example` | Variables sin valores reales |
 | `UTTTGO.Backend.slnx` | Solución .NET real, no renombrar sin decisión aprobada |
 
@@ -428,7 +432,7 @@ Una tarea solo se marca completada si:
 - [ ] El código compila en Release sin errores.
 - [ ] `dotnet format` pasa.
 - [ ] Tests unitarios, integración y seguridad verdes.
-- [ ] Se cubrieron pruebas de media/SAS y FCM si aplica.
+- [ ] Se cubrieron pruebas de media/presigned y FCM si aplica.
 - [ ] No hay secretos ni valores sensibles en el diff.
 - [ ] Se respetaron las reglas BR-001 a BR-013 y la degradación de Redis.
 - [ ] `memoria.md` actualizado.
@@ -442,7 +446,7 @@ Una tarea solo se marca completada si:
 - Escribir código de producción sin `spec.md` aprobado.
 - Cambiar el stack, la nube, las reglas de negocio o la infraestructura sin actualizar `constitution.md`.
 - Introducir carrito, menús, horarios, pasarelas de pago, storage alternativo o notificaciones fuera de FCM.
-- Permitir SAS generadas por el cliente o imágenes sin moderación.
-- Crear recursos Azure manualmente fuera de Terraform en staging/producción.
+- Permitir URLs presignadas generadas por el cliente o imágenes sin moderación.
+- Crear recursos en la nube manualmente fuera de Terraform en staging/producción.
 - Comitear secretos, connection strings, tokens, service accounts o estado de Terraform.
 - Deshabilitar tests, relajar rate limits en producción o alterar el orden del middleware sin aprobación.

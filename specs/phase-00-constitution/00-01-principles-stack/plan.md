@@ -93,7 +93,7 @@ Tener el repositorio backend en un estado en el que cualquier miembro del equipo
 
 | Paso | Descripción | Agente |
 |---|---|---|
-| P5-1 | Crear `docker-compose.yml` con MongoDB 7, Redis 7 y Azurite para pruebas locales de Blob/SAS | AGENT-BE-01 |
+| P5-1 | Crear `docker-compose.yml` con MongoDB 7 y Redis 7 (sin Azurite: las imágenes van a S3; pruebas con dobles o emulación) | AGENT-BE-01 |
 | P5-2 | Crear `docker-compose.override.yml` (local, no comitear si tiene secretos) | Equipo |
 | P5-3 | Verificar `docker compose up -d` levanta los tres servicios sin errores y `docker compose down` los detiene al terminar las pruebas locales | Equipo |
 | P5-4 | Verificar conexión de la API a MongoDB y Redis al iniciar | AGENT-BE-03 |

@@ -192,7 +192,7 @@ Para `400` payload inválido, `401` credenciales incorrectas (**mensaje genéric
 | **RNF-07** | Toda respuesta de error **debe** incluir `correlationId` y seguir el contrato de `constitution.md`. | Tests de contrato |
 | **RNF-08** | Los listados administrativos **deben** paginar con `page` + `pageSize` y un máximo configurable. | Tests de paginación |
 | **RNF-09** | Las operaciones administrativas **deben** quedar auditadas (quién, qué, cuándo, `correlationId`) sin datos sensibles. | Revisión de logs/auditoría |
-| **RNF-10** | Los secretos (JWT secret, connection strings) **deben** venir de Key Vault o variables de entorno; prohibido en Git/logs. | Secret scanning |
+| **RNF-10** | Los secretos (JWT secret, connection strings) **deben** venir de variables de entorno de la instancia/contenedor; prohibido en Git/logs. | Secret scanning |
 | **RNF-11** | Todos los endpoints **deben** exponerse bajo `/api/v1` y usar HTTPS. | Revisión de rutas |
 | **RNF-12** | La autorización **debe** validar por recurso: un usuario solo edita su propio perfil; un admin accede a recursos administrativos. | Tests de autorización |
 | **RNF-13** | Avatar editado solo con media propia `Approved` conforme a la constitución; **propuesta de escritura:** `mediaAssetId` verificado, distinta de **propuesta de lectura:** `avatarUrl` temporal de la ficha. El cambio de entrada `avatarUrl` requiere aprobación. Nunca aceptar URL arbitraria ni exponer Blob público. | Tests de media y conciliación de DTO de lectura/escritura |
@@ -323,7 +323,7 @@ Criterios de aceptación:
 - [ ] Contratos/DTOs y validaciones implementados conforme a § 7.
 - [ ] Build Release y `dotnet format` en verde.
 - [ ] Pruebas T-AUTH-01..19 aplicables en verde una vez definidos los contratos técnicos; ninguna prueba declarada ejecutada actualmente.
-- [ ] Sin secretos en el diff; configuración vía Key Vault/entorno.
+- [ ] Sin secretos en el diff; configuración vía variables de entorno.
 - [ ] Trazabilidad `spec ↔ endpoint ↔ test` actualizada.
 - [ ] DEC-002 y DEC-003 resueltas funcionalmente; diseño técnico de DEC-003 y canal de recuperación documentados.
 

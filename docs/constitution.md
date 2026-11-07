@@ -1,6 +1,6 @@
 # constitution.md — Backend UTTT-GO
-> Versión 2.3 · Archivo raíz de la metodología Spec-Driven Development
-> Decisiones funcionales de v2.3 confirmadas por el equipo; **conciliación documental integral pendiente de revisión**. Los contratos API contradictorios no quedan aprobados por este cambio.
+> Versión 2.4 · Archivo raíz de la metodología Spec-Driven Development
+> v2.4: el equipo aprobó el cambio de nube Microsoft Azure → Amazon AWS (DEC-018) para garantizar costo cero y escalabilidad académica; infraestructura en `infra/terraform` con proveedor AWS. Los contratos API contradictorios siguen sin quedar aprobados por este cambio.
 > Todo archivo del proyecto (AGENTS.md, memoria.md, spec.md, plan.md, task.md, skills) debe estar alineado con este documento.
 > Cualquier decisión aquí listada como **innegociable** no puede revertirse sin una nueva versión explícita de este archivo.
 
@@ -27,16 +27,16 @@
 | Lenguaje | C# | 14 | Incluido en .NET 10 |
 | Runtime / Framework | .NET 10 + ASP.NET Core | 10 LTS | Minimal API o Controllers según módulo |
 | Arquitectura | Monolito Modular | — | Un solo despliegue, módulos con fronteras estrictas (§ 4) |
-| Nube | Microsoft Azure | — | Único proveedor cloud autorizado |
-| Cómputo | Azure App Service | — | Entorno de cómputo oficial en Azure (DEC-007 resuelta) |
-| Balanceo | Azure Load Balancer / Application Gateway | — | Obligatorio: la API debe ser stateless |
-| IaC | Terraform | 1.9+ | Toda la infraestructura Azure se declara como código |
+| Nube | Amazon AWS | — | Proveedor cloud autorizado (DEC-018 resuelta en v2.4); región `us-east-2` |
+| Cómputo | EC2 t3.micro (Ubuntu 24.04 LTS) + Docker Compose | — | Una instancia física; escalabilidad académica con 2 réplicas Compose (DEC-018) |
+| Balanceo | Nginx en la instancia + Elastic IP | — | Obligatorio: la API debe ser stateless; requisitos § 15 del PDF académico |
+| IaC | Terraform | 1.9+ | Toda la infraestructura AWS en `infra/terraform` |
 | Base de datos | MongoDB Atlas (NoSQL) | 7.x | Driver oficial `MongoDB.Driver`; TLS en entornos no locales |
 | Autenticación | Supabase Auth | Managed | JWT firmados por Supabase; roles en perfil local |
-| Redis | Azure Cache for Redis | 7.x | Caché + Rate Limit distribuido + Blacklist JWT |
+| Redis | Redis (contenedor Docker en la instancia) | 7.x | Caché + Rate Limit distribuido + Blacklist JWT; MVP costo $0 (sin ElastiCache) |
 | Tiempo real | SignalR | Incluido en ASP.NET Core 10 | Requiere backplane por el balanceador (§ 10) |
-| Almacenamiento de imágenes | Azure Blob Storage + SAS | API estable | SAS generadas **solo** por el backend |
-| Moderación de contenido | Azure AI Content Safety API | API estable | Moderación previa a la publicación de imágenes |
+| Almacenamiento de imágenes | Amazon S3 + URLs presignadas | S3 API | Bucket **privado**; presigned PUT/GET generadas **solo** por el backend |
+| Moderación de contenido | Azure AI Content Safety API | API estable | Moderación previa a la publicación de imágenes; llamada HTTPS desde el backend, tier gratuito (DEC-018 la mantiene como servicio) |
 | Notificaciones push | Firebase Cloud Messaging (FCM Admin SDK) | SDK oficial .NET | El backend es el único emisor |
 | Contenerización | Docker + Docker Compose | 25+ | Entorno local obligatorio |
 | CI | GitHub Actions | — | Mínimo: lint, build, tests en PR |
@@ -56,7 +56,7 @@ Estas reglas son **duras**: ninguna `spec.md`, `plan.md` ni implementación pued
 | **BR-004** | **No existen menús ni horarios.** | Prohibidas entidades, campos y validaciones de menú, horario, franja o disponibilidad temporal. La disponibilidad depende del estado y existencias del producto. Los ingredientes del alimento no constituyen un menú. |
 | **BR-005** | La propuesta de valor central es **comparar opciones de distintos vendedores** al buscar un alimento. | La búsqueda y los filtros presentan productos propios de cada vendedor con sus ingredientes, precios y calificaciones disponibles del producto y vendedor; no se exige equivalencia exacta ni producto maestro compartido. |
 | **BR-006** | **Cada vendedor posee y administra sus propios productos/publicaciones.** | El producto pertenece a un vendedor e incluye su precio, existencias y estado. No existe relación obligatoria producto canónico → ofertas de varios vendedores. |
-| **BR-007** | Toda imagen se sube a Azure Blob mediante **URL SAS pre-firmada generada por el backend** y se **modera antes de publicarse**. | El cliente nunca recibe claves de storage; ver § 7. |
+| **BR-007** | Toda imagen se sube a Amazon S3 mediante **URL presignada generada por el backend** y se **modera antes de publicarse**. | El cliente nunca recibe claves de storage; ver § 7. |
 | **BR-008** | Las notificaciones push se envían **exclusivamente** por el backend vía FCM Admin SDK. | Ver § 8. |
 | **BR-009** | El comprador no determina precio, total, estado, `userId`, `sellerId` ni roles. | Un vendedor propietario puede solicitar cambios de precio, existencias y publicación de su producto mediante contratos autorizados y validados; el backend deriva identidades, verifica propiedad y controla transiciones. No se confía en importes/estados aportados durante la compra. |
 | **BR-010** | El precio mostrado y cobrado corresponde al producto del vendedor seleccionado. | El backend consulta el precio vigente y calcula el total como `price × quantity`; la política de concurrencia y snapshot de precio en Orders queda por diseñar. |
@@ -86,9 +86,9 @@ Estas reglas son **duras**: ninguna `spec.md`, `plan.md` ni implementación pued
 3. **Validación server-side obligatoria** — Toda entrada pasa por validadores explícitos antes de tocar la base de datos.
 4. **Paginación en todos los listados** — `page` + `pageSize` (máximo configurable). Nunca devolver colecciones ilimitadas.
 5. **Idempotencia donde sea posible** — Operaciones críticas (crear perfil local, publicar producto, confirmar entrega y eliminar cuenta) deben ser seguras de reintentar.
-6. **Logging estructurado** — JSON con `correlationId` en cada request. Ningún log contiene contraseñas, tokens, datos personales sensibles ni claves de Azure/FCM.
+6. **Logging estructurado** — JSON con `correlationId` en cada request. Ningún log contiene contraseñas, tokens, datos personales sensibles ni claves de AWS/S3/FCM.
 7. **Fail-closed en seguridad** — Ver § 6.3. Si Redis no responde, la revocación de tokens no se ignora silenciosamente.
-8. **Infraestructura como código** — Ningún recurso Azure de staging/producción se crea a mano. Todo vive en Terraform (§ 9).
+8. **Infraestructura como código** — Ningún recurso AWS de staging/producción se crea a mano. Todo vive en Terraform (§ 9).
 
 ---
 
@@ -96,7 +96,7 @@ Estas reglas son **duras**: ninguna `spec.md`, `plan.md` ni implementación pued
 
 ### 6.1 Reglas generales
 - HTTPS en todos los entornos (incluido desarrollo con certificado local).
-- Secretos solo en variables de entorno o Azure Key Vault. Prohibido en código fuente, archivos comiteados, Terraform con valores reales o logs.
+- Secretos solo en variables de entorno de la instancia/contenedor. Prohibido en código fuente, archivos comiteados, Terraform con valores reales o logs.
 - JWT validado en cada request: firma, issuer, audience, expiración y lista de revocados (Redis).
 - Autorización por recurso: comprobar que el recurso pertenece al usuario autenticado, no solo que el usuario tiene el rol correcto.
 - Rate limiting distribuido en todas las rutas públicas, más estricto en `/auth/*`.
@@ -125,16 +125,16 @@ Estas reglas son **duras**: ninguna `spec.md`, `plan.md` ni implementación pued
 
 ## 7. Almacenamiento de imágenes y moderación (innegociable)
 
-- **Azure Blob Storage es el único destino** para imágenes de producto.
-- **Las URLs SAS solo las genera el backend.** El cliente nunca recibe `AZURE_STORAGE_CONNECTION_STRING`, account key ni SAS de amplio alcance.
-- La SAS debe ser de **alcance mínimo**: un único blob, permiso de escritura/creación, TTL corto (≤ 5 minutos), content-type y tamaño restringidos.
-- **Ningún contenedor es público.** La lectura de imágenes aprobadas se sirve mediante SAS de lectura de corta duración o CDN con acceso controlado.
+- **Amazon S3 es el único destino** para imágenes de producto; el bucket es **privado** (Block Public Access activado; sin políticas de lectura anónima).
+- **Las URLs presignadas solo las genera el backend** con el Instance Profile de la EC2. El cliente nunca recibe claves del bucket (`aws_access_key_id`, `aws_secret_access_key`) ni tokens de amplio alcance.
+- La presigned de escritura debe ser de **alcance mínimo**: un único objeto, permiso de escritura, TTL corto (≤ 5 minutos), content-type obligatorio y tamaño restringido por política del bucket/validación backend.
+- **Ningún objeto es público.** La lectura de imágenes aprobadas se sirve mediante presigned GET de corta duración generadas por el backend.
 - **Flujo obligatorio de subida y moderación**:
   1. El cliente solicita intención de subida al backend.
-  2. El backend valida JWT, MIME permitido, extensión y tamaño; crea el registro `mediaAssets` en estado `PendingUpload` y devuelve una SAS de escritura.
-  3. El cliente sube la imagen **directamente** a un contenedor de staging.
+  2. El backend valida JWT, MIME permitido, extensión y tamaño; crea el registro `mediaAssets` en estado `PendingUpload` y devuelve una **presigned PUT** sobre la carpeta de staging del bucket.
+  3. El cliente sube la imagen **directamente** a S3 (subida cubierta por CORS configurado en Terraform; no hay URL anónima de lectura).
   4. El cliente notifica la finalización; el backend invoca **Azure AI Content Safety API**.
-  5. Si es segura → estado `Approved`; si no → se elimina el blob y estado `Rejected`.
+  5. Si es segura → estado `Approved`; si no → se elimina el objeto y estado `Rejected`.
   6. Solo un `mediaAssetId` en estado `Approved` puede asociarse a un producto publicado.
 - La moderación es **previa a la publicación**; una imagen no moderada nunca es visible.
 - Sin moderación o con error de Content Safety se aplica **fail-closed**: la imagen permanece no publicada.
@@ -144,7 +144,7 @@ Estas reglas son **duras**: ninguna `spec.md`, `plan.md` ni implementación pued
 ## 8. Notificaciones (innegociable)
 
 - **Firebase Cloud Messaging (FCM Admin SDK)** es el único mecanismo de push.
-- Las credenciales del service account se leen desde Azure Key Vault / variables de entorno; nunca se comitean.
+- Las credenciales del service account se leen desde variables de entorno de la instancia/contenedor; nunca se comitean.
 - El backend registra y depura `deviceTokens` por usuario; los tokens inválidos se eliminan tras el error de FCM.
 - El cliente **no** envía notificaciones directamente a FCM ni conoce el service account.
 - Las notificaciones son el resultado de eventos de dominio (cambio de estado de pedido, mensaje de chat, etc.), nunca de lógica en el cliente.
@@ -154,13 +154,14 @@ Estas reglas son **duras**: ninguna `spec.md`, `plan.md` ni implementación pued
 
 ## 9. Infraestructura, despliegue e IaC
 
-- **Azure App Service** detrás de **Load Balancer / Application Gateway** con health probes.
-- La API es **stateless**; cualquier estado efímero va a Redis.
-- **SignalR requiere backplane** (Azure SignalR Service o backplane Redis) para funcionar con múltiples instancias detrás del balanceador.
-- **Terraform** declara toda la infraestructura: App Service, load balancer, Key Vault, Blob Storage, Azure Cache for Redis, Content Safety, networking, diagnósticos y entornos (`dev`, `staging`, `prod`).
-- **Estado remoto de Terraform** con backend remoto y bloqueo; jamás estado local en el repositorio.
-- Prohibido crear o modificar recursos manualmente en Azure para staging/producción. Cambios fuera de Terraform se consideran incidentes.
-- MongoDB Atlas se aprovisiona por su propio mecanismo (Terraform provider o proceso documentado); connection strings viven en Key Vault.
+- **Una sola instancia EC2 t3.micro** (Ubuntu 24.04 LTS) con **Elastic IP fija**; costo $0 garantizado dentro del Free Tier (750 h/mes). Región obligatoria: `us-east-2`.
+- **Escalabilidad académica**: dentro de la instancia, **Docker Compose** levanta **2 réplicas del contenedor de la API** detrás de **Nginx** como balanceador local («balanceador o similar» del PDF académico § 13). Sin ALB ni Auto Scaling Groups (UNA instancia externa).
+- La API es **stateless**; cualquier estado efímero va a Redis (contenedor del mismo `docker-compose.yml`).
+- **SignalR requiere backplane** (backplane Redis contenerizado) para funcionar con múltiples réplicas detrás del Nginx.
+- **Terraform** declara toda la infraestructura en `infra/terraform`: EC2 + EIP, Security Group (22/80/443), bucket S3 privado (CORS + Block Public Access), rol/Instance Profile IAM (CloudWatch Logs, opcional SSM), log group y alerta de costo. Sin secretos en el código Terraform.
+- **El estado de Terraform nunca se comitea** (`*.tfstate*` ya excluido por `.gitignore`); el backend remoto (S3 + DynamoDB) es un refactor obligatorio antes del entorno de producción.
+- Prohibido crear o modificar recursos manualmente en el AWS de staging/producción. Cambios fuera de Terraform se consideran incidentes.
+- MongoDB Atlas se aprovisiona por su propio mecanismo; connection strings solo por variables de entorno de la instancia, nunca en código ni Terraform.
 - Promoción entre entornos mediante pipeline, no mediante cambios manuales.
 
 ---
@@ -247,7 +248,7 @@ Contrato único de error:
 1. **Unitarias** — Lógica de negocio y validaciones en Services sin dependencias externas (mocks).
 2. **Integración** — Endpoints con MongoDB en testcontainers; Redis mock o testcontainer.
 3. **Seguridad** — Al menos: token inválido rechazado, rol incorrecto rechazado, recurso ajeno rechazado, rate limit activo, revocación en Redis aplicada.
-4. **Media/IA** — SAS generada solo por backend, alcance mínimo, moderación antes de publicar, rechazo de contenido no seguro.
+4. **Media/IA** — Presigned generada solo por backend, alcance mínimo, moderación antes de publicar, rechazo de contenido no seguro.
 5. **Notificaciones** — Envío FCM con SDK mockeado, depuración de tokens inválidos, idempotencia.
 6. **Aceptación** — Escenarios Given/When/Then derivados de cada ficha de endpoint en `spec.md`.
 
@@ -272,6 +273,7 @@ Ninguna tarea se marca completada sin pruebas ejecutadas.
 | DEC-009 | Menús y horarios | **Resuelta**: eliminados del alcance (BR-004). |
 | DEC-010 | Moderación de imágenes | **Resuelta**: Azure AI Content Safety previa a publicación (§ 7). |
 | DEC-011 | Canal de notificaciones push | **Resuelta**: FCM Admin SDK exclusivamente (§ 8). |
+| DEC-018 | Nube y cómputo: cambio Azure → AWS | **Resuelta en v2.4**: nube única Amazon AWS (`us-east-2`); una EC2 t3.micro + EIP; 2 réplicas Docker Compose detrás de Nginx dentro de la instancia para cumplir «dos instancias» del PDF académico a costo $0; S3 privado + presigned (equivalente del flujo SAS); Redis como contenedor Compose sin ElastiCache; Content Safety se mantiene como servicio de moderación. Motivado por `docs/decisiones-pendientes-fase-02.md` DF02-11 (viabilidad de costo cero no demostrada en Azure). Decidido por el equipo UTTT-GO (propietario de producto), 2026-11-06. |
 
 ### 16.2 Detalles pendientes de diseño (sin reabrir decisiones funcionales)
 
@@ -288,14 +290,14 @@ Ninguna tarea se marca completada sin pruebas ejecutadas.
 - Escribir código de producción antes de que exista un `spec.md` aprobado para esa funcionalidad.
 - Cambiar el stack, la nube o las reglas innegociables sin actualizar este `constitution.md` y los agentes afectados.
 - Introducir carrito, menús, horarios, pasarelas de pago, storage alternativo o notificaciones fuera de FCM.
-- Permitir que el cliente genere URLs SAS o suba imágenes sin moderación previa.
+- Permitir que el cliente genere URLs presignadas o suba imágenes sin moderación previa.
 - Agregar endpoints no listados en la especificación API sin crear primero su ficha.
 
 ## Nota de conciliación funcional (2026-11-03)
 
 Las cinco decisiones confirmadas por el equipo sustituyen las premisas de producto canónico compartido, baja lógica como política final y chat indefinido. Esta revisión **no aprueba automáticamente** nuevos payloads, la retirada de API-016 ni una ruta de recuperación de contraseña. Se debe conciliar el inventario Excel antes de implementar contratos contradictorios.
-- Comitear secretos, contraseñas, tokens, connection strings o service accounts.
-- Crear recursos Azure manualmente fuera de Terraform en staging/producción.
+- Comitear secretos, contraseñas, tokens, connection strings, access keys de AWS o service accounts.
+- Crear recursos en la nube manualmente fuera de Terraform en staging/producción.
 
 ---
 
@@ -308,6 +310,7 @@ Las cinco decisiones confirmadas por el equipo sustituyen las premisas de produc
 | 2.1 | 2026-10-29 | Cierre de DEC-007: Azure App Service como entorno de cómputo oficial en Azure; actualización de § 2 y § 9 |
 | 2.2 | 2026-11-02 | Ratificación del equipo de DEC-002: autoactivación de vendedor en el MVP al completar el perfil de negocio; actualización de § 12 y § 16. DEC-003 y DEC-005 siguen abiertas. |
 | 2.3 | 2026-11-03 | Cinco decisiones funcionales confirmadas por el equipo: productos independientes por vendedor y búsqueda comparativa, eliminación de datos propios, chat temporal, recuperación por enlace y control de publicaciones. DEC-003/005 cerradas funcionalmente; implementación y contratos contradictorios pendientes. |
+| 2.4 | 2026-11-06 | Cambio formal de nube Azure → Amazon AWS (DEC-018) para garantizar costo cero y requisito académico de escalabilidad: EC2 t3.micro única (`us-east-2`, Ubuntu 24.04) + EIP; 2 réplicas Docker Compose detrás de Nginx; S3 privado + URLs presignadas (sustituye SAS de Blob, BR-007); Redis como contenedor Compose (sin ElastiCache); moderación se mantiene con Azure AI Content Safety; Terraform en `infra/terraform` con proveedor AWS. Actualiza § 2, § 5, § 6, § 7, § 8, § 9, § 15, § 16 y § 17. |
 
 ---
 

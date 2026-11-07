@@ -1,0 +1,20 @@
+# UTTT-GO Backend — Terraform example values (NO real secrets; git allows this file).
+# Copy to terraform.tfvars locally if you want to override defaults. terraform.tfvars
+# itself is gitignored. AWS credentials NEVER go here: use environment variables
+# (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_REGION) or "aws configure".
+
+aws_region             = "us-east-2"      # region matching the constitution (DEC-018)
+project_name           = "utttgo"
+environment            = "dev"
+instance_type          = "t3.micro"
+root_volume_size       = 25
+key_name               = null             # set to an existing EC2 key pair name to enable SSH
+install_docker         = true
+enable_ssm             = true
+app_log_group_name     = "/utttgo/api"
+log_retention_days     = 7
+images_bucket_suffix   = null             # null = random suffix for global uniqueness
+bucket_force_destroy   = true             # set false before prod
+allowed_origins        = ["*"]            # replace with explicit app origins before production
+budget_alert_email     = null             # set your email to enable the $0 cost alert
+budget_limit_usd       = 1

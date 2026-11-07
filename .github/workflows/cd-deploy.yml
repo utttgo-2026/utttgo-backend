@@ -1,0 +1,205 @@
+name: CD-Deploy Backend (EC2)
+
+# Despliegue controlado hacia la EC2 de DEC-018 (3.129.142.54).
+# Se ejecuta SOLO después de que CI-1 termine en verde sobre el mismo push a main.
+on:
+  workflow_run:
+    workflows: ['CI-1 Backend (local doubles)']
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: 'Motivo del despliegue manual a la EC2'
+        required: true
+        type: string
+
+# Solo lectura: el CD no toca el repositorio ni publica artefactos.
+permissions:
+  contents: read
+
+# Nunca cancelar un despliegue en curso: dos despliegues simultaneos se contradicen.
+concurrency:
+  group: cd-deploy-production
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    name: Gate (CI-1 verde y despliegue autorizado)
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'main')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      target_sha: ${{ github.event.workflow_run.head_sha || github.sha }}
+    steps:
+      - name: Resumen del gate
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          RUN_EVENT: ${{ github.event.workflow_run.event }}
+          RUN_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          TARGET_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+          DEPLOY_REASON: ${{ inputs.reason }}
+        run: |
+          set -euo pipefail
+          printf 'Evento: %s\n' "$EVENT_NAME"
+          printf 'SHA objetivo: %s\n' "$TARGET_SHA"
+          if [ "$EVENT_NAME" = 'workflow_run' ]; then
+            printf 'CI-1: %s (evento %s sobre %s)\n' "$RUN_CONCLUSION" "$RUN_EVENT" "$RUN_HEAD_BRANCH"
+          fi
+          if [ -n "$DEPLOY_REASON" ]; then
+            printf 'Motivo: %s\n' "$DEPLOY_REASON"
+          fi
+
+  deploy:
+    name: Despliegue en EC2 (docker compose)
+    needs: gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment:
+      name: production
+      url: https://3.129.142.54
+    steps:
+      - name: Preparar clave SSH y known_hosts
+        env:
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_KNOWN_HOSTS: ${{ secrets.EC2_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          if [ -z "${EC2_SSH_KEY:-}" ] || [ -z "${EC2_HOST:-}" ]; then
+            echo "Faltan los secretos EC2_SSH_KEY y/o EC2_HOST en el repositorio." >&2
+            exit 1
+          fi
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$EC2_SSH_KEY" | tr -d '\r' > ~/.ssh/id_ec2
+          chmod 600 ~/.ssh/id_ec2
+          if [ -n "${EC2_KNOWN_HOSTS:-}" ]; then
+            printf '%s\n' "$EC2_KNOWN_HOSTS" | tr -d '\r' > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -T 10 -H "$EC2_HOST" > ~/.ssh/known_hosts
+            echo "::warning::EC2_KNOWN_HOSTS no configurado: host key aceptada con ssh-keyscan, sin verificacion previa"
+          fi
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Desplegar en la EC2
+        id: deploy
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+          EC2_PORT: ${{ vars.EC2_PORT }}
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+          TARGET_SHA: ${{ needs.gate.outputs.target_sha }}
+        run: |
+          set -euo pipefail
+          : "${EC2_USER:=ubuntu}"
+          : "${EC2_PORT:=22}"
+          : "${DEPLOY_PATH:=/opt/utttgo}"
+          ssh_options=(
+            -i "$HOME/.ssh/id_ec2"
+            -p "$EC2_PORT"
+            -o BatchMode=yes
+            -o IdentitiesOnly=yes
+            -o StrictHostKeyChecking=yes
+            -o ConnectTimeout=15
+          )
+          ssh "${ssh_options[@]}" "$EC2_USER@$EC2_HOST" bash -s -- "$DEPLOY_PATH" "$TARGET_SHA" <<'REMOTE'
+          set -euo pipefail
+
+          DEPLOY_PATH="$1"
+          TARGET_SHA="$2"
+
+          cd "$DEPLOY_PATH"
+
+          if ! git fetch --prune origin "$TARGET_SHA"; then
+            git fetch --prune origin main
+            git reset --hard FETCH_HEAD
+            actual="$(git rev-parse HEAD)"
+            if [ "$actual" != "$TARGET_SHA" ]; then
+              echo "El commit en el servidor ($actual) no coincide con el SHA objetivo ($TARGET_SHA)." >&2
+              exit 1
+            fi
+          else
+            git reset --hard "$TARGET_SHA"
+          fi
+
+          actual="$(git rev-parse HEAD)"
+          if [ "$actual" != "$TARGET_SHA" ]; then
+            echo "El commit desplegado ($actual) no coincide con el SHA objetivo ($TARGET_SHA)." >&2
+            exit 1
+          fi
+          echo "Commit desplegado: $actual"
+
+          docker compose pull --ignore-buildable redis nginx
+          docker compose up -d --build --remove-orphans --scale api=2
+
+          deadline=$(( $(date +%s) + 240 ))
+          replicas_ok=0
+          while [ "$(date +%s)" -lt "$deadline" ]; do
+            replicas_ok=1
+            for container_id in $(docker compose ps -q api); do
+              health="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$container_id")"
+              echo "Replica $container_id: $health"
+              if [ "$health" != "healthy" ]; then
+                replicas_ok=0
+              fi
+            done
+            if [ "$replicas_ok" = "1" ]; then
+              break
+            fi
+            sleep 5
+          done
+
+          if [ "$replicas_ok" != "1" ]; then
+            echo "Las replicas de la API no quedaron sanas." >&2
+            docker compose ps >&2
+            docker compose logs --tail 80 api >&2
+            exit 1
+          fi
+
+          http_code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 http://127.0.0.1/api/v1/auth/me || echo 000)"
+          echo "HTTP /api/v1/auth/me -> $http_code"
+          case "$http_code" in
+            200|401|503) ;;
+            *)
+              echo "Smoke test HTTP fallido (codigo $http_code)." >&2
+              docker compose logs --tail 80 api >&2
+              exit 1
+              ;;
+          esac
+
+          docker compose ps
+          REMOTE
+
+      - name: Evidencia de despliegue
+        if: always()
+        env:
+          TARGET_SHA: ${{ needs.gate.outputs.target_sha }}
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+          DEPLOY_OUTCOME: ${{ steps.deploy.outcome }}
+        run: |
+          set -euo pipefail
+          mkdir -p ci-evidence
+          {
+            printf 'CD backend UTTT-GO\n'
+            printf 'SHA objetivo: %s\n' "$TARGET_SHA"
+            printf 'Instancia: %s\n' "$EC2_HOST"
+            printf 'Usuario: %s\n' "$EC2_USER"
+            printf 'Ruta de despliegue: %s\n' "$DEPLOY_PATH"
+            printf 'Resultado: %s\n' "$DEPLOY_OUTCOME"
+            printf 'Fecha UTC: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          } > ci-evidence/cd-deploy.txt
+
+      - name: Subir evidencia (sin secretos ni logs crudos)
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: cd-deploy-${{ needs.gate.outputs.target_sha }}
+          path: ci-evidence/
+          if-no-files-found: error
+          retention-days: 7
