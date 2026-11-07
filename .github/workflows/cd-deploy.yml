@@ -93,11 +93,17 @@ jobs:
           EC2_PORT: ${{ vars.EC2_PORT }}
           DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
           TARGET_SHA: ${{ needs.gate.outputs.target_sha }}
+          REPO_URL: ${{ vars.REPO_URL }}
+          # Token del job (solo lectura, con vida util limitada al run): autentica
+          # el clone/fetch del repositorio privado sin guardar credenciales en la
+          # instancia ni en el historial del remoto.
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           : "${EC2_USER:=ubuntu}"
           : "${EC2_PORT:=22}"
           : "${DEPLOY_PATH:=/opt/utttgo}"
+          : "${REPO_URL:=https://github.com/utttgo-2026/utttgo-backend.git}"
           ssh_options=(
             -i "$HOME/.ssh/id_ec2"
             -p "$EC2_PORT"
@@ -106,24 +112,68 @@ jobs:
             -o StrictHostKeyChecking=yes
             -o ConnectTimeout=15
           )
-          ssh "${ssh_options[@]}" "$EC2_USER@$EC2_HOST" bash -s -- "$DEPLOY_PATH" "$TARGET_SHA" <<'REMOTE'
+          ssh "${ssh_options[@]}" "$EC2_USER@$EC2_HOST" bash -s -- \
+            "$DEPLOY_PATH" "$TARGET_SHA" "$GITHUB_TOKEN" "$REPO_URL" <<'REMOTE'
           set -euo pipefail
 
           DEPLOY_PATH="$1"
           TARGET_SHA="$2"
+          GITHUB_TOKEN="${3:-}"
+          REPO_URL="${4:-https://github.com/utttgo-2026/utttgo-backend.git}"
+
+          if ! command -v git >/dev/null 2>&1; then
+            echo "git no esta instalado en la instancia."
+            if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+              sudo -n apt-get update -y
+              sudo -n apt-get install -y git
+            else
+              echo "Instala git en la instancia (sudo apt-get install -y git) o concede sudo sin password al usuario de despliegue." >&2
+              exit 1
+            fi
+          fi
+
+          if [ -n "$GITHUB_TOKEN" ]; then
+            auth_header="$(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 | tr -d '\n')"
+            git_auth() {
+              GIT_CONFIG_COUNT=1 \
+              GIT_CONFIG_KEY_0="http.https://github.com/.extraheader" \
+              GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $auth_header" \
+              git "$@"
+            }
+          else
+            git_auth() { git "$@"; }
+          fi
+
+          mkdir -p "$DEPLOY_PATH" 2>/dev/null || true
+          if [ ! -w "$DEPLOY_PATH" ]; then
+            sudo -n chown "$(id -u):$(id -g)" "$DEPLOY_PATH" 2>/dev/null || true
+          fi
+          if [ ! -w "$DEPLOY_PATH" ]; then
+            echo "El directorio $DEPLOY_PATH no es escribible por $(id -un)." >&2
+            exit 1
+          fi
+
+          if [ ! -e "$DEPLOY_PATH/.git" ]; then
+            if [ -n "$(ls -A "$DEPLOY_PATH" 2>/dev/null)" ]; then
+              echo "$DEPLOY_PATH no es un repositorio Git y no esta vacio; no se puede clonar encima." >&2
+              exit 1
+            fi
+            echo "Clon inicial del repositorio en $DEPLOY_PATH"
+            git_auth clone "$REPO_URL" "$DEPLOY_PATH"
+          fi
 
           cd "$DEPLOY_PATH"
 
-          if ! git fetch --prune origin "$TARGET_SHA"; then
-            git fetch --prune origin main
-            git reset --hard FETCH_HEAD
+          if ! git_auth fetch --prune origin "$TARGET_SHA"; then
+            git_auth fetch --prune origin main
+            git_auth reset --hard FETCH_HEAD
             actual="$(git rev-parse HEAD)"
             if [ "$actual" != "$TARGET_SHA" ]; then
               echo "El commit en el servidor ($actual) no coincide con el SHA objetivo ($TARGET_SHA)." >&2
               exit 1
             fi
           else
-            git reset --hard "$TARGET_SHA"
+            git_auth reset --hard "$TARGET_SHA"
           fi
 
           actual="$(git rev-parse HEAD)"
@@ -132,6 +182,10 @@ jobs:
             exit 1
           fi
           echo "Commit desplegado: $actual"
+
+          if [ ! -f "$DEPLOY_PATH/.env" ]; then
+            echo "::warning::No existe .env en $DEPLOY_PATH: Atlas, Supabase y S3 deben estar configurados en la instancia."
+          fi
 
           docker compose pull --ignore-buildable redis nginx
           docker compose up -d --build --remove-orphans --scale api=2

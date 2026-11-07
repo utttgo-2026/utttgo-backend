@@ -101,7 +101,7 @@ No son contratos aprobados del MVP por el solo hecho de figurar en un spec, plan
 | `specs/cross-cutting/infra-aws-free-tier/task.md` v1.1 | INFRA-T01..T15 | T01..T07, T09 `[x]`; T08, T10..T15 `[ ]` |
 | `infra/terraform/{main.tf,variables.tf,terraform.tfvars.example}` | Recursos AWS declarativos | `fmt`, `init -backend=false` y `validate` en verde; **aplicada por el propietario** (EIP `3.129.142.54`); pendiente `apply` del hop limit de IMDS y de la alerta de Budget |
 | `docker-compose.yml`, `Dockerfile`, `nginx/`, `setup.sh` | Despliegue en la EC2: 2 réplicas de la API + Redis interno + Nginx + TLS | `docker compose config`, build de imagen, `nginx -t` y balanceo entre réplicas verificados localmente; **ejecución en la instancia pendiente** |
-| `.github/workflows/ci-1.yml` + `.github/workflows/cd-deploy.yml` | Gate CI (NuGetAudit, formato, build, tres suites, Gitleaks, Semgrep informativo) y CD-1 (SSH al SHA verificado, `docker compose up -d --build --scale api=2`, salud y smoke) | `actionlint` sin errores; **sin run de CD**: faltan secrets, environment con revisores y deploy key en la instancia |
+| `.github/workflows/ci-1.yml` + `.github/workflows/cd-deploy.yml` | Gate CI (NuGetAudit, formato, build, tres suites, Gitleaks, Semgrep informativo) y CD-1 (SSH al SHA verificado, `docker compose up -d --build --scale api=2`, salud y smoke) | `actionlint` sin errores; **primer run falló** (`not a git repository`: faltaba el clon inicial) y fue corregido; pendiente un run verde con secrets, environment con revisores y `.env` en la instancia |
 
 La evidencia de costo $0 depende de la alerta de AWS Budget tras el `apply` (DF02-11); hasta entonces no hay evidencia de costo ni verificación de TLS en la nube.
 

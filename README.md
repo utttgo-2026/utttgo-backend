@@ -265,7 +265,7 @@ Secretos que hay que configurar en **Settings → Secrets and variables → Acti
 | `EC2_USER` | `ubuntu` (o el usuario de despliegue creado en la instancia) |
 | `EC2_KNOWN_HOSTS` | Recomendado: línea `known_hosts` de la instancia (evita aceptar la clave del host sin verificar) |
 
-Variables opcionales: `DEPLOY_PATH` (`/opt/utttgo`) y `EC2_PORT` (`22`). Además, crea el environment `production` con revisores requeridos y registra la clave pública de despliegue como **deploy key de solo lectura** del repositorio en la instancia, para que `git fetch` funcione sin credenciales personales.
+Variables opcionales: `DEPLOY_PATH` (`/opt/utttgo`), `EC2_PORT` (`22`) y `REPO_URL` (`https://github.com/utttgo-2026/utttgo-backend.git`). El primer despliegue **clona** el repositorio en la instancia si la ruta no es un repositorio Git; después solo hace `fetch`/`reset` al SHA verificado. El repositorio es privado: el workflow autentica el `clone`/`fetch` con el token del propio job (solo lectura, con vida útil limitada al run), sin guardar credenciales en la instancia. Además, crea el environment `production` con revisores requeridos y, si prefieres evitar el token, registra la clave pública de despliegue como **deploy key de solo lectura** del repositorio en la instancia.
 
 ---
 
