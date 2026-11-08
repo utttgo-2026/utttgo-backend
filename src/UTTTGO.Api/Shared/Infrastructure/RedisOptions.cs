@@ -23,6 +23,7 @@ public sealed class RateLimitingOptions
     public RateLimitPolicy AuthLoginEmail { get; set; } = new();
     public RateLimitPolicy PublicSeller { get; set; } = new();
     public RateLimitPolicy AdminUsers { get; set; } = new();
+    public RateLimitPolicy Health { get; set; } = new();
 }
 
 public sealed class RedisRateLimiter(IServiceProvider services, IOptionsMonitor<RateLimitingOptions> options,
@@ -57,6 +58,7 @@ public sealed class RedisRateLimiter(IServiceProvider services, IOptionsMonitor<
                 "auth-login-email" => policies.AuthLoginEmail,
                 "public-seller" => policies.PublicSeller,
                 "admin-users" => policies.AdminUsers,
+                "health" => policies.Health,
                 _ => throw new InvalidOperationException("Unknown rate limit policy.")
             };
             if (policy.Limit <= 0 || policy.WindowSeconds <= 0 || string.IsNullOrWhiteSpace(partition))

@@ -49,7 +49,7 @@ En fase 02, `docs/academic-requirements-phase-02.md` distingue obligaciones del 
    dotnet restore UTTTGO.Backend.slnx
    dotnet run --project src/UTTTGO.Api/UTTTGO.Api.csproj
    ```
-4. Tras implementar la sonda de salud, verificar `GET /health`; **no existe todavía en la plantilla actual**.
+4. Verificar la sonda operativa `GET /health`: devuelve `200` con `{"status":"Healthy","checks":{...}}` si MongoDB y Redis responden, y `503` con el contrato de error único si alguna dependencia crítica falla. Implementada en `src/UTTTGO.Api/Shared/Health/` (ficha `specs/cross-cutting/api-health-probe/`).
 
 Para `dotnet run`, exportar las mismas variables del `.env` o usar secretos locales de desarrollo (`dotnet user-secrets`), nunca comiteados. En la EC2, los valores son variables de entorno del contenedor (`.env` del servidor, fuera de Git); la sonda de salud y el despliegue se coordinan con el `docker-compose.yml` futuro.
 
@@ -299,7 +299,7 @@ Flujo obligatorio:
 
 - Serilog con consola JSON en desarrollo y entrega de logs a CloudWatch Logs desde la instancia (cuando se habilite el agente o el sink en la app).
 - `correlationId` en cada evento de log del ciclo de vida.
-- `GET /health` verifica MongoDB y Redis; devuelve `503` si una dependencia crítica falla.
+- `GET /health` verifica MongoDB y Redis; devuelve `503` si una dependencia crítica falla. Es la **readiness** del stack: el healthcheck de Nginx la consulta; el healthcheck del contenedor de la API sigue siendo **liveness** (TCP al puerto 8080) para no reiniciar réplicas por una caída de Atlas.
 - Logs de moderación y FCM con resultado y `correlationId`, sin payloads sensibles.
 - No se adopta Prometheus/Grafana en esta fase.
 - No loggear tokens, presigned completas, `jti`, access keys ni service accounts.

@@ -21,6 +21,7 @@
 | INFRA-T13 | Ejecutar `setup.sh` en la EC2 con un dominio real, verificar 2 réplicas sanas, TLS emitido y hook de renovación | INFRA-11, INFRA-12, INFRA-AC-12 | Propietario | `[ ]` | Pendiente: requiere registro A apuntando a `3.129.142.54` y `.env` con Atlas/Supabase/S3 reales |
 | INFRA-T14 | Habilitar la alerta de Budget tras el `apply` y adjuntar la evidencia de costo $0 del primer mes | INFRA-AC-07 | Propietario + responsable de presupuesto | `[ ]` | Pendiente; cierra el punto residual de DF02-11 |
 | INFRA-T15 | Verificar la memoria de la instancia con `docker stats` y ajustar límites si el OOM killer interviene | INFRA-15 | Propietario | `[ ]` | Pendiente de la ejecución en la EC2 |
+| INFRA-T16 | Sustituir el healthcheck de Nginx por la sonda real `GET /health` y documentar la separación liveness/readiness | INFRA-16, INFRA-AC-13, HP-07, HP-08 | AGENT-BE-01 | `[x]` | `docker-compose.yml`: Nginx consulta `http://127.0.0.1/health`; la API conserva el sondeo TCP al puerto 8080. Verificado en stack local: Nginx `healthy` con Mongo y Redis, `unhealthy` al detener Mongo, y las réplicas de la API siguen `healthy` |
 
 ## 2. Comandos pendientes para el propietario (PowerShell)
 

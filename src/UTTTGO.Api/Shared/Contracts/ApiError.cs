@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.Http;
 
-namespace UTTTGO.Api.Modules.Identity.Contracts;
+namespace UTTTGO.Api.Shared.Contracts;
 
 public sealed record ApiError(string CorrelationId, int Status, string Code, string Message)
 {

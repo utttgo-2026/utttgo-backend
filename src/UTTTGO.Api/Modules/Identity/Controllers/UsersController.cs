@@ -3,6 +3,7 @@ using FluentValidation;
 using Microsoft.AspNetCore.Mvc;
 using UTTTGO.Api.Modules.Identity.Application;
 using UTTTGO.Api.Modules.Identity.Contracts;
+using UTTTGO.Api.Shared.Contracts;
 
 namespace UTTTGO.Api.Modules.Identity.Controllers;
 

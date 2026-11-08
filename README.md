@@ -202,11 +202,17 @@ dotnet restore UTTTGO.Backend.slnx
 dotnet run --project src/UTTTGO.Api/UTTTGO.Api.csproj
 ```
 
-La URL/puerto depende de `launchSettings.json`. **Cuando se implemente** la sonda operativa, verifica `GET /health` (la plantilla aún no la expone):
+La URL/puerto depende de `launchSettings.json`. La sonda operativa está implementada; verifica `GET /health`:
 
 ```powershell
-curl https://localhost:5001/health
+curl http://localhost:5001/health
 ```
+
+Respuesta `200` cuando MongoDB y Redis responden:
+```json
+{"status":"Healthy","checks":{"mongodb":"Healthy","redis":"Healthy"}}
+```
+Si alguna dependencia crítica falla devuelve `503` con el contrato de error único (`correlationId`, `status`, `code: DEPENDENCY_UNAVAILABLE`, `message`), sin revelar cuál falló.
 
 ### 5. Ejecutar pruebas
 

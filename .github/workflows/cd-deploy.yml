@@ -225,6 +225,22 @@ jobs:
               ;;
           esac
 
+          health_code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 http://127.0.0.1/health || echo 000)"
+          echo "HTTP /health -> $health_code"
+          case "$health_code" in
+            200)
+              echo "health_code=$health_code" >> "$GITHUB_OUTPUT"
+              ;;
+            503)
+              echo "::warning::La sonda /health devolvio 503: el despliegue esta activo pero MongoDB o Redis no responden."
+              echo "health_code=$health_code" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "::warning::La sonda /health devolvio $health_code; se requiere verificacion manual."
+              echo "health_code=$health_code" >> "$GITHUB_OUTPUT"
+              ;;
+          esac
+
           docker compose ps
           REMOTE
 
@@ -236,6 +252,7 @@ jobs:
           EC2_USER: ${{ secrets.EC2_USER }}
           DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
           DEPLOY_OUTCOME: ${{ steps.deploy.outcome }}
+          HEALTH_STATUS: ${{ steps.deploy.outputs.health_code }}
         run: |
           set -euo pipefail
           mkdir -p ci-evidence
@@ -246,6 +263,7 @@ jobs:
             printf 'Usuario: %s\n' "$EC2_USER"
             printf 'Ruta de despliegue: %s\n' "$DEPLOY_PATH"
             printf 'Resultado: %s\n' "$DEPLOY_OUTCOME"
+            printf 'Sonda /health: %s\n' "${HEALTH_STATUS:-no ejecutada}"
             printf 'Fecha UTC: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           } > ci-evidence/cd-deploy.txt
 

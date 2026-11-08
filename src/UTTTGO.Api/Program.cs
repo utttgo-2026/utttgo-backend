@@ -15,6 +15,8 @@ using UTTTGO.Api.Modules.Sellers.Application;
 using UTTTGO.Api.Modules.Sellers.Contracts;
 using UTTTGO.Api.Modules.Sellers.Infrastructure;
 using UTTTGO.Api.Modules.Sellers.Validators;
+using UTTTGO.Api.Shared.Contracts;
+using UTTTGO.Api.Shared.Health;
 using UTTTGO.Api.Shared.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -114,6 +116,10 @@ builder.Services.AddScoped<ISupabaseSessionIdentity>(services => services.GetReq
 builder.Services.AddScoped<IAdminUsersService, AdminUsersService>();
 builder.Services.AddScoped<IValidator<AdminUsersQueryRequest>, AdminUsersQueryRequestValidator>();
 builder.Services.AddSingleton<IAdminUserListReader, MongoAdminUserListReader>();
+builder.Services.AddSingleton<IMongoHealthProbe, MongoHealthProbe>();
+builder.Services.AddSingleton<IRedisHealthProbe, RedisHealthProbe>();
+builder.Services.AddSingleton<IHealthService, HealthService>();
+builder.Services.AddScoped<IHealthRateLimitGate, RedisHealthRateLimitGate>();
 builder.Services.AddScoped<IAdminUsersRateLimitGate, RedisAdminUsersRateLimitGate>();
 builder.Services.AddSingleton<IAdminUsersAudit, UnconfiguredAdminUsersAudit>();
 builder.Services.AddScoped<IValidator<SellerIdRequest>, SellerIdRequestValidator>();

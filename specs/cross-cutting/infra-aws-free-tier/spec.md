@@ -28,6 +28,7 @@ Alcance de esta spec: únicamente los recursos AWS declarativos y su verificaci�
 | INFRA-13 | La imagen de la API se construye desde el repositorio (multi-stage .NET 10), corre como usuario no root y sin secretos incrustados | `Dockerfile`, `.dockerignore` |
 | INFRA-14 | Los contenedores alcanzan las credenciales de AWS por el Instance Profile (IMDSv2), sin claves en la imagen ni en variables de Compose | `http_put_response_hop_limit = 2` en `aws_instance.api` |
 | INFRA-15 | El consumo de memoria se acota por servicio para una t3.micro (1 GiB): API 220 MiB por réplica, Redis 128 MiB, Nginx 64 MiB y `DOTNET_GCHeapHardLimit` de 96 MiB | `docker-compose.yml` (`deploy.resources.limits`, variables `DOTNET_*`) |
+| INFRA-16 | El healthcheck del balanceador consulta una ruta **real** de la API (`GET /health`, ficha `specs/cross-cutting/api-health-probe/`); el de la API permanece como liveness TCP para no reiniciar réplicas por una caída de Atlas | `docker-compose.yml` (healthcheck de Nginx y de API) |
 
 ## 3. Recursos declarados
 
@@ -82,6 +83,7 @@ Salidas: `instance_id`, `instance_public_ip`, `elastic_ip`, `images_bucket_name`
 | INFRA-AC-10 | Redis no es alcanzable desde el host (sin puertos publicados) y sí desde el contenedor de la API. |
 | INFRA-AC-11 | `nginx -t` valida tanto la configuración HTTP como la plantilla TLS renderizada con un dominio real. |
 | INFRA-AC-12 | En la EC2, `setup.sh` completa la instalación y deja el stack arriba con 2 réplicas sanas, el certificado emitido y la renovación con hook configurada. |
+| INFRA-AC-13 | El contenedor Nginx queda `healthy` solo cuando `GET /health` responde `200` y pasa a `unhealthy` cuando MongoDB o Redis no responden, sin que las réplicas de la API se reinicien. |
 
 ## 6. Riesgos
 
