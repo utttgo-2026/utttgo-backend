@@ -127,6 +127,16 @@ builder.Services.AddScoped<ISellerProfileService, SellerProfileService>();
 builder.Services.AddScoped<IPublicSellerRateLimitGate, RedisPublicSellerRateLimitGate>();
 builder.Services.AddSingleton<ISellerProfileRepository, MongoSellerProfileRepository>();
 builder.Services.AddSingleton<ISellerRatingsReader, UnconfiguredSellerRatingsReader>();
+builder.Services.AddScoped<IAuthenticatedLocalProfileReader, AuthenticatedLocalProfileReader>();
+builder.Services.AddSingleton<ISellerRolePromotion, MongoSellerRolePromotion>();
+builder.Services.AddScoped<ISellerRateLimitGate, RedisSellerRateLimitGate>();
+builder.Services.AddSingleton<ISellerProfileWriter, MongoSellerProfileWriter>();
+builder.Services.AddScoped<ISellerActivationService, SellerActivationService>();
+builder.Services.AddScoped<IOwnSellerProfileService, OwnSellerProfileService>();
+builder.Services.AddScoped<IUpdateOwnSellerProfileService, UpdateOwnSellerProfileService>();
+builder.Services.AddScoped<IValidator<SellerActivationRequest>, SellerActivationRequestValidator>();
+builder.Services.AddScoped<IValidator<UpdateSellerProfileRequest>, UpdateSellerProfileRequestValidator>();
+builder.Services.AddHostedService<SellersMongoIndexes>();
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
 

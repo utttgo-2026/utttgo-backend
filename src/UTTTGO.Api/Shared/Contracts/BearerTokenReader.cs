@@ -1,8 +1,8 @@
 using Microsoft.AspNetCore.Http;
 
-namespace UTTTGO.Api.Modules.Identity.Controllers;
+namespace UTTTGO.Api.Shared.Contracts;
 
-internal static class BearerTokenReader
+public static class BearerTokenReader
 {
     public static string? Read(HttpRequest request)
     {

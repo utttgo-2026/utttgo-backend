@@ -35,9 +35,9 @@ Esta versión **aprueba el Sprint 1**: que un usuario autenticado pueda autoacti
 
 | Ficha | Método y ruta | Actor | Estado |
 |---|---|---|---|
-| API-009 | `POST /api/v1/sellers/activation-requests` | Usuario autenticado con cuenta `Active` | **Aprobado (Sprint 1)** |
-| API-010 | `PATCH /api/v1/sellers/me` | Vendedor autenticado (propietario implícito) | **Aprobado (Sprint 1)** |
-| DEC-019.d | `GET /api/v1/sellers/me` | Usuario autenticado | **Aprobado (Sprint 1, ficha nueva)** |
+| API-009 | `POST /api/v1/sellers/activation-requests` | Usuario autenticado con cuenta `Active` | **Aprobado e implementado** |
+| API-010 | `PATCH /api/v1/sellers/me` | Vendedor autenticado (propietario implícito) | **Aprobado e implementado** |
+| DEC-019.d | `GET /api/v1/sellers/me` | Usuario autenticado | **Aprobado e implementado** (ficha nueva) |
 
 ### 2.2 Diferido (no implementado en esta versión)
 
@@ -230,8 +230,8 @@ Los escenarios T-CAT-01..08 de v2.0 (catálogo, homónimos, concurrencia de stoc
 - [x] API-016 resuelta por decisión del propietario: no se implementa ni redirige (DEC-019.c).
 - [x] Diseño de datos del Sprint 1 con invariantes, estados e índices justificables.
 - [x] `plan.md` v2.1 y `task.md` v2.1 alineados con este spec.
-- [ ] Pruebas unitarias, de integración y de seguridad del Sprint 1 ejecutadas y en verde en Release.
-- [ ] Evidencia de despliegue en la EC2 con `/health` en `Healthy` y los nuevos endpoints verificados.
+- [x] Pruebas unitarias, de integración y de seguridad del Sprint 1 ejecutadas y en verde en Release (187 unitarias, 185 de integración, 93 de seguridad).
+- [ ] Evidencia de despliegue en la EC2 con `/health` en `Healthy` y los nuevos endpoints verificados (tarea TASK-SELLER-041: requiere el merge y una cuenta real `@uttt.edu.mx` confirmada).
 
 **Aprobación:** propietario del producto UTTT-GO, 2026-11-08 (Sprint 1). El Sprint 2 (catálogo) requiere aprobación propia antes de escribir código.
 

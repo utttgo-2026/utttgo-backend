@@ -24,7 +24,7 @@ public sealed class SellerProfileService(
                 return new(SellerProfileOutcome.RateLimited);
 
             var seller = await sellers.FindByIdAsync(sellerId, cancellationToken);
-            if (seller is null || seller.Status is "Deleted" or "Suspended")
+            if (seller is null || seller.Status is "Deleted" or "Suspended" or "PendingActivation")
                 return new(SellerProfileOutcome.NotFound);
             if (seller.SellerId != sellerId || string.IsNullOrWhiteSpace(seller.DisplayName) ||
                 seller.Status is not ("Active" or "Inactive"))

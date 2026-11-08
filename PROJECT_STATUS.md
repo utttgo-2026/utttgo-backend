@@ -92,7 +92,9 @@ Estas sondas prueban **disponibilidad y enrutamiento**, no el flujo autenticado 
 
 ### 4.2 Suites locales
 
-`dotnet build -c Release` sin errores · `dotnet format --verify-no-changes` sin diferencias · las tres suites en verde. **Los tests usan dobles**: no prueban Atlas, Redis ni Supabase reales; para eso hacen falta contenedores de prueba (Testcontainers) o un entorno no productivo. El histórico por endpoint está en `docs/qa-api-*.md`.
+`dotnet build -c Release` sin errores (0 advertencias) · `dotnet format --verify-no-changes` sin diferencias · **187 unitarias + 185 de integración + 93 de seguridad en verde** (465 pruebas; el Sprint 1 de vendedor añadió 103). **Los tests usan dobles**: no prueban Atlas, Redis ni Supabase reales; para eso hacen falta contenedores de prueba (Testcontainers) o un entorno no productivo. El histórico por endpoint está en `docs/qa-api-*.md`.
+
+Además, contra **MongoDB 7 real** (contenedor local) se validó el diseño del Sprint 1: el índice único **parcial** `ownerUserId_unique` convive con documentos heredados sin `ownerUserId`, rechaza el duplicado con error `11000` y la activación por `version` se aplica de forma condicional. Smoke con el stack local completo (2 réplicas + Nginx + Redis + Mongo): `/health` → `200` con `mongodb` y `redis` en `Healthy`; las tres rutas de vendedor responden `401` sin token válido.
 
 ## 5. Documentación SDD presente
 

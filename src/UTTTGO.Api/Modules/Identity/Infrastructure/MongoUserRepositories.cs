@@ -86,5 +86,5 @@ public sealed class MongoUserRepositories(MongoStore store) : IUserRegistrationR
 
     private static LocalLoginProfile ToProfile(UserDocument user) =>
         new(user.Id.ToString(), user.SupabaseUserId, user.Email, user.AccountStatus,
-            user.Roles, user.DisplayName, user.Phone, user.AvatarMediaAssetId, user.Version);
+            user.Roles, user.DisplayName, user.Phone, user.AvatarMediaAssetId, user.Version, user.SellerId);
 }
