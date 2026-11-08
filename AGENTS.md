@@ -1,7 +1,7 @@
 # AGENTS.md — Backend UTTT-GO
 > Manual operativo de agentes y desarrolladores del backend.
-> Versión 2.3 · 2026-11-06
-> Alineado con `docs/constitution.md` v2.4 (DEC-018: nube AWS). Si hay conflicto, gana `docs/constitution.md`.
+> Versión 2.4 · 2026-11-08
+> Alineado con `docs/constitution.md` v2.5 (DEC-018: nube AWS; DEC-019: retirada de API-016 e identidad del vendedor). Si hay conflicto, gana `docs/constitution.md`.
 > Flujo SDD obligatorio: `docs/constitution.md` → `spec.md` → `plan.md` → `task.md` → implementación.
 > Referencias metodológicas y técnicas del profesor para **todo el backend**: `docs/referencias-profesor-backend.md`; son subordinadas a la constitución y no modifican contratos aprobados.
 
@@ -173,7 +173,7 @@ Antes de pedir revisión de un cambio:
 - [ ] Sin secretos en el diff; secret scanning del CI en verde.
 - [ ] Sin endpoints nuevos fuera de `spec.md` y sin contratos sin ficha.
 
-**Alcance provisional del MVP:** las 42 fichas API-001 a API-042 de `material/UTTT_GO_Punto_4_Especificacion_API_v1.xlsx` siguen sin modificación formal. API-016 contradice el modelo confirmado; se propone retirar/sustituir su función por búsqueda y filtros de API-011, **sin aprobar aún retiro, redirección o cambio de ruta**. Cualquier ruta adicional requiere ficha nueva y aprobación; `GET /health` es sonda operativa. Las diferencias constan en `docs/traceability.md` y se concilian `constitution.md` → `spec.md` → `plan.md` → `task.md`.
+**Alcance provisional del MVP:** las 42 fichas API-001 a API-042 de `material/UTTT_GO_Punto_4_Especificacion_API_v1.xlsx` siguen sin modificación formal. **API-016 está resuelta por DEC-019 (constitución v2.5): no se implementa ni se redirige** y su función queda cubierta por la búsqueda y los filtros de API-011. Cualquier ruta adicional requiere ficha nueva y aprobación (aprobada: `GET /api/v1/sellers/me`, DEC-019.d); `GET /health` es sonda operativa. Las diferencias constan en `docs/traceability.md` y se concilian `constitution.md` → `spec.md` → `plan.md` → `task.md`.
 
 **NFR:** no hay umbrales de rendimiento o cobertura aprobados todavía. No inventarlos. Cuando se definan en un `spec.md` de NFR, cada umbral debe ser verificable por comando o test y este archivo se actualiza.
 

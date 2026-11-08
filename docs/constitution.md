@@ -1,5 +1,6 @@
 # constitution.md — Backend UTTT-GO
-> Versión 2.4 · Archivo raíz de la metodología Spec-Driven Development
+> Versión 2.5 · Archivo raíz de la metodología Spec-Driven Development
+> v2.5: el propietario del producto aprobó DEC-019: retirada funcional de API-016 sin alterar el inventario Excel, identidad propia del vendedor (`sellers._id` + `ownerUserId` único), ficha nueva `GET /api/v1/sellers/me` y alcance del Sprint 1 de la fase 03 (autoactivación y perfil de negocio, sin imágenes). No cambia nube, stack ni reglas de negocio.
 > v2.4: el equipo aprobó el cambio de nube Microsoft Azure → Amazon AWS (DEC-018) para garantizar costo cero y escalabilidad académica; infraestructura en `infra/terraform` con proveedor AWS. Los contratos API contradictorios siguen sin quedar aprobados por este cambio.
 > Todo archivo del proyecto (AGENTS.md, memoria.md, spec.md, plan.md, task.md, skills) debe estar alineado con este documento.
 > Cualquier decisión aquí listada como **innegociable** no puede revertirse sin una nueva versión explícita de este archivo.
@@ -274,6 +275,7 @@ Ninguna tarea se marca completada sin pruebas ejecutadas.
 | DEC-010 | Moderación de imágenes | **Resuelta**: Azure AI Content Safety previa a publicación (§ 7). |
 | DEC-011 | Canal de notificaciones push | **Resuelta**: FCM Admin SDK exclusivamente (§ 8). |
 | DEC-018 | Nube y cómputo: cambio Azure → AWS | **Resuelta en v2.4**: nube única Amazon AWS (`us-east-2`); una EC2 t3.micro + EIP; 2 réplicas Docker Compose detrás de Nginx dentro de la instancia para cumplir «dos instancias» del PDF académico a costo $0; S3 privado + presigned (equivalente del flujo SAS); Redis como contenedor Compose sin ElastiCache; Content Safety se mantiene como servicio de moderación. Motivado por `docs/decisiones-pendientes-fase-02.md` DF02-11 (viabilidad de costo cero no demostrada en Azure). Decidido por el equipo UTTT-GO (propietario de producto), 2026-11-06. |
+| DEC-019 | Identidad del vendedor, retirada de API-016, ficha de lectura propia y alcance del Sprint 1 de la fase 03 | **Resuelta en v2.5** (propietario de producto, 2026-11-08): (a) **API-016** (`GET /api/v1/products/{productId}/offers`) **no se implementa ni se redirige**; su función queda cubierta por la búsqueda/filtros de API-011 y el inventario Excel de 42 fichas no se modifica; (b) **identidad del vendedor**: `sellers._id` es un `ObjectId` propio, `sellers.ownerUserId` referencia `users._id` con índice único y `users.sellerId` guarda la referencia inversa; el `sellerId` publicado por la API es `sellers._id` y el rol `Seller` lo asigna el backend al perfil local (BR-009, DEC-002); (c) **ficha nueva aprobada** `GET /api/v1/sellers/me` para que el cliente móvil lea su propia activación, sin datos de contacto; (d) **alcance del Sprint 1**: solo autoactivación y perfil de negocio, sin `products`/`categories`, sin imágenes (Media en fase 05 con su propio `spec.md`), sin carrito, total, pedidos, Reviews, push ni chat; la eliminación de producto queda como baja lógica en el Sprint 2 y la de cuenta sigue coordinada con DEC-003. Contratos completos en `specs/phase-03-catalog-offers/spec.md` v2.1. |
 
 ### 16.2 Detalles pendientes de diseño (sin reabrir decisiones funcionales)
 
@@ -281,7 +283,8 @@ Ninguna tarea se marca completada sin pruebas ejecutadas.
 |---|---|---|
 | DEC-003 | Datos compartidos entre usuarios, operaciones activas, consistencia, reintentos y eliminación de identidad/activos | **Pendiente técnico/privacidad**; no contradice BR-011. |
 | DEC-005 | Almacenamiento, definición de pedido completado, cronograma y mecanismo verificable de purga | **Pendiente técnico**; no contradice BR-012. |
-| API-016 | Ficha de comparativa basada en producto maestro | **Pendiente aprobación formal**: proponer retiro/sustitución funcional con API-011 (búsqueda/filtros), sin alterar aún el Excel ni redirigir la ruta. |
+| API-011..015 | Fichas de lectura/escritura de productos, pausa/reactivación y parameters de búsqueda | **Pendiente de conciliación** (Sprint 2 de la fase 03); API-016 ya no bloquea el Sprint 1 por DEC-019. |
+| API-019..022 | DTOs, `slug`, política de orden y desactivación/reactivación de categorías | **Pendiente de conciliación** (Sprint 2); la desactivación no borra productos del vendedor. |
 
 ---
 
@@ -296,6 +299,7 @@ Ninguna tarea se marca completada sin pruebas ejecutadas.
 ## Nota de conciliación funcional (2026-11-03)
 
 Las cinco decisiones confirmadas por el equipo sustituyen las premisas de producto canónico compartido, baja lógica como política final y chat indefinido. Esta revisión **no aprueba automáticamente** nuevos payloads, la retirada de API-016 ni una ruta de recuperación de contraseña. Se debe conciliar el inventario Excel antes de implementar contratos contradictorios.
+**DEC-019 (v2.5, 2026-11-08) resuelve la retirada de API-016** dentro de la fase 03 sin modificar el Excel ni redirigir la ruta; el resto de esta nota sigue vigente para payloads y recuperación de contraseña.
 - Comitear secretos, contraseñas, tokens, connection strings, access keys de AWS o service accounts.
 - Crear recursos en la nube manualmente fuera de Terraform en staging/producción.
 
@@ -311,6 +315,7 @@ Las cinco decisiones confirmadas por el equipo sustituyen las premisas de produc
 | 2.2 | 2026-11-02 | Ratificación del equipo de DEC-002: autoactivación de vendedor en el MVP al completar el perfil de negocio; actualización de § 12 y § 16. DEC-003 y DEC-005 siguen abiertas. |
 | 2.3 | 2026-11-03 | Cinco decisiones funcionales confirmadas por el equipo: productos independientes por vendedor y búsqueda comparativa, eliminación de datos propios, chat temporal, recuperación por enlace y control de publicaciones. DEC-003/005 cerradas funcionalmente; implementación y contratos contradictorios pendientes. |
 | 2.4 | 2026-11-06 | Cambio formal de nube Azure → Amazon AWS (DEC-018) para garantizar costo cero y requisito académico de escalabilidad: EC2 t3.micro única (`us-east-2`, Ubuntu 24.04) + EIP; 2 réplicas Docker Compose detrás de Nginx; S3 privado + URLs presignadas (sustituye SAS de Blob, BR-007); Redis como contenedor Compose (sin ElastiCache); moderación se mantiene con Azure AI Content Safety; Terraform en `infra/terraform` con proveedor AWS. Actualiza § 2, § 5, § 6, § 7, § 8, § 9, § 15, § 16 y § 17. |
+| 2.5 | 2026-11-08 | DEC-019: retirada funcional de API-016 (no se implementa ni redirige; cubierta por API-011), identidad propia del vendedor (`sellers._id` + `ownerUserId` único + `users.sellerId`), ficha nueva `GET /api/v1/sellers/me` y alcance del Sprint 1 de la fase 03 (autoactivación y perfil de negocio, sin imágenes). Actualiza § 16.1, § 16.2 y la nota de conciliación. Sin cambios de nube, stack ni reglas de negocio. |
 
 ---
 
