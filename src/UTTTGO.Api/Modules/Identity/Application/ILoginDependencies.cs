@@ -20,7 +20,7 @@ public interface ILoginProfileRepository
 
 public sealed record LocalLoginProfile(string Id, string SupabaseUserId, string Email,
     string AccountStatus, IReadOnlyList<string> Roles, string? DisplayName = null,
-    string? Phone = null, string? AvatarMediaAssetId = null, long Version = 0);
+    string? Phone = null, string? AvatarMediaAssetId = null, long Version = 0, string? SellerId = null);
 
 // A real adapter must validate JWT signature, issuer, audience, expiry, jti/session_id and Redis blacklist.
 public interface ILoginJwtGate

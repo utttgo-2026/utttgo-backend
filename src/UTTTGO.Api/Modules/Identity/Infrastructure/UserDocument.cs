@@ -27,6 +27,9 @@ public sealed class UserDocument
     [BsonElement("roles")]
     public List<string> Roles { get; set; } = [];
 
+    [BsonElement("sellerId")]
+    public string? SellerId { get; set; }
+
     [BsonElement("accountStatus")]
     public string AccountStatus { get; set; } = string.Empty;
 

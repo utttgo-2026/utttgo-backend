@@ -11,7 +11,7 @@ El backend planifica un catálogo de productos independientes de cada vendedor, 
 UTTT-GO conecta a estudiantes, docentes y personal de la UTTT con vendedores de alimentos dentro y alrededor del campus. El backend:
 
 - Prevê un **catálogo de productos propios de cada vendedor**, con ingredientes, precio, existencias y disponibilidad.
-- Permite buscar/filtrar opciones de distintos vendedores por datos y calificaciones disponibles; API-016 de ofertas compartidas requiere retiro/sustitución formal.
+- Permite buscar/filtrar opciones de distintos vendedores por datos y calificaciones disponibles; API-016 de ofertas compartidas **queda retirada** por DEC-019 (no se implementa ni se redirige; la cubre API-011).
 - Reserva stock de forma **atómica** al crear un pedido y lo libera al rechazar o cancelar.
 - Autentica con **Supabase Auth** y autoriza por rol y por recurso.
 - Modera las imágenes de producto con **Azure AI Content Safety**.
@@ -78,7 +78,7 @@ implementación + pruebas
 |---|---|---|
 | `phase-00-constitution` | Principios, stack y reglas transversales | [`spec.md`](specs/phase-00-constitution/00-01-principles-stack/spec.md) |
 | `phase-02-auth-users` | Autenticación, usuarios y perfiles de vendedor | [`spec.md`](specs/phase-02-auth-users/spec.md) · [`plan.md`](specs/phase-02-auth-users/plan.md) · [`task.md`](specs/phase-02-auth-users/task.md) |
-| `phase-03-catalog-offers` (nombre histórico) | Productos independientes por vendedor; API-016 pendiente de retiro/sustitución formal | [`spec.md`](specs/phase-03-catalog-offers/spec.md) · [`plan.md`](specs/phase-03-catalog-offers/plan.md) · [`task.md`](specs/phase-03-catalog-offers/task.md) |
+| `phase-03-catalog-offers` (nombre histórico) | Productos independientes por vendedor; Sprint 1 (vendedor) aprobado por DEC-019, Sprint 2 (catálogo) pendiente de aprobación | [`spec.md`](specs/phase-03-catalog-offers/spec.md) · [`plan.md`](specs/phase-03-catalog-offers/plan.md) · [`task.md`](specs/phase-03-catalog-offers/task.md) |
 
 El estado de decisiones, pendientes y mapa de colecciones se mantiene en [`memoria.md`](memoria.md).
 

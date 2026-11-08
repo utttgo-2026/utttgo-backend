@@ -1,173 +1,137 @@
 # Estado real del backend UTTT-GO
 
-> Corte: 2026-11-06. Inventario del código presente y prueba HTTP local de una instancia sin credenciales ni dependencias externas. Una ficha de API, un test con dobles y una ruta operativa **no** equivalen a una integración productiva. No se probaron servicios de producción.
+> Corte: 2026-11-08. El backend está **desplegado y operativo en Amazon AWS** (EC2 `3.129.142.54`, 2 réplicas Docker Compose detrás de Nginx, Redis contenedor, MongoDB Atlas y Supabase Auth configurados por variables de entorno en la instancia). Este documento separa lo **verificado externamente** (sondas HTTP contra la instancia y CD‑1 en verde) de lo **verificado con dobles** (suites locales). Un `200` con dobles no prueba una integración externa.
 
-> **Actualización MongoDB posterior:** se añadió `MongoDB.Driver` y `MongoOptions` (`MONGODB_URI`, `MONGODB_DATABASE` con default `utttgo`); `users` ahora tiene adaptadores Identity para registro, lectura, edición condicional y listado Admin, y `sellers` un lector público separado. Los índices de `users` se crean al arrancar con URI configurada, no por petición. La siembra local de Development en `scripts/dev/seed-seller.js` permitió verificar `GET /api/v1/sellers/{sellerId}`: `200` para vendedor de prueba y `404` para ID inexistente con MongoDB y Redis locales. **Siguen pendientes** Supabase, JWT de sesión, auditoría Admin real, resolución de `sellers` frente a `sellerProfiles` histórico, y validación de los adaptadores de usuario mediante flujo autenticado. Las secciones 1–6 inferiores son una fotografía previa, no el estado vigente de MongoDB.
+## 1. Stack, estructura y despliegue
 
-## 1. Stack y estructura
+| Elemento | Estado real |
+|---|---|
+| Runtime | .NET 10 con SDK **10.0.400 (estable, no preview)**, C# 14, ASP.NET Core 10, monolito modular en un único proyecto API. |
+| Paquetes de la API | `FluentValidation 12.0.0`, `MongoDB.Driver 3.11.0`, `StackExchange.Redis 2.7.27`, `System.IdentityModel.Tokens.Jwt 8.3.1`, `Microsoft.AspNetCore.OpenApi 10.0.9`, `Microsoft.OpenApi 2.7.5`. **Sin SDK de AWS** (S3 presigned), sin cliente de Content Safety, sin FCM y sin SignalR. |
+| Pruebas | `xUnit 2.9.3`, `FluentAssertions 6.12.2`, `Microsoft.AspNetCore.Mvc.Testing 10.0.9`. **Sin Testcontainers**: las suites usan dobles; no hay pruebas contra Atlas/Redis reales. |
+| Nube | AWS `us-east-2`: 1 × EC2 t3.micro (Ubuntu 24.04) + EIP `3.129.142.54`, Security Group 22/80/443, S3 privado, IAM Instance Profile, CloudWatch Logs, alerta de Budget. Terraform **aplicado por el propietario**. |
+| Contenedores | `docker-compose.yml`: `api` con `deploy.replicas: 2`, `redis:7-alpine` sin puertos publicados en red interna (`noeviction` + AOF), `nginx:alpine` con 80/443, `mongo:7` solo en perfil `local`. |
+| Estado en la instancia | **En ejecución y verificado**: `GET /health` → `200` con MongoDB y Redis en `Healthy`; CD‑1 ejecutó un run **verde** el 2026-11-08 con evidencia `ci-evidence/cd-deploy.txt`. TLS/dominio sigue pendiente (solo HTTP). |
+| CI/CD | `ci-1.yml` (gate en `pull_request` a `main` y `push` a `feature/**` y `main`: restore, NuGetAudit, formato, build Release, tres suites, Gitleaks bloqueante, Semgrep informativo) y `cd-deploy.yml` (CD‑1 por `workflow_run` con CI‑1 verde, despliegue por SSH del SHA exacto, `docker compose up -d --build --scale api=2`, espera de réplicas sanas, smoke y evidencia). |
+| Configuración | `.env.example` documenta `REDIS_URL`, `MONGODB_URI`, `MONGODB_DATABASE`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_JWKS_URL`, `SUPABASE_JWT_SECRET`, `SUPABASE_JWT_ISSUER`, `SUPABASE_JWT_AUDIENCE`, `S3_BUCKET_IMAGES` y `AWS_REGION`. Los valores reales viven **solo** en el entorno de la instancia y en secretos locales; nunca en Git. `appsettings.json` contiene únicamente quotas de rate limiting y registro. |
 
-El proyecto es **C# / ASP.NET Core (Controllers)** sobre **.NET 10** (`net10.0` en `src/UTTTGO.Api/UTTTGO.Api.csproj`), con arquitectura modular en un único proyecto API. No existen `package.json` ni `requirements.txt`: las dependencias se declaran en archivos `.csproj`. El proyecto API referencia `FluentValidation` **12.0.0**, `Microsoft.AspNetCore.OpenApi` **10.0.9** y `Microsoft.OpenApi` **2.7.5**; **no** referencia `MongoDB.Driver`, `StackExchange.Redis` ni un cliente Supabase. En esta máquina, `dotnet --info` mostró runtime ASP.NET Core/.NET **10.0.9** y únicamente el SDK **10.0.400-preview.0.26322.102** (no SDK estable instalado); no hay `global.json`. La constitución prescribe C# 14 y .NET 10 LTS, pero el proyecto no fija explícitamente `<LangVersion>`.
-
-Árbol de carpetas, **máximo tres niveles**, sin `.git`, `.vs`, `bin`, `obj` ni `node_modules` (estos últimos no forman parte del proyecto):
+Estructura del árbol (sin `.git`, `.vs`, `bin`, `obj` ni `node_modules`):
 
 ```text
 utttgo-backend/
-├── .github/
-│   └── workflows/
-├── .semgrep/
-├── certbot/
-│   └── www/
+├── .github/workflows/        # ci-1.yml, cd-deploy.yml
+├── certbot/www/
 ├── ci-evidence/
-├── docs/
-├── infra/
-│   └── terraform/
-├── material/
-├── nginx/
-│   └── conf.d/
-├── scripts/
-│   └── ci/
+├── docs/                     # constitution, traceability, academic-requirements, qa-*
+├── infra/terraform/          # IaC AWS (aplicada)
+├── material/                 # fuentes PDF/DOCX/XLSX (no son specs)
+├── nginx/conf.d/
+├── scripts/{ci,dev}/         # auditoría NuGet, resumen de tests, siembra local de vendedor
 ├── skills/
 ├── specs/
-│   ├── cross-cutting/
+│   ├── cross-cutting/        # api-health-probe, ci-cd-devsecops, infra-aws-free-tier
 │   ├── phase-00-constitution/
 │   ├── phase-02-auth-users/
 │   ├── phase-03-catalog-offers/
 │   └── phase-07-chat-realtime/
-├── src/
-│   └── UTTTGO.Api/
-│       (Controllers/, Modules/ y Properties/ en el siguiente nivel)
-├── tests/
-│   ├── UtttGo.IntegrationTests/
-│   ├── UtttGo.SecurityTests/
-│   └── UtttGo.UnitTests/
-├── .dockerignore
-├── .env.example
-├── AGENTS.md
-├── Dockerfile
-├── docker-compose.yml
-├── memoria.md
-├── README.md
-├── setup.sh
+├── src/UTTTGO.Api/
+│   ├── Modules/{Identity,Sellers,Admin}/
+│   └── Shared/{Contracts,Health,Infrastructure}/
+├── tests/{UtttGo.UnitTests,UtttGo.IntegrationTests,UtttGo.SecurityTests}/
+├── AGENTS.md, Dockerfile, docker-compose.yml, memoria.md, nginx/, setup.sh
 └── UTTTGO.Backend.slnx
 ```
 
 ## 2. Endpoints realmente presentes
 
-Las rutas se derivan de atributos de controladores y de `Program.cs`, **no** del inventario futuro de 42 fichas. Los archivos de handlers de la tabla son relativos a `src/UTTTGO.Api/`. «Previsto» indica contratos de servicio que requerirían esas dependencias; **en la aplicación ejecutada no se creó ninguna conexión real a MongoDB, Redis o Supabase**. Los errores de los controladores incluyen `correlationId`, `status`, `code` y `message`.
+Las rutas se derivan de los atributos de los controladores y de `Program.cs`. La ruta de plantilla `/WeatherForecast` **ya fue eliminada**: no existe el directorio `Controllers/` de plantilla. Los errores usan el contrato único `{ correlationId, status, code, message }`.
 
-| Método | Ruta | Archivo del handler | Entrada (body / ruta / query / cabecera) | Salida prevista | Servicios previstos; estado real |
-|---|---|---|---|---|---|
-| GET | `/WeatherForecast` | `Controllers/WeatherForecastController.cs` | Sin entrada obligatoria | `200`: 5 pronósticos con fecha, temperaturas y resumen aleatorios | Ninguno; funciona sin servicios externos. Ruta de plantilla fuera de `/api/v1`. |
-| POST | `/api/v1/auth/register` | `Modules/Identity/Controllers/AuthController.cs` | Body JSON `email`, `password`, `displayName`; límite candidato de 8 KiB | `202` y mensaje genérico; alternativamente `400`, `422`, `429` o `503` | Rate limit **Redis**, registro **Supabase**, perfil **MongoDB**: solo interfaces/adaptadores no configurados. |
-| POST | `/api/v1/auth/login` | `Modules/Identity/Controllers/AuthController.cs` | Body JSON `email`, `password` | `200`: `accessToken`, `expiresIn`, `tokenType`, `user` (`id`, `roles`, `accountStatus`); o `400`/`401`/`429`/`503` | Rate limit/revocación JWT **Redis**, autenticación **Supabase**, perfil **MongoDB**: ninguno integrado. |
-| GET | `/api/v1/auth/me` | `Modules/Identity/Controllers/AuthController.cs` | Cabecera `Authorization: Bearer` (sin body, ruta ni query) | `200`: `id`, `email`, `displayName`, `roles`, `accountStatus`; o `401`/`404`/`503` | Validación/revocación JWT **Redis**, identidad **Supabase**, perfil **MongoDB**: ninguno integrado. |
-| GET | `/api/v1/users/me` | `Modules/Identity/Controllers/UsersController.cs` | Cabecera Bearer (sin body, ruta ni query) | `200`: `id`, `displayName`, `email`, `phone`, `avatarUrl`, `roles`; o `401`/`503` | Sesión como arriba; lectura opcional de avatar vía contrato Media, también sin integrar. |
-| PATCH | `/api/v1/users/me` | `Modules/Identity/Controllers/UsersController.cs` | Cabecera Bearer; body JSON con `displayName` y/o `phone` (campos distintos rechazados) | `200`: perfil propio; o `400`/`401`/`409`/`503` | Sesión **Redis/Supabase/MongoDB**, escritura de perfil **MongoDB** y avatar opcional: adaptadores no configurados. |
-| GET | `/api/v1/sellers/{sellerId}` | `Modules/Sellers/Controllers/SellersController.cs` | `sellerId` en ruta (24 hexadecimales); sin body ni query | `200`: `sellerId`, `displayName`, `ratingAverage`, `ratingCount`, `isActive`; o `400`/`404`/`429`/`503` | Rate limit público **Redis**, vendedor **MongoDB**, calificaciones por contrato Reviews: sin integración real. |
-| GET | `/api/v1/admin/users` | `Modules/Admin/Controllers/AdminUsersController.cs` | Cabecera Bearer; query **obligatoria** `page`, `pageSize`; opcionales `search`, `role`, `accountStatus`, `sortBy` | `200`: `items` (id/nombre/roles/estado), `page`, `pageSize`, `total`; o `400`/`401`/`403`/`429`/`503` | Sesión **Redis/Supabase/MongoDB**, consulta **MongoDB**, rate limit **Redis** y auditoría: adaptadores no configurados. |
-| GET | `/openapi/v1.json` | `Program.cs` (`app.MapOpenApi()`) | Sin entrada obligatoria; **solo Development** | `200`: especificación OpenAPI generada | Ningún servicio externo. Endpoint operativo, no ficha funcional. |
-| GET | `/health` | `Shared/Health/HealthController.cs` | Sin entrada obligatoria; **pública, sin autenticación** | `200`: `{"status":"Healthy","checks":{"mongodb":"Healthy","redis":"Healthy"}}`; o `429` (rate limit distribuido) o `503` con el contrato de error único | Rate limit **Redis** y pings de **MongoDB** y **Redis** (`Shared/Health/DependencyProbes.cs`): falla cerrada con `503` si una dependencia no responde. Sonda operativa, no ficha funcional. |
+| Método | Ruta | Acceso | Salida | Servicios reales (AWS) |
+|---|---|---|---|---|
+| POST | `/api/v1/auth/register` | Público | `202` genérico; `400`/`413`/`422`/`429`/`503` | Supabase signup + perfil local en Atlas + rate limit en Redis. |
+| POST | `/api/v1/auth/login` | Público | `200` (`accessToken`, `expiresIn`, `tokenType`, `user`); `400`/`401`/`429`/`503` | Supabase password grant + confirmación + perfil en Atlas + blacklist/rate limit en Redis. |
+| GET | `/api/v1/auth/me` | Bearer | `200` (`id`, `email`, `displayName`, `roles`, `accountStatus`); `401`/`404`/`503` | JWT validado (firma/issuer/audience/expiración) + `revoked:{jti}` en Redis + perfil en Atlas. |
+| GET | `/api/v1/users/me` | Bearer | `200` (`id`, `displayName`, `email`, `phone`, `avatarUrl`, `roles`); `401`/`503` | Sesión + Atlas. `avatarUrl` siempre `null` (Media no existe). |
+| PATCH | `/api/v1/users/me` | Bearer | `200` perfil propio; `400`/`401`/`409`/`503` | Sesión + CAS por `version` en Atlas. Solo `displayName`/`phone`. |
+| GET | `/api/v1/sellers/{sellerId}` | Público | `200` (`sellerId`, `displayName`, `ratingAverage`, `ratingCount`, `isActive`); `400`/`404`/`429`/`503` | Atlas (`sellers`) + rate limit en Redis. Ratings `null` mientras Reviews no exista. |
+| GET | `/api/v1/admin/users` | Bearer + rol `Admin` | `200` (`items`, `page`, `pageSize`, `total`); `400`/`401`/`403`/`429`/`503` | Sesión + listado paginado en Atlas. Roles del perfil local, nunca del JWT. |
+| GET | `/health` | Público | `200` `{"status":"Healthy","checks":{...}}`; `429`/`503` | Pings acotados a Atlas y Redis; falla cerrada sin revelar la dependencia. Sonda operativa, no ficha funcional. |
+| POST | `/api/v1/sellers/activation-requests` | Bearer + cuenta `Active` | `201`/`200` (perfil de negocio con `sellerId`); `400`/`401`/`403`/`404`/`409`/`429`/`503` | **Sprint 1 de la fase 03**: autoactivación sin aprobación administrativa (DEC‑002); asigna el rol `Seller` en el perfil local. |
+| GET | `/api/v1/sellers/me` | Bearer | `200` perfil de negocio propio; `401`/`404`/`429`/`503` | Ficha nueva aprobada (DEC‑019.d). No expone `email`, `phone` ni `version`. |
+| PATCH | `/api/v1/sellers/me` | Bearer | `200`; `400`/`401`/`404`/`409`/`429`/`503` | Edición del propio perfil con control de concurrencia por `version`. |
+| GET | `/openapi/v1.json` | Solo Development | `200` documento OpenAPI | Sin servicios externos. No es ficha funcional. |
 
-El perfil público de vendedor omite calificaciones si falla el lector opcional; el perfil propio omite el avatar si no puede obtenerse una URL aprobada. No hay implementación de las rutas restantes previstas en las fichas.
-
-> **Actualización de la sonda de salud (2026-11-07):** `GET /health` ya existe (`src/UTTTGO.Api/Shared/Health/`, ficha `specs/cross-cutting/api-health-probe/`). Verifica MongoDB y Redis con tiempo de espera acotado, responde `200`/`503`/`429` con el contrato de error único y **no** revela qué dependencia falló (el detalle queda solo en logs, por categoría). El healthcheck de Nginx pasó a consultar esta ruta real: antes usaba `GET /`, que no existe, y por eso el contenedor quedaba `unhealthy` de forma permanente.
+No existen todavía: productos, categorías, media/imágenes, pedidos, reseñas, favoritos, notificaciones push, chat, recuperación de contraseña, logout y refresh token.
 
 ## 3. Servicios externos y configuración
 
-| Servicio | Archivo que crea la conexión/cliente | Archivos que registran sustitutos | Variables de entorno **leídas por el código actual** | Fallo de conexión/configuración en la aplicación actual |
-|---|---|---|---|---|
-| MongoDB Atlas | **Ninguno**: no existe `MongoClient` ni `MongoDB.Driver` en la API | `Program.cs`; `Modules/Identity/Infrastructure/UnconfiguredRegistrationDependencies.cs`, `UnconfiguredLoginDependencies.cs`, `UnconfiguredProfileUpdateRepository.cs`, `UnconfiguredAdminUserListReader.cs`; `Modules/Sellers/Infrastructure/UnconfiguredSellerProfileDependencies.cs` | **Ninguna** | Los repositorios ficticios lanzan `ExternalDependencyUnavailableException`; los servicios capturan el fallo y responden `503` genérico. No hay intento de conexión, retry ni health check de MongoDB. |
-| Redis | **Ninguno**: no existe cliente `StackExchange.Redis` | `Program.cs`; `Modules/Identity/Infrastructure/UnconfiguredRegistrationDependencies.cs` (rate limit), `UnconfiguredLoginDependencies.cs` (gate JWT); `Modules/Sellers/Infrastructure/UnconfiguredSellerProfileDependencies.cs`; `Modules/Admin/Infrastructure/UnconfiguredAdminUsersDependencies.cs` | **Ninguna** | Rate limiting y validación de revocación fallan cerrados con `503` cuando se alcanza el adaptador; no se prueba un error de red real de Redis. |
-| Supabase Auth | **Ninguno**: no existe cliente Supabase configurado | `Program.cs`; `Modules/Identity/Infrastructure/UnconfiguredRegistrationDependencies.cs`, `UnconfiguredLoginDependencies.cs`, `UnconfiguredSessionDependencies.cs` | **Ninguna** | Sus adaptadores lanzan `ExternalDependencyUnavailableException`; los servicios devuelven `503` genérico. En algunos flujos falla antes otro gate no configurado, por lo que no se llega siquiera a Supabase. |
+| Servicio | Cliente en código | Variables leídas | Estado |
+|---|---|---|---|
+| MongoDB Atlas | `MongoClient`/`MongoStore` (`Shared/Infrastructure/MongoOptions.cs`), colecciones `users` y `sellers` | `MONGODB_URI`, `MONGODB_DATABASE` | **Real y operativo**; índices de `users` y `sellers` al arrancar; un fallo de índice no impide el arranque. |
+| Redis | `IConnectionMultiplexer` + `RedisRateLimiter` + `RedisJwtGate` | `REDIS_URL` | **Real y operativo**: rate limiting distribuido, blacklist JWT (`revoked:{jti}`) y healthcheck. |
+| Supabase Auth | `SupabaseAuthClient` (HTTP a `/auth/v1/signup`, `/token`, `/user`) | `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_JWKS_URL`, `SUPABASE_JWT_SECRET`, `SUPABASE_JWT_ISSUER`, `SUPABASE_JWT_AUDIENCE` | **Real y operativo**; el JWT se valida por JWKS o HMAC. |
+| Amazon S3 | **No existe cliente** | `S3_BUCKET_IMAGES`, `AWS_REGION` (declarados) | Bucket privado aprovisionado; el flujo presigned + moderación pertenece a la fase 05. |
+| Azure AI Content Safety | **No existe cliente** | — | Pendiente (fase 05, Media). |
+| Firebase Cloud Messaging | **No existe cliente** | — | Pendiente (fase de notificaciones). |
+| SignalR | **No implementado** | — | Pendiente (fase de chat); con 2 réplicas requiere backplane Redis. |
 
-**`.env.example`: no existe; por tanto no puede considerarse completo.** Tampoco hay lectura de un `.env` por la aplicación ni configuración de esas tres conexiones en `appsettings.json` o `appsettings.Development.json`. `SUPABASE_JWT_SECRET` aparece como **nombre propuesto en una tarea SDD**, pero no es una variable consumida por el código actual; no se debe confundir una propuesta documental con configuración implementada. No se incluyen aquí valores de credenciales, API keys ni URIs de conexión.
+## 4. Verificación: sondas externas y suites locales
 
-## 4. Ejecución y pruebas HTTP locales
+### 4.1 Sondas contra la instancia (2026-11-08, desde Internet)
 
-Se inició la API con `dotnet run --no-build --no-launch-profile --project src/UTTTGO.Api/UTTTGO.Api.csproj`, `ASPNETCORE_ENVIRONMENT=Development` y `ASPNETCORE_URLS=http://127.0.0.1:51999`. Se enviaron peticiones a **cada ruta existente** en esa instancia; se usaron body de ejemplo y, para rutas privadas, un Bearer **ficticio** que no acredita autenticación real. Después se detuvo exclusivamente el servidor local de prueba. Una respuesta `503` significa que la ruta existe y responde, **no** que su función de negocio opere.
+| Sonda | Resultado |
+|---|---|
+| `GET /health` | `200` `{"status":"Healthy","checks":{"mongodb":"Healthy","redis":"Healthy"}}` |
+| `GET /api/v1/auth/me` | `401` `UNAUTHORIZED` (contrato de error único con `correlationId`) |
+| `GET /api/v1/users/me` | `401` `UNAUTHORIZED` |
+| `GET /api/v1/sellers/000000000000000000000000` | `404` `SELLER_NOT_FOUND` → **Atlas responde** (antes `503`) |
+| `GET /api/v1/admin/users?page=1&pageSize=20` | `401` `UNAUTHORIZED` |
+| CD‑1 (push a `main`) | Run **verde**: clonado en la EC2, despliegue del SHA, 2 réplicas sanas, smoke y evidencia con la sonda `/health` |
 
-| Ruta probada | Estado funcional | HTTP y error o resultado exacto observado |
-|---|---|---|
-| `GET /WeatherForecast` | **Funciona** (plantilla) | `200`; arreglo de cinco pronósticos generados localmente. |
-| `POST /api/v1/auth/register` | **Falla** | `503`; `code: AUTH_UNAVAILABLE`; `message: Servicio temporalmente no disponible.` |
-| `POST /api/v1/auth/login` | **Falla** | `503`; `code: AUTH_UNAVAILABLE`; `message: Servicio temporalmente no disponible.` |
-| `GET /api/v1/auth/me` | **Falla** | `503`; `code: AUTH_UNAVAILABLE`; `message: Servicio temporalmente no disponible.` |
-| `GET /api/v1/users/me` | **Falla** | `503`; `code: AUTH_UNAVAILABLE`; `message: Servicio temporalmente no disponible.` |
-| `PATCH /api/v1/users/me` | **Falla** | `503`; `code: PROFILE_UNAVAILABLE`; `message: Servicio temporalmente no disponible.` |
-| `GET /api/v1/sellers/507f1f77bcf86cd799439011` | **Falla** | `503`; `code: SELLER_UNAVAILABLE`; `message: Servicio temporalmente no disponible.` |
-| `GET /api/v1/admin/users?page=1&pageSize=10` | **Falla** | `503`; `code: ADMIN_USERS_UNAVAILABLE`; `message: Servicio temporalmente no disponible.` |
-| `GET /openapi/v1.json` | **Funciona** (operativo, Development) | `200`; documento OpenAPI. |
+Estas sondas prueban **disponibilidad y enrutamiento**, no el flujo autenticado completo: la validación con una cuenta real `@uttt.edu.mx` confirmada en Supabase queda como evidencia del Sprint 1 (TASK‑SELLER‑041).
 
-**Stack traces:** no se produjo ninguno para esos fallos: los servicios interceptan excepciones de los adaptadores y emiten respuestas sanitizadas. No hay stack trace exacto que pegar sin inventarlo. Cada cuerpo `503` también incluye `correlationId` dinámico y `status: 503`; se omitió el identificador efímero porque varía por petición. El único diagnóstico adicional registrado por el servidor fue:
+### 4.2 Suites locales
 
-```text
-warn: Microsoft.AspNetCore.HttpsPolicy.HttpsRedirectionMiddleware[3]
-      Failed to determine the https port for redirect.
-```
+`dotnet build -c Release` sin errores (0 advertencias) · `dotnet format --verify-no-changes` sin diferencias · **187 unitarias + 185 de integración + 93 de seguridad en verde** (465 pruebas; el Sprint 1 de vendedor añadió 103). **Los tests usan dobles**: no prueban Atlas, Redis ni Supabase reales; para eso hacen falta contenedores de prueba (Testcontainers) o un entorno no productivo. El histórico por endpoint está en `docs/qa-api-*.md`.
 
-Esto corresponde al arranque HTTP local sin puerto HTTPS configurado; **no** es un stack trace ni demuestra un problema de conexión con los servicios externos. Los proyectos de tests existentes emplean dobles; sus resultados históricos en `docs/qa-api-*.md` no se reinterpretan aquí como pruebas actuales de Atlas, Redis o Supabase.
+Además, contra **MongoDB 7 real** (contenedor local) se validó el diseño del Sprint 1: el índice único **parcial** `ownerUserId_unique` convive con documentos heredados sin `ownerUserId`, rechaza el duplicado con error `11000` y la activación por `version` se aplica de forma condicional. Smoke con el stack local completo (2 réplicas + Nginx + Redis + Mongo): `/health` → `200` con `mongodb` y `redis` en `Healthy`; las tres rutas de vendedor responden `401` sin token válido.
 
 ## 5. Documentación SDD presente
 
-Archivos existentes en este árbol de trabajo (algunos son cambios locales todavía no confirmados en Git). Las descripciones son del contenido, **no** afirmaciones de aprobación integral:
-
 | Archivo(s) | Contenido y estado |
 |---|---|
-| `docs/constitution.md` | Fuente de autoridad del stack, reglas BR-001..013, seguridad, arquitectura y decisiones abiertas. Su v2.4 (DEC-018) fija la nube AWS; la conciliación documental integral sigue pendiente. |
-| `AGENTS.md` | Instrucciones de operación SDD, convenciones, pruebas, roles y límites para desarrollo del backend. Subordina contratos y stack a la constitución. |
-| `memoria.md` | Historial vivo de decisiones, dependencias, estado de fases e integraciones faltantes. Distingue propuestas documentales de implementaciones probadas con dobles. |
-| `docs/academic-requirements-phase-02.md` | Matriz de exigencias académicas y política/versiones propuestas para la fase 02. Mantiene abiertos los gates de aprobación, costo cero y dos instancias. |
-| `docs/decisiones-pendientes-fase-02.md` | Registra autorizaciones funcionales parciales y decisiones técnicas pendientes. No convierte esas autorizaciones en aprobación completa de contratos y despliegue. |
-| `docs/traceability.md` | Matriz del inventario de 42 fichas API y sus vínculos con RF, planes, tareas y evidencias previstas. No implica que existan 42 handlers. |
-| `docs/traceability-siete-endpoints.md` | Trazabilidad acotada de siete rutas candidatas locales de identidad/usuarios/vendedores. Complementa, no sustituye, la matriz general. |
-| `docs/referencias-profesor-backend.md` | Referencias metodológicas y técnicas del profesor para todo el backend. Son ejemplos subordinados al stack y a los contratos aprobados. |
-| `docs/qa-api-001.md`, `docs/qa-api-002.md`, `docs/qa-api-004.md` | Evidencia de QA local de registro, login y sesión; casos con dobles y límites de lo que **no** se verificó externamente. |
-| `docs/qa-api-006.md`, `docs/qa-api-007.md`, `docs/qa-api-008.md` | QA de perfil propio, edición y perfil público de vendedor. Registra contratos candidatos, pruebas con dobles y pendientes de Media/Mongo/seguridad real. |
-| `docs/qa-api-039.md` | QA local de listado administrativo y auditoría con dobles. Aclara que no existe persistencia ni autorización integradas. |
-| `specs/phase-00-constitution/00-01-principles-stack/spec.md` | Requisitos, diseño, límites, tests y aceptación de principios/stack. v1.2 es borrador de conciliación; una versión anterior fue aprobada. |
-| `specs/phase-00-constitution/00-01-principles-stack/plan.md` | Plan de arquitectura base, estructura y dependencias de arranque. La infraestructura descrita es objetivo, no evidencia de conexiones creadas. |
-| `specs/phase-00-constitution/00-01-principles-stack/task.md` | Desglose de preparación, dependencias, configuración, middleware y Docker. Contiene tareas futuras que no deben darse por implementadas. |
-| `specs/phase-02-auth-users/spec.md` | Requisitos de identidad, usuarios y vendedores, historias, contratos y casos límite; v1.5 tiene aprobación individual **para desarrollo local incremental**, no aprobación integral del equipo. |
-| `specs/phase-02-auth-users/plan.md` | Diseño de fronteras, datos, OTP, contratos y pruebas previstas. v1.6 sigue en conciliación y mantiene gates abiertos. |
-| `specs/phase-02-auth-users/task.md` | Tareas TASK-AUTH, dependencias y criterios verificables; distingue trabajo local de cierre de integraciones reales y aprobación integral. |
-| `specs/phase-02-auth-users/api-039-list-users/spec.md` | Ficha local candidata para listar usuarios con paginación, filtros y autorización Admin. La ratificación local no equivale a despliegue ni a contrato integral aprobado. |
-| `specs/phase-02-auth-users/api-039-list-users/plan.md` | Diseño del flujo Admin → Identity, auditoría y persistencia futura. Indica que no hay adaptador de datos real. |
-| `specs/phase-02-auth-users/api-039-list-users/task.md` | Tareas y evidencia de implementación/QA locales con dobles; quedan pendientes integraciones y gates de aprobación. |
-| `specs/phase-03-catalog-offers/spec.md` | Borrador v2.0 de productos propios por vendedor, búsqueda y contratos API-011..022 por conciliar. No autoriza el modelo histórico de producto maestro/ofertas compartidas. |
-| `specs/phase-03-catalog-offers/plan.md` | Modelo, rutas, seguridad, caché y pruebas propuestas para catálogo. Integraciones y aprobaciones siguen pendientes. |
-| `specs/phase-03-catalog-offers/task.md` | Gates documentales y tareas de catálogo bloqueadas hasta conciliar/aprobar contratos. No existen handlers de catálogo en el proyecto actual. |
-| `specs/phase-07-chat-realtime/spec.md` | Borrador funcional de historial temporal de chat por pedido y contratos pendientes. La persistencia, purga y pruebas todavía requieren diseño. |
-| `specs/cross-cutting/infra-aws-free-tier/spec.md` | Requisitos de la infraestructura AWS de DEC-018 (EC2, EIP, SG, S3, IAM, CloudWatch, Budget) y criterios de aceptación. Aprobada; `plan`/`apply` pendientes. |
-| `specs/cross-cutting/infra-aws-free-tier/plan.md` | Secuencia de implementación, decisiones de diseño y verificaciones de la IaC. Los pasos de código están completos; los de despliegue siguen pendientes del propietario. |
-| `specs/cross-cutting/infra-aws-free-tier/task.md` | Tareas INFRA-T01..T15 con evidencia: IaC aplicada por el propietario y stack de despliegue verificado localmente; pendientes `setup.sh` en la EC2, TLS, alerta de Budget, backend remoto de estado y presigned en el backend. |
-| `infra/terraform/` | IaC declarativa de AWS (proveedor AWS `us-east-2`): EC2 t3.micro Ubuntu 24.04 con IMDSv2, EIP, SG 22/80/443, Instance Profile (CloudWatch + SSM opcional), log group, bucket S3 privado con CORS y Budget condicional. Verificada con `fmt`, `init -backend=false` y `validate`; **aplicada por el propietario** (EIP `3.129.142.54`); falta un `apply` para el hop limit de IMDS y la alerta de Budget. |
-| `.github/workflows/ci-1.yml` | CI con dobles: restore/NuGetAudit, formato, build Release, tres suites, resumen, Gitleaks (bloqueante), Semgrep (piloto informativo) y evidencia. Única edición reciente: `push` a `main` para habilitar el gate del CD. |
-| `.github/workflows/cd-deploy.yml` | CD-1: se ejecuta solo con CI-1 verde en `push` a `main` (o manual con motivo); despliega por SSH el SHA verificado con `docker compose up -d --build --scale api=2`, espera réplicas sanas y publica evidencia. **Implementado y validado con actionlint, pero sin ejecutar**: faltan secrets, environment con revisores y deploy key en la instancia. |
-| `Dockerfile` / `.dockerignore` | Imagen de la API .NET 10 (SDK 10 → ASP.NET 10, usuario `app`, sin secretos). Construida localmente con `docker compose build api`. |
-| `docker-compose.yml` | Despliegue en la EC2: `api` con `deploy.replicas: 2`, `redis:7-alpine` sin puertos publicados en red interna, `nginx:alpine` con 80/443, `mongo:7` solo en perfil `local`. Validado con `docker compose config` y prueba local de balanceo entre las 2 réplicas. |
-| `nginx/` | `nginx.conf`, `conf.d/default.conf` (balanceo por DNS de Docker, WebSocket, desafío ACME) y `conf.d/tls.conf.template` (443 + redirección). Sintaxis validada con `nginx -t` en la imagen real. |
-| `setup.sh` | Script de la EC2 (Ubuntu 24.04): instala Docker, Docker Compose y Certbot, prepara `.env`, levanta 2 réplicas + Redis + Nginx, emite el TLS con hook de renovación y verifica. **No ejecutado todavía en la instancia.** |
-| `specs/cross-cutting/ci-cd-devsecops/spec.md` | Requisitos transversales de CI/CD, seguridad y aceptación; registra evidencia CI-1, no integración externa ni CD aprobados. |
-| `specs/cross-cutting/ci-cd-devsecops/plan.md` | Secuencia de quality gates CI-1 y fases posteriores. Separa evidencia de push/PR de futura integración real/despliegue. |
-| `specs/cross-cutting/ci-cd-devsecops/task.md` | Tareas y evidencia de CI-1; aprobación integral, piloto adversarial y CD permanecen pendientes. |
-
-`material/` contiene documentos fuente PDF, DOCX y XLSX, incluido el Excel de 42 fichas; no son archivos `spec.md` implementados. También hay un directorio `.github/workflows/` y artefactos `ci-evidence/`: no deben confundirse con un despliegue en la nube operativo.
+| `docs/constitution.md` | **v2.5**: nube AWS (DEC‑018) y DEC‑019 (retirada de API‑016, identidad del vendedor, ficha `GET /api/v1/sellers/me`, alcance del Sprint 1). |
+| `AGENTS.md` | Manual operativo SDD v2.3, alineado con la constitución y con la sonda `/health`. |
+| `memoria.md` | Registro vivo de decisiones, dependencias, mapa de colecciones y estado de fases. |
+| `docs/traceability.md` | Matriz de las 42 fichas + fichas nuevas, con el estado real de cada ruta y la evidencia de despliegue. |
+| `docs/academic-requirements-phase-02.md`, `docs/decisiones-pendientes-fase-02.md` | Matriz académica y decisiones técnicas pendientes de la fase 02 (OTP, refresh, SemVer). |
+| `docs/qa-api-*.md` | Evidencia de QA local con dobles de API‑001/002/004/006/007/008/039. |
+| `specs/phase-02-auth-users/*` | Identidad, usuarios y vendedores: contratos y tareas con gates documentales abiertos (TASK‑AUTH‑002/003/007/008). |
+| `specs/phase-03-catalog-offers/*` | **v2.1 aprobada para el Sprint 1 (vendedor)** por DEC‑019; el Sprint 2 (catálogo y categorías) sigue bloqueado hasta su propia aprobación. |
+| `specs/cross-cutting/api-health-probe/*` | v1.1: ficha de `GET /health` (HP‑01..HP‑11) con el fix del registro de la sonda en CD‑1. |
+| `specs/cross-cutting/ci-cd-devsecops/*` | Requisitos, secuencia y tareas de CI‑1/CD‑1 con la evidencia del run verde. |
+| `specs/cross-cutting/infra-aws-free-tier/*` | INFRA‑01..15: IaC aplicada, stack en ejecución; pendientes hop limit de IMDS, alerta de Budget y backend remoto de estado. |
+| `specs/phase-07-chat-realtime/spec.md` | Borrador funcional del chat temporal (DEC‑005); sin persistencia ni purgas. |
 
 ## 6. Faltantes o configuraciones a revisar
 
-- `.env.example` existe (Atlas, Redis, Supabase, S3 y región AWS) y `docker-compose.yml` ya está materializado (2 réplicas de la API + Redis + Nginx; MongoDB solo en perfil `local`); el estado de Terraform en `infra/terraform` es local y el despliegue no se ha ejecutado en la EC2; no se definieron en código los clientes reales de Atlas, Redis, S3 y Supabase. La tabla de variables prevista en SDD no está materializada en `appsettings`.
-- Falta la implementación de `MongoDB.Driver`, `StackExchange.Redis`, autenticación/JWT real de Supabase, índices, persistencia y rate limiting distribuido. Los adaptadores actuales son deliberadamente **fail-closed**, no errores de contraseña o puertos comprobados.
-- `Program.cs` configura `UseAuthorization()` pero no `AddAuthentication()`/`UseAuthentication()` ni política CORS; la autenticación candidata se hace mediante servicios en los handlers y no prueba el middleware JWT exigido para toda la API.
-- No hay `/health` para sondear MongoDB y Redis; no hay configuración de producción comprobada para HTTPS/CORS. `AllowedHosts: "*"` en `appsettings.json` es control de hosts, **no** una política CORS.
-- Los perfiles de `launchSettings.json` usan HTTP `localhost:5122` y HTTPS `localhost:7128`; la prueba con `--no-launch-profile` solo expuso HTTP `127.0.0.1:51999`, que explica la advertencia de redirección. No se verificó conectividad real de esos puertos predeterminados ni un certificado local.
-- El SDK instalado es **preview** aunque la constitución pide .NET 10 LTS estable; verificar compilación con SDK estable en el entorno de entrega. No se constató una incompatibilidad de paquetes mediante esta prueba HTTP.
-- La ruta de plantilla `/WeatherForecast` no cumple el prefijo constitucional `/api/v1`. La ruta OpenAPI solo se mapea en Development y no representa una ficha del negocio.
-- Faltan decisiones/aprobación integral de contratos SDD y evidencia de viabilidad de dos instancias/costo cero antes de infraestructura o despliegue; los tests con dobles y un `200` de plantilla no satisfacen esos gates.
+- **TLS y dominio:** la instancia solo sirve HTTP en la IP. `certbot` requiere un dominio real, y las tiendas móviles exigen HTTPS. Decisión abierta: dominio en un registrador con DNS gratuito y desafío DNS‑01 contra la EIP (evita Route 53, que sí tendría costo).
+- **Media e imágenes (fase 05):** no hay `AWSSDK.S3` ni cliente de Content Safety; `avatarUrl` es siempre `null` y no se puede publicar ninguna imagen (BR‑007).
+- **Catálogo (Sprint 2 de la fase 03):** no existen `products` ni `categories`; API‑011..015 y API‑019..022 necesitan `spec/plan/task` v2.2 y aprobación propia antes de código.
+- **Sesiones:** no hay `POST /api/v1/auth/logout` (API‑003) ni refresh token; el access token expira (3600 s) y la app móvil debe volver a autenticarse. TASK‑AUTH‑003 abierto.
+- **OTP y correo:** el backend no envía ni verifica OTP; el móvil usa operaciones Supabase (`verifyOtp`/`resend`). SMTP institucional y costo cero siguen pendientes (TASK‑AUTH‑002).
+- **Middleware de autenticación y CORS:** no hay `AddAuthentication()`/`UseAuthentication()`; la validación del JWT se hace por servicio con gate de Redis. No hay política CORS (irrelevante para móvil nativo; necesaria si hay cliente web).
+- **Auditoría administrativa:** `UnconfiguredAdminUsersAudit` no persiste eventos (AC‑005 abierto por API‑040).
+- **Pruebas contra dependencias reales:** no hay Testcontainers ni entorno no productivo; las suites prueban lógica con dobles.
+- **Terraform y costo:** falta un `apply` del hop limit de IMDS, la alerta de Budget y el backend remoto del estado; la evidencia de costo $0 depende de la alerta tras el primer apply.
+- **Secretos:** las credenciales de Atlas y Supabase fueron rotadas tras exponerse en una conversación; los valores viven solo en el entorno de la instancia. No documentarlos ni versionarlos.
+- **API‑016:** resuelta por DEC‑019 (no se implementa ni redirige). La eliminación de producto sigue **sin ficha aprobada**.
+- **`AllowedHosts: "*"`** es control de hosts, **no** una política CORS.
 
 ### Cinco bloqueos principales (ordenados por impacto)
 
-1. **Integraciones críticas inexistentes:** sin clientes reales MongoDB, Redis y Supabase, las siete rutas de negocio probadas devuelven `503`.
-2. **Seguridad productiva incompleta:** no hay middleware de autenticación JWT real, blacklist/revocación Redis ni rate limiting distribuido verificable.
-3. **Falta configuración local reproducible:** `docker-compose.yml` y conexiones/variables consumidas por código no existen; no se pueden probar flujos externos de punta a punta en aislamiento.
-4. **Gates SDD y académicos sin cierre integral:** contratos y viabilidad de infraestructura/despliegue requieren revisión y evidencia adicionales; no convertir candidatos locales en contratos finales.
-5. **Operación y alcance incompletos:** faltan `/health`, HTTPS/CORS comprobados, módulos previstos y eliminación de la ruta de plantilla fuera de `/api/v1`; el SDK local es preview.
+1. **HTTPS con dominio:** sin TLS la app móvil no puede publicarse en las tiendas ni cumplir las políticas de las plataformas.
+2. **Catálogo y Media ausentes:** no hay productos, categorías ni imágenes; el valor funcional para el comprador todavía no existe.
+3. **Ciclo de sesión incompleto:** sin refresh ni logout, la experiencia móvil se corta cada hora y no existe cierre de sesión en servidor.
+4. **Cierre de infraestructura y costo:** hop limit de IMDS, alerta de Budget, backend remoto de estado y evidencia de costo $0.
+5. **Gates SDD y pruebas reales:** cierre documental de fase 02 (TASK‑AUTH‑007/008), aprobación del Sprint 2 y pruebas contra Atlas/Redis reales en un entorno no productivo.
