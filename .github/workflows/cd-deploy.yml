@@ -228,21 +228,20 @@ jobs:
           health_code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 http://127.0.0.1/health || echo 000)"
           echo "HTTP /health -> $health_code"
           case "$health_code" in
-            200)
-              echo "health_code=$health_code" >> "$GITHUB_OUTPUT"
-              ;;
-            503)
-              echo "::warning::La sonda /health devolvio 503: el despliegue esta activo pero MongoDB o Redis no responden."
-              echo "health_code=$health_code" >> "$GITHUB_OUTPUT"
-              ;;
-            *)
-              echo "::warning::La sonda /health devolvio $health_code; se requiere verificacion manual."
-              echo "health_code=$health_code" >> "$GITHUB_OUTPUT"
-              ;;
+            200) ;;
+            503) echo "::warning::La sonda /health devolvio 503: el despliegue esta activo pero MongoDB o Redis no responden." ;;
+            *) echo "::warning::La sonda /health devolvio $health_code; se requiere verificacion manual." ;;
           esac
 
           docker compose ps
           REMOTE
+
+          # GITHUB_OUTPUT solo existe en el runner: la sonda se consulta por SSH desde aqui.
+          health_code="$(ssh "${ssh_options[@]}" "$EC2_USER@$EC2_HOST" \
+            "curl -s -o /dev/null -w '%{http_code}' --max-time 15 http://127.0.0.1/health" 2>/dev/null || true)"
+          health_code="${health_code:-000}"
+          echo "Sonda /health registrada: $health_code"
+          echo "health_code=$health_code" >> "$GITHUB_OUTPUT"
 
       - name: Evidencia de despliegue
         if: always()

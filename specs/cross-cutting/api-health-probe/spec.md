@@ -1,6 +1,6 @@
 # spec.md — Sonda operativa de salud `GET /health` · Backend UTTT-GO
 
-> Versión documental **1.0** · 2026-11-07 · Estado: **aprobada** por el propietario de producto (solicitud explícita: implementar `GET /health` y el healthcheck de Nginx con ficha SDD).
+> Versión documental **1.1** · 2026-11-07 · Estado: **aprobada** por el propietario de producto (solicitud explícita: implementar `GET /health` y el healthcheck de Nginx con ficha SDD). v1.1 añade HP-11 (la sonda comprueba además el acceso del usuario a la base configurada) tras detectar en la EC2 que un `ping` puede ser correcto mientras las consultas reales fallan por falta de permisos sobre esa base.
 > Autoridad: `docs/constitution.md` v2.4 (§ 8 Observabilidad: «`GET /health` verifica MongoDB y Redis; devuelve `503` si una dependencia crítica falla»; § 6.1 degradación de Redis; § 5.3 Redis) → `AGENTS.md` v2.3 (§ 4, § 8, § 11) → este `spec.md` → `plan.md` → `task.md`.
 
 ## 1. Objetivo y alcance
@@ -23,6 +23,7 @@ Alcance de esta spec: el endpoint de sonda, su contrato, su límite de uso, el h
 | HP-08 | El **healthcheck del contenedor de la API** se mantiene como sonda de **liveness** (TCP al puerto 8080): una caída de Atlas no debe reiniciar las réplicas ni bloquear el arranque de Nginx | `docker-compose.yml`; `depends_on` de Nginx intacto |
 | HP-09 | El despliegue CD-1 registra en su evidencia el resultado de `GET /health` sin abortar el despliegue si la dependencia está caída | Script de CD-1 y artefacto `cd-deploy.txt` |
 | HP-10 | La sonda **no** requiere ni habilita endpoint de negocio nuevo, ni cambia el orden del middleware de `Program.cs` | Revisión de `Program.cs` |
+| HP-11 | La sonda comprueba, además del `ping`, que el usuario de MongoDB tiene **acceso a la base configurada** (`MONGODB_DATABASE`): un `ping` correcto no implica permisos sobre esa base, y sin ellos la API responde `503` en sus endpoints de datos aunque la conexión funcione | Clasificación del código de comando `13` (no autorizado) como `authentication_failed`; test unitario de `ClassifyCommandCode` |
 
 ## 3. Contrato
 
@@ -83,6 +84,7 @@ El detalle de qué dependencia falló (y su categoría: `unreachable_or_timeout`
 | HP-AC-08 | Con el stack local levantado (Mongo y Redis del perfil `local`), `GET /health` a través de Nginx devuelve `200`; al detener Mongo, devuelve `503`. |
 | HP-AC-09 | El script de CD-1 registra el código HTTP de `GET /health` en la evidencia y no falla el despliegue por una dependencia caída. |
 | HP-AC-10 | Build Release sin errores, `dotnet format` sin diferencias y suites unitaria, de integración y de seguridad en verde. |
+| HP-AC-11 | El pipeline de CD-1 registra el estado de `/health` en la evidencia **sin** usar variables del runner dentro de la sesión SSH (`GITHUB_OUTPUT` no existe en la instancia) y sin abortar el paso si la sonda no responde. | `actionlint` sin errores; `bash -n` del script remoto; simulación del bloque del runner con `GITHUB_OUTPUT` local (valor `503` registrado y `000` cuando SSH falla) |
 
 ## 6. Riesgos
 

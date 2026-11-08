@@ -79,6 +79,25 @@ public sealed class HealthServiceTests
             .Be(HealthDependencyOutcome.Unknown);
     }
 
+    [Theory]
+    [InlineData(13)]
+    [InlineData(18)]
+    public void ClassifierTreatsAuthorizationAndAuthenticationCodesAsAuthenticationFailures(int code)
+    {
+        DependencyFailureClassifier.ClassifyCommandCode(code).Should()
+            .Be(HealthDependencyOutcome.AuthenticationFailed);
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(26)]
+    [InlineData(11000)]
+    public void ClassifierTreatsOtherCommandCodesAsUnknown(int code)
+    {
+        DependencyFailureClassifier.ClassifyCommandCode(code).Should()
+            .Be(HealthDependencyOutcome.Unknown);
+    }
+
     private sealed class MongoProbe(HealthProbeResult result) : IMongoHealthProbe
     {
         public Task<HealthProbeResult> ProbeAsync(CancellationToken cancellationToken) =>

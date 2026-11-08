@@ -30,11 +30,38 @@ public sealed class MongoHealthProbe(IServiceProvider services, IOptions<MongoOp
             timeout.CancelAfter(ProbeTimeout);
             await database.RunCommandAsync<BsonDocument>(new BsonDocument("ping", 1),
                 cancellationToken: timeout.Token);
-            return new HealthProbeResult(true, HealthDependencyOutcome.Healthy);
+
+            var access = await CheckDatabaseAccessAsync(database, timeout.Token);
+            return access is null
+                ? new HealthProbeResult(true, HealthDependencyOutcome.Healthy)
+                : new HealthProbeResult(false, access.Value);
         }
         catch (Exception exception)
         {
             return new HealthProbeResult(false, DependencyFailureClassifier.Classify(exception));
+        }
+    }
+
+    // The ping succeeds even when the user has no privileges on the configured database,
+    // so the probe also checks access to it. Only an authorization failure is decisive:
+    // any other error keeps the ping result.
+    private static async Task<HealthDependencyOutcome?> CheckDatabaseAccessAsync(
+        IMongoDatabase database, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await database.RunCommandAsync<BsonDocument>(
+                new BsonDocument { { "listCollections", 1 }, { "nameOnly", true } },
+                cancellationToken: cancellationToken);
+            return null;
+        }
+        catch (MongoCommandException command) when (command.Code == 13)
+        {
+            return HealthDependencyOutcome.AuthenticationFailed;
+        }
+        catch (Exception)
+        {
+            return null;
         }
     }
 }
@@ -75,19 +102,31 @@ public static class DependencyFailureClassifier
     private static bool RedisAuthenticationFailure(RedisServerException server) =>
         server.Message.StartsWith(RedisNoAuthPrefix, StringComparison.OrdinalIgnoreCase);
 
-    public static HealthDependencyOutcome Classify(Exception exception) => exception switch
+    public static HealthDependencyOutcome Classify(Exception exception)
     {
-        MongoAuthenticationException => HealthDependencyOutcome.AuthenticationFailed,
-        MongoCommandException command when command.Code == 18 => HealthDependencyOutcome.AuthenticationFailed,
-        MongoConfigurationException => HealthDependencyOutcome.InvalidConfiguration,
-        MongoExecutionTimeoutException => HealthDependencyOutcome.UnreachableOrTimeout,
-        MongoConnectionException => HealthDependencyOutcome.UnreachableOrTimeout,
-        RedisServerException server when RedisAuthenticationFailure(server) =>
-            HealthDependencyOutcome.AuthenticationFailed,
-        RedisConnectionException => HealthDependencyOutcome.UnreachableOrTimeout,
-        RedisTimeoutException => HealthDependencyOutcome.UnreachableOrTimeout,
-        TimeoutException => HealthDependencyOutcome.UnreachableOrTimeout,
-        OperationCanceledException => HealthDependencyOutcome.UnreachableOrTimeout,
+        if (exception is MongoCommandException command)
+            return ClassifyCommandCode(command.Code);
+
+        return exception switch
+        {
+            MongoAuthenticationException => HealthDependencyOutcome.AuthenticationFailed,
+            MongoConfigurationException => HealthDependencyOutcome.InvalidConfiguration,
+            MongoExecutionTimeoutException => HealthDependencyOutcome.UnreachableOrTimeout,
+            MongoConnectionException => HealthDependencyOutcome.UnreachableOrTimeout,
+            RedisServerException server when RedisAuthenticationFailure(server) =>
+                HealthDependencyOutcome.AuthenticationFailed,
+            RedisConnectionException => HealthDependencyOutcome.UnreachableOrTimeout,
+            RedisTimeoutException => HealthDependencyOutcome.UnreachableOrTimeout,
+            TimeoutException => HealthDependencyOutcome.UnreachableOrTimeout,
+            OperationCanceledException => HealthDependencyOutcome.UnreachableOrTimeout,
+            _ => HealthDependencyOutcome.Unknown
+        };
+    }
+
+    public static HealthDependencyOutcome ClassifyCommandCode(int code) => code switch
+    {
+        13 => HealthDependencyOutcome.AuthenticationFailed,
+        18 => HealthDependencyOutcome.AuthenticationFailed,
         _ => HealthDependencyOutcome.Unknown
     };
 }

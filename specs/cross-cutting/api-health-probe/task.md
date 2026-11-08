@@ -1,6 +1,6 @@
 # task.md — Sonda operativa de salud `GET /health` · Backend UTTT-GO
 
-> Versión documental **1.0** · 2026-11-07 · Derivado de `plan.md` v1.0. Estados: `[x]` completada con evidencia, `[ ]` pendiente.
+> Versión documental **1.1** · 2026-11-07 · Derivado de `plan.md` v1.1. Estados: `[x]` completada con evidencia, `[ ]` pendiente.
 
 ## 1. Tareas
 
@@ -19,6 +19,8 @@
 | HP-T11 | Verificación estática y suites completas | HP-AC-10 | AGENT-BE-05 | `[x]` | Build Release 0 errores; `dotnet format` sin diferencias; unitarias, integración y seguridad en verde |
 | HP-T12 | Verificar `/health` en el stack local (`200` con Mongo y Redis; `503` al detener Mongo) | HP-AC-07, HP-AC-08 | AGENT-BE-05 | `[x]` | `docker compose config` válido; prueba local con perfil `local` |
 | HP-T13 | Actualizar `memoria.md`, `docs/traceability.md`, `PROJECT_STATUS.md`, `README.md` y `AGENTS.md` | D-HP-08 | AGENT-BE-06 | `[x]` | Entradas de la sonda y del healthcheck en la documentación viva |
+| HP-T14 | Corregir el CD-1 tras el fallo `GITHUB_OUTPUT: unbound variable`: el registro de la sonda pasa al runner | HP-AC-11, D-HP-09 | AGENT-BE-01 | `[x]` | `.github/workflows/cd-deploy.yml`: el script remoto solo informa; el runner consulta `/health` por SSH y escribe `health_code` en `GITHUB_OUTPUT`. Verificado con `actionlint v1.7.11`, `bash -n` del script remoto, comprobación de que el remoto no referencia `GITHUB_OUTPUT` y simulación del bloque del runner (`health_code=503` y `health_code=000` con SSH caído) |
+| HP-T15 | Reforzar la sonda con la comprobación de acceso a la base configurada | HP-11, HP-AC-11, D-HP-10 | AGENT-BE-01 | `[x]` | `DependencyProbes.cs` (`listCollections` con `nameOnly`; solo el código `13` marca la sonda como no sana) y `ClassifyCommandCode` con tests unitarios (152 unitarias en verde) |
 
 ## 2. Criterios de cierre
 
