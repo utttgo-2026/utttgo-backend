@@ -48,10 +48,11 @@ aws iam create-access-key --user-name utttgo-dev-github-actions-deploy
 ```
 
 ```bash
-# Despliegue manual equivalente al de CD-1 (mismo documento SSM, sin SSH)
+# Despliegue manual equivalente al de CD-1 (mismo documento SSM, sin SSH).
+# El CLI exige que el valor de cada parametro sea una lista JSON: sha=["<sha>"].
 aws ssm send-command --document-name utttgo-dev-deploy \
   --targets "Key=instanceids,Values=i-0394b36c6c435e08d" \
-  --parameters '{"sha":"<sha completo>"}'
+  --parameters "sha=[\"<sha completo>\"]"
 
 # Logs de los contenedores (en la EC2 no hay docker compose logs)
 aws logs tail /utttgo/api/dev --since 10m

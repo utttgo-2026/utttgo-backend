@@ -116,10 +116,15 @@ jobs:
           fi
           echo "Instancia objetivo: $instance_id"
 
+          # El CLI de AWS exige que el valor de cada parametro de
+          # `--parameters` sea una lista JSON: `sha=["<sha>"]`. Un valor simple
+          # se rechaza antes de enviar el comando con
+          # "Invalid type for parameter Parameters.sha ... valid types: list".
           # El repositorio es publico: el fetch en la instancia no lleva
           # credenciales. Si pasa a privado, se envia GITHUBTOKEN como parametro
           # del documento (cabecera extra de git, nunca se escribe en disco).
-          parameters="$(printf '{"sha":"%s"}' "$TARGET_SHA")"
+          parameters="sha=[\"$TARGET_SHA\"]"
+          echo "Parametros SSM: $parameters"
           command_id="$(aws ssm send-command \
             --document-name "$SSM_DOCUMENT" \
             --targets "Key=instanceids,Values=$instance_id" \
