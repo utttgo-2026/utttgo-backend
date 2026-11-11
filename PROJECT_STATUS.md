@@ -1,6 +1,6 @@
 # Estado real del backend UTTT-GO
 
-> Corte: 2026-11-08. El backend está **desplegado y operativo en Amazon AWS** (EC2 `3.129.142.54`, 2 réplicas Docker Compose detrás de Nginx, Redis contenedor, MongoDB Atlas y Supabase Auth configurados por variables de entorno en la instancia). Este documento separa lo **verificado externamente** (sondas HTTP contra la instancia y CD‑1 en verde) de lo **verificado con dobles** (suites locales). Un `200` con dobles no prueba una integración externa.
+> Corte: 2026-11-11. El backend está **desplegado y operativo en Amazon AWS** (EC2 `3.129.142.54`, 2 réplicas Docker Compose detrás de Nginx, Redis contenedor, MongoDB Atlas y Supabase Auth configurados por variables de entorno en la instancia). El **cierre de infraestructura** (DEC‑020/021) está aplicado y verificado en vivo: puerto 22 cerrado, despliegue CD‑1 por AWS Systems Manager, Budget con alerta institucional, CORS de S3 estricto y logs de contenedores en CloudWatch Logs. Este documento separa lo **verificado externamente** (sondas HTTP contra la instancia, despliegue por SSM y logs publicados) de lo **verificado con dobles** (suites locales). Un `200` con dobles no prueba una integración externa.
 
 ## 1. Stack, estructura y despliegue
 
@@ -9,10 +9,11 @@
 | Runtime | .NET 10 con SDK **10.0.400 (estable, no preview)**, C# 14, ASP.NET Core 10, monolito modular en un único proyecto API. |
 | Paquetes de la API | `FluentValidation 12.0.0`, `MongoDB.Driver 3.11.0`, `StackExchange.Redis 2.7.27`, `System.IdentityModel.Tokens.Jwt 8.3.1`, `Microsoft.AspNetCore.OpenApi 10.0.9`, `Microsoft.OpenApi 2.7.5`. **Sin SDK de AWS** (S3 presigned), sin cliente de Content Safety, sin FCM y sin SignalR. |
 | Pruebas | `xUnit 2.9.3`, `FluentAssertions 6.12.2`, `Microsoft.AspNetCore.Mvc.Testing 10.0.9`. **Sin Testcontainers**: las suites usan dobles; no hay pruebas contra Atlas/Redis reales. |
-| Nube | AWS `us-east-2`: 1 × EC2 t3.micro (Ubuntu 24.04) + EIP `3.129.142.54`, Security Group 22/80/443, S3 privado, IAM Instance Profile, CloudWatch Logs, alerta de Budget. Terraform **aplicado por el propietario**. |
-| Contenedores | `docker-compose.yml`: `api` con `deploy.replicas: 2`, `redis:7-alpine` sin puertos publicados en red interna (`noeviction` + AOF), `nginx:alpine` con 80/443, `mongo:7` solo en perfil `local`. |
-| Estado en la instancia | **En ejecución y verificado**: `GET /health` → `200` con MongoDB y Redis en `Healthy`; CD‑1 ejecutó un run **verde** el 2026-11-08 con evidencia `ci-evidence/cd-deploy.txt`. TLS/dominio sigue pendiente (solo HTTP). |
-| CI/CD | `ci-1.yml` (gate en `pull_request` a `main` y `push` a `feature/**` y `main`: restore, NuGetAudit, formato, build Release, tres suites, Gitleaks bloqueante, Semgrep informativo) y `cd-deploy.yml` (CD‑1 por `workflow_run` con CI‑1 verde, despliegue por SSH del SHA exacto, `docker compose up -d --build --scale api=2`, espera de réplicas sanas, smoke y evidencia). |
+| Nube | AWS `us-east-2`: 1 × EC2 t3.micro (Ubuntu 24.04) + EIP `3.129.142.54`, Security Group **solo 80/443** (22 cerrado), S3 privado con CORS estricto (sin reglas por defecto), IAM Instance Profile, CloudWatch Logs, Systems Manager, Budget con alerta institucional. Terraform **aplicado por el propietario** (DEC‑018/020/021). |
+| Contenedores | `docker-compose.yml`: `api` con `deploy.replicas: 2`, `redis:7-alpine` sin puertos publicados en red interna (`noeviction` + AOF), `nginx:alpine` con 80/443, `mongo:7` solo en perfil `local`. `docker-compose.prod.yml` (solo EC2) añade el driver `awslogs` para publicar los logs en `/utttgo/api/dev`. |
+| Estado en la instancia | **En ejecución y verificado**: `GET /health` → `200` con MongoDB y Redis en `Healthy`; CD‑1 ejecutó un run **verde** el 2026-11-08 con evidencia `ci-evidence/cd-deploy.txt` y el **2026-11-11** desplegó por SSM el SHA `355db03` (2/2 réplicas sanas, `/health` 200). TLS/dominio sigue pendiente (solo HTTP). |
+| CI/CD | `ci-1.yml` (gate en `pull_request` a `main` y `push` a `feature/**` y `main`: restore, NuGetAudit, formato, build Release, tres suites, Gitleaks bloqueante, Semgrep informativo) y `cd-deploy.yml` (CD‑1 por `workflow_run` con CI‑1 verde; **despliegue por `aws ssm send-command`** sobre el documento `utttgo-dev-deploy`, `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build --scale api=2`, espera de réplicas sanas, smoke, evidencia y últimos eventos de CloudWatch Logs). |
+| Logs | La salida de `api`, `nginx` y `redis` llega a CloudWatch Logs (`/utttgo/api/dev`, streams `api`/`nginx`/`redis`) por el driver `awslogs` de Docker con el Instance Profile (DEC‑021). En la EC2 `docker compose logs` **no** está disponible: `aws logs tail /utttgo/api/dev`. |
 | Configuración | `.env.example` documenta `REDIS_URL`, `MONGODB_URI`, `MONGODB_DATABASE`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_JWKS_URL`, `SUPABASE_JWT_SECRET`, `SUPABASE_JWT_ISSUER`, `SUPABASE_JWT_AUDIENCE`, `S3_BUCKET_IMAGES` y `AWS_REGION`. Los valores reales viven **solo** en el entorno de la instancia y en secretos locales; nunca en Git. `appsettings.json` contiene únicamente quotas de rate limiting y registro. |
 
 Estructura del árbol (sin `.git`, `.vs`, `bin`, `obj` ni `node_modules`):
@@ -77,7 +78,7 @@ No existen todavía: productos, categorías, media/imágenes, pedidos, reseñas,
 
 ## 4. Verificación: sondas externas y suites locales
 
-### 4.1 Sondas contra la instancia (2026-11-08, desde Internet)
+### 4.1 Sondas contra la instancia (2026-11-08 y 2026-11-11, desde Internet)
 
 | Sonda | Resultado |
 |---|---|
@@ -86,9 +87,13 @@ No existen todavía: productos, categorías, media/imágenes, pedidos, reseñas,
 | `GET /api/v1/users/me` | `401` `UNAUTHORIZED` |
 | `GET /api/v1/sellers/000000000000000000000000` | `404` `SELLER_NOT_FOUND` → **Atlas responde** (antes `503`) |
 | `GET /api/v1/admin/users?page=1&pageSize=20` | `401` `UNAUTHORIZED` |
-| CD‑1 (push a `main`) | Run **verde**: clonado en la EC2, despliegue del SHA, 2 réplicas sanas, smoke y evidencia con la sonda `/health` |
+| CD‑1 (push a `main`, 2026-11-08) | Run **verde**: clonado en la EC2, despliegue del SHA, 2 réplicas sanas, smoke y evidencia con la sonda `/health` |
+| Despliegue por SSM (2026-11-11, SHA `355db03`) | **Verde**: `aws ssm send-command` → documento `utttgo-dev-deploy` → fetch del SHA exacto → `docker compose` con el override de producción → **2/2 réplicas sanas**, `GET /api/v1/auth/me` → `401`, `GET /health` → `200` |
+| Security Group (2026-11-11) | Ingress real: **solo 80 y 443** (`0.0.0.0/0`); el 22 está cerrado y el acceso se hace por SSM |
+| CloudWatch Logs (2026-11-11) | Streams `api`, `nginx` y `redis` recibiendo eventos del stack en producción (`aws logs tail /utttgo/api/dev`) |
+| Budget (2026-11-11) | `utttgo-dev-zero-cost-guard`: COST, USD, MONTHLY, límite 1 USD, **notificación `ACTUAL`/`GREATER_THAN`/umbral 0 % en estado `OK`**; `ActualSpend` 0.00 USD y Cost Explorer del mes en 0.00 USD |
 
-Estas sondas prueban **disponibilidad y enrutamiento**, no el flujo autenticado completo: la validación con una cuenta real `@uttt.edu.mx` confirmada en Supabase queda como evidencia del Sprint 1 (TASK‑SELLER‑041).
+Estas sondas prueban **disponibilidad, enrutamiento y operación de la infraestructura**, no el flujo autenticado completo: la validación con una cuenta real `@uttt.edu.mx` confirmada en Supabase queda como evidencia del Sprint 1 (TASK‑SELLER‑041).
 
 ### 4.2 Suites locales
 
@@ -100,8 +105,8 @@ Además, contra **MongoDB 7 real** (contenedor local) se validó el diseño del 
 
 | Archivo(s) | Contenido y estado |
 |---|---|
-| `docs/constitution.md` | **v2.5**: nube AWS (DEC‑018) y DEC‑019 (retirada de API‑016, identidad del vendedor, ficha `GET /api/v1/sellers/me`, alcance del Sprint 1). |
-| `AGENTS.md` | Manual operativo SDD v2.3, alineado con la constitución y con la sonda `/health`. |
+| `docs/constitution.md` | **v2.6**: nube AWS (DEC‑018), DEC‑019 (retirada de API‑016, identidad del vendedor, ficha `GET /api/v1/sellers/me`, alcance del Sprint 1) y DEC‑020/021 (cierre de exposición de la EC2, CD por SSM, Budget con alerta, CORS estricto y logs en CloudWatch Logs). |
+| `AGENTS.md` | Manual operativo SDD **v2.6**, alineado con la constitución y con la sonda `/health`. |
 | `memoria.md` | Registro vivo de decisiones, dependencias, mapa de colecciones y estado de fases. |
 | `docs/traceability.md` | Matriz de las 42 fichas + fichas nuevas, con el estado real de cada ruta y la evidencia de despliegue. |
 | `docs/academic-requirements-phase-02.md`, `docs/decisiones-pendientes-fase-02.md` | Matriz académica y decisiones técnicas pendientes de la fase 02 (OTP, refresh, SemVer). |
@@ -109,13 +114,13 @@ Además, contra **MongoDB 7 real** (contenedor local) se validó el diseño del 
 | `specs/phase-02-auth-users/*` | Identidad, usuarios y vendedores: contratos y tareas con gates documentales abiertos (TASK‑AUTH‑002/003/007/008). |
 | `specs/phase-03-catalog-offers/*` | **v2.1 aprobada para el Sprint 1 (vendedor)** por DEC‑019; el Sprint 2 (catálogo y categorías) sigue bloqueado hasta su propia aprobación. |
 | `specs/cross-cutting/api-health-probe/*` | v1.1: ficha de `GET /health` (HP‑01..HP‑11) con el fix del registro de la sonda en CD‑1. |
-| `specs/cross-cutting/ci-cd-devsecops/*` | Requisitos, secuencia y tareas de CI‑1/CD‑1 con la evidencia del run verde. |
-| `specs/cross-cutting/infra-aws-free-tier/*` | INFRA‑01..15: IaC aplicada, stack en ejecución; pendientes hop limit de IMDS, alerta de Budget y backend remoto de estado. |
+| `specs/cross-cutting/ci-cd-devsecops/*` | Requisitos, secuencia y tareas de CI‑1/CD‑1 con la evidencia del run verde y el nuevo camino de despliegue por SSM. |
+| `specs/cross-cutting/infra-aws-free-tier/*` | INFRA‑01..15: IaC aplicada y cierre verificado (SG sin 22, Budget con alerta, CORS estricto, logs en CloudWatch Logs); pendientes el `description` del SG, el backend remoto de estado y el build de la imagen en CI. |
 | `specs/phase-07-chat-realtime/spec.md` | Borrador funcional del chat temporal (DEC‑005); sin persistencia ni purgas. |
 
 ## 6. Faltantes o configuraciones a revisar
 
-- **TLS y dominio:** la instancia solo sirve HTTP en la IP. `certbot` requiere un dominio real, y las tiendas móviles exigen HTTPS. Decisión abierta: dominio en un registrador con DNS gratuito y desafío DNS‑01 contra la EIP (evita Route 53, que sí tendría costo).
+- **TLS y dominio:** la instancia solo sirve HTTP en la IP. `certbot` requiere un dominio real, y las tiendas móviles exigen HTTPS. Decisión abierta: dominio en un registrador con DNS gratuito y desafío DNS‑01 contra la EIP (evita Route 53, que sí tendría costo). Mientras no exista HTTPS, la API registra el aviso `Failed to determine the https port for redirect` (ruido de `HttpsRedirectionMiddleware`, sin impacto funcional).
 - **Media e imágenes (fase 05):** no hay `AWSSDK.S3` ni cliente de Content Safety; `avatarUrl` es siempre `null` y no se puede publicar ninguna imagen (BR‑007).
 - **Catálogo (Sprint 2 de la fase 03):** no existen `products` ni `categories`; API‑011..015 y API‑019..022 necesitan `spec/plan/task` v2.2 y aprobación propia antes de código.
 - **Sesiones:** no hay `POST /api/v1/auth/logout` (API‑003) ni refresh token; el access token expira (3600 s) y la app móvil debe volver a autenticarse. TASK‑AUTH‑003 abierto.
@@ -123,7 +128,10 @@ Además, contra **MongoDB 7 real** (contenedor local) se validó el diseño del 
 - **Middleware de autenticación y CORS:** no hay `AddAuthentication()`/`UseAuthentication()`; la validación del JWT se hace por servicio con gate de Redis. No hay política CORS (irrelevante para móvil nativo; necesaria si hay cliente web).
 - **Auditoría administrativa:** `UnconfiguredAdminUsersAudit` no persiste eventos (AC‑005 abierto por API‑040).
 - **Pruebas contra dependencias reales:** no hay Testcontainers ni entorno no productivo; las suites prueban lógica con dobles.
-- **Terraform y costo:** falta un `apply` del hop limit de IMDS, la alerta de Budget y el backend remoto del estado; la evidencia de costo $0 depende de la alerta tras el primer apply.
+- **Secretos de CI en AWS:** CD‑1 usa el usuario IAM `utttgo-dev-github-actions-deploy` (OIDC está bloqueado por el SCP de la organización). Falta que el propietario cree su clave (`iam:create-access-key`) y la guarde en los secretos del repositorio; hasta entonces CD‑1 automático fallará (el despliegue manual por `aws ssm send-command` sí funciona).
+- **Tiempo de despliegue:** el build de la imagen ocurre en la t3.micro con los CPU credits agotados (balance ≈ 282/3000) y la publicación de .NET tardó **≈ 29 min**. CD‑2 pendiente: construir y publicar la imagen en CI (ECR) para que la instancia solo descargue, o activar T3 Unlimited en una ventana de mantenimiento (con costo potencial frente al objetivo $0).
+- **`description` del Security Group:** conserva el texto histórico porque es `ForceNew`; el estado real está en la etiqueta `Ingress`. Se corrige en el próximo reemplazo consciente de la instancia (junto con el rollover de AMI).
+- **Terraform:** backend remoto del estado (S3 + DynamoDB) pendiente antes de producción; el estado sigue local y fuera de Git.
 - **Secretos:** las credenciales de Atlas y Supabase fueron rotadas tras exponerse en una conversación; los valores viven solo en el entorno de la instancia. No documentarlos ni versionarlos.
 - **API‑016:** resuelta por DEC‑019 (no se implementa ni redirige). La eliminación de producto sigue **sin ficha aprobada**.
 - **`AllowedHosts: "*"`** es control de hosts, **no** una política CORS.
@@ -133,5 +141,5 @@ Además, contra **MongoDB 7 real** (contenedor local) se validó el diseño del 
 1. **HTTPS con dominio:** sin TLS la app móvil no puede publicarse en las tiendas ni cumplir las políticas de las plataformas.
 2. **Catálogo y Media ausentes:** no hay productos, categorías ni imágenes; el valor funcional para el comprador todavía no existe.
 3. **Ciclo de sesión incompleto:** sin refresh ni logout, la experiencia móvil se corta cada hora y no existe cierre de sesión en servidor.
-4. **Cierre de infraestructura y costo:** hop limit de IMDS, alerta de Budget, backend remoto de estado y evidencia de costo $0.
+4. **Secretos de CI en AWS:** sin la clave del usuario IAM de despliegue, el pipeline no puede publicar en la EC2 (el camino manual por SSM sí está validado).
 5. **Gates SDD y pruebas reales:** cierre documental de fase 02 (TASK‑AUTH‑007/008), aprobación del Sprint 2 y pruebas contra Atlas/Redis reales en un entorno no productivo.

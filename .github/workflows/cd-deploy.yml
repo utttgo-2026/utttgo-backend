@@ -2,6 +2,14 @@ name: CD-Deploy Backend (EC2)
 
 # Despliegue controlado hacia la EC2 de DEC-018 (3.129.142.54).
 # Se ejecuta SOLO después de que CI-1 termine en verde sobre el mismo push a main.
+#
+# El despliegue usa AWS Systems Manager (send-command). El puerto 22 del Security
+# Group permanece cerrado (DEC-020).
+#
+# El SCP de la organizacion deniega iam:CreateOpenIDConnectProvider, por lo que
+# GitHub Actions no puede autenticarse en AWS por OIDC en esta cuenta. CD-1 usa un
+# usuario IAM de privilegio minimo (utttgo-dev-github-actions-deploy) cuya clave
+# vive en los secretos AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY del repositorio.
 on:
   workflow_run:
     workflows: ['CI-1 Backend (local doubles)']
@@ -13,7 +21,8 @@ on:
         required: true
         type: string
 
-# Solo lectura: el CD no toca el repositorio ni publica artefactos.
+# contents: read para leer el repositorio. No se requiere id-token: OIDC esta
+# bloqueado por el SCP de la organizacion.
 permissions:
   contents: read
 
@@ -21,6 +30,11 @@ permissions:
 concurrency:
   group: cd-deploy-production
   cancel-in-progress: false
+
+env:
+  AWS_REGION: us-east-2
+  SSM_DEPLOY_DOCUMENT: utttgo-dev-deploy
+  API_BASE_URL: http://3.129.142.54
 
 jobs:
   gate:
@@ -55,190 +69,99 @@ jobs:
           fi
 
   deploy:
-    name: Despliegue en EC2 (docker compose)
+    name: Despliegue en EC2 (SSM send-command)
     needs: gate
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    # El build de la imagen ocurre en la instancia t3.micro (CPU credits
+    # agotados): la publicacion de .NET puede tardar ~30 min. El limite cubre
+    # build + arranque + sondas sin cortar el despliegue a mitad.
+    timeout-minutes: 75
     environment:
       name: production
       url: https://3.129.142.54
     steps:
-      - name: Preparar clave SSH y known_hosts
+      - name: Comprobar credenciales de AWS
         env:
-          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
-          EC2_HOST: ${{ secrets.EC2_HOST }}
-          EC2_KNOWN_HOSTS: ${{ secrets.EC2_KNOWN_HOSTS }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         run: |
           set -euo pipefail
-          if [ -z "${EC2_SSH_KEY:-}" ] || [ -z "${EC2_HOST:-}" ]; then
-            echo "Faltan los secretos EC2_SSH_KEY y/o EC2_HOST en el repositorio." >&2
+          if [ -z "${AWS_ACCESS_KEY_ID:-}" ] || [ -z "${AWS_SECRET_ACCESS_KEY:-}" ]; then
+            echo "Faltan los secretos AWS_ACCESS_KEY_ID y/o AWS_SECRET_ACCESS_KEY del usuario IAM de despliegue." >&2
+            echo "Crealos segun infra/terraform/README.md (iam:create-access-key) y guardalos en Settings > Secrets and variables > Actions." >&2
             exit 1
           fi
-          install -d -m 700 ~/.ssh
-          printf '%s\n' "$EC2_SSH_KEY" | tr -d '\r' > ~/.ssh/id_ec2
-          chmod 600 ~/.ssh/id_ec2
-          if [ -n "${EC2_KNOWN_HOSTS:-}" ]; then
-            printf '%s\n' "$EC2_KNOWN_HOSTS" | tr -d '\r' > ~/.ssh/known_hosts
-          else
-            ssh-keyscan -T 10 -H "$EC2_HOST" > ~/.ssh/known_hosts
-            echo "::warning::EC2_KNOWN_HOSTS no configurado: host key aceptada con ssh-keyscan, sin verificacion previa"
-          fi
-          chmod 600 ~/.ssh/known_hosts
+          aws sts get-caller-identity --query 'User.UserName' --output text
 
-      - name: Desplegar en la EC2
+      - name: Desplegar en la EC2 por Systems Manager
         id: deploy
         env:
-          EC2_HOST: ${{ secrets.EC2_HOST }}
-          EC2_USER: ${{ secrets.EC2_USER }}
-          EC2_PORT: ${{ vars.EC2_PORT }}
-          DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
           TARGET_SHA: ${{ needs.gate.outputs.target_sha }}
-          REPO_URL: ${{ vars.REPO_URL }}
-          # Token del job (solo lectura, con vida util limitada al run): autentica
-          # el clone/fetch del repositorio privado sin guardar credenciales en la
-          # instancia ni en el historial del remoto.
-          GITHUB_TOKEN: ${{ github.token }}
+          SSM_DOCUMENT: ${{ env.SSM_DEPLOY_DOCUMENT }}
+          API_BASE: ${{ env.API_BASE_URL }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         run: |
           set -euo pipefail
-          : "${EC2_USER:=ubuntu}"
-          : "${EC2_PORT:=22}"
-          : "${DEPLOY_PATH:=/opt/utttgo}"
-          : "${REPO_URL:=https://github.com/utttgo-2026/utttgo-backend.git}"
-          ssh_options=(
-            -i "$HOME/.ssh/id_ec2"
-            -p "$EC2_PORT"
-            -o BatchMode=yes
-            -o IdentitiesOnly=yes
-            -o StrictHostKeyChecking=yes
-            -o ConnectTimeout=15
-          )
-          ssh "${ssh_options[@]}" "$EC2_USER@$EC2_HOST" bash -s -- \
-            "$DEPLOY_PATH" "$TARGET_SHA" "$GITHUB_TOKEN" "$REPO_URL" <<'REMOTE'
-          set -euo pipefail
 
-          DEPLOY_PATH="$1"
-          TARGET_SHA="$2"
-          GITHUB_TOKEN="${3:-}"
-          REPO_URL="${4:-https://github.com/utttgo-2026/utttgo-backend.git}"
-
-          if ! command -v git >/dev/null 2>&1; then
-            echo "git no esta instalado en la instancia."
-            if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
-              sudo -n apt-get update -y
-              sudo -n apt-get install -y git
-            else
-              echo "Instala git en la instancia (sudo apt-get install -y git) o concede sudo sin password al usuario de despliegue." >&2
-              exit 1
-            fi
-          fi
-
-          if [ -n "$GITHUB_TOKEN" ]; then
-            auth_header="$(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 | tr -d '\n')"
-            git_auth() {
-              GIT_CONFIG_COUNT=1 \
-              GIT_CONFIG_KEY_0="http.https://github.com/.extraheader" \
-              GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $auth_header" \
-              git "$@"
-            }
-          else
-            git_auth() { git "$@"; }
-          fi
-
-          mkdir -p "$DEPLOY_PATH" 2>/dev/null || true
-          if [ ! -w "$DEPLOY_PATH" ]; then
-            sudo -n chown "$(id -u):$(id -g)" "$DEPLOY_PATH" 2>/dev/null || true
-          fi
-          if [ ! -w "$DEPLOY_PATH" ]; then
-            echo "El directorio $DEPLOY_PATH no es escribible por $(id -un)." >&2
+          instance_id="$(aws ec2 describe-instances \
+            --filters 'Name=tag:Project,Values=utttgo' \
+                      'Name=tag:Environment,Values=dev' \
+                      'Name=instance-state-name,Values=running' \
+            --query 'Reservations[].Instances[].InstanceId' \
+            --output text)"
+          if [ -z "$instance_id" ] || [ "$instance_id" = "None" ]; then
+            echo "No se encontro la instancia etiquetada Project=utttgo, Environment=dev en ejecucion." >&2
             exit 1
           fi
+          echo "Instancia objetivo: $instance_id"
 
-          if [ ! -e "$DEPLOY_PATH/.git" ]; then
-            if [ -n "$(ls -A "$DEPLOY_PATH" 2>/dev/null)" ]; then
-              echo "$DEPLOY_PATH no es un repositorio Git y no esta vacio; no se puede clonar encima." >&2
-              exit 1
-            fi
-            echo "Clon inicial del repositorio en $DEPLOY_PATH"
-            git_auth clone "$REPO_URL" "$DEPLOY_PATH"
-          fi
+          # El repositorio es publico: el fetch en la instancia no lleva
+          # credenciales. Si pasa a privado, se envia GITHUBTOKEN como parametro
+          # del documento (cabecera extra de git, nunca se escribe en disco).
+          parameters="$(printf '{"sha":"%s"}' "$TARGET_SHA")"
+          command_id="$(aws ssm send-command \
+            --document-name "$SSM_DOCUMENT" \
+            --targets "Key=instanceids,Values=$instance_id" \
+            --parameters "$parameters" \
+            --timeout-seconds 5400 \
+            --query 'Command.CommandId' \
+            --output text)"
+          echo "Comando SSM: $command_id"
 
-          cd "$DEPLOY_PATH"
-
-          if ! git_auth fetch --prune origin "$TARGET_SHA"; then
-            git_auth fetch --prune origin main
-            git_auth reset --hard FETCH_HEAD
-            actual="$(git rev-parse HEAD)"
-            if [ "$actual" != "$TARGET_SHA" ]; then
-              echo "El commit en el servidor ($actual) no coincide con el SHA objetivo ($TARGET_SHA)." >&2
-              exit 1
-            fi
-          else
-            git_auth reset --hard "$TARGET_SHA"
-          fi
-
-          actual="$(git rev-parse HEAD)"
-          if [ "$actual" != "$TARGET_SHA" ]; then
-            echo "El commit desplegado ($actual) no coincide con el SHA objetivo ($TARGET_SHA)." >&2
-            exit 1
-          fi
-          echo "Commit desplegado: $actual"
-
-          if [ ! -f "$DEPLOY_PATH/.env" ]; then
-            echo "::warning::No existe .env en $DEPLOY_PATH: Atlas, Supabase y S3 deben estar configurados en la instancia."
-          fi
-
-          docker compose pull --ignore-buildable redis nginx
-          docker compose up -d --build --remove-orphans --scale api=2
-
-          deadline=$(( $(date +%s) + 240 ))
-          replicas_ok=0
-          while [ "$(date +%s)" -lt "$deadline" ]; do
-            replicas_ok=1
-            for container_id in $(docker compose ps -q api); do
-              health="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$container_id")"
-              echo "Replica $container_id: $health"
-              if [ "$health" != "healthy" ]; then
-                replicas_ok=0
-              fi
-            done
-            if [ "$replicas_ok" = "1" ]; then
-              break
-            fi
-            sleep 5
+          status="Pending"
+          for _ in $(seq 1 540); do
+            status="$(aws ssm get-command-invocation \
+              --command-id "$command_id" \
+              --instance-id "$instance_id" \
+              --query 'Status' \
+              --output text)"
+            case "$status" in
+              Success|Cancelled|Failed|TimedOut|AccessDenied|InvalidCommand) break ;;
+            esac
+            sleep 10
           done
 
-          if [ "$replicas_ok" != "1" ]; then
-            echo "Las replicas de la API no quedaron sanas." >&2
-            docker compose ps >&2
-            docker compose logs --tail 80 api >&2
+          echo "----- salida del comando -----"
+          aws ssm get-command-invocation \
+            --command-id "$command_id" \
+            --instance-id "$instance_id" \
+            --query 'StandardOutputContent' \
+            --output text
+          echo "----- fin de la salida -----"
+
+          if [ "$status" != "Success" ]; then
+            echo "El comando SSM termino con estado $status" >&2
+            aws ssm get-command-invocation \
+              --command-id "$command_id" \
+              --instance-id "$instance_id" \
+              --query 'StandardErrorContent' \
+              --output text >&2 || true
             exit 1
           fi
 
-          http_code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 http://127.0.0.1/api/v1/auth/me || echo 000)"
-          echo "HTTP /api/v1/auth/me -> $http_code"
-          case "$http_code" in
-            200|401|503) ;;
-            *)
-              echo "Smoke test HTTP fallido (codigo $http_code)." >&2
-              docker compose logs --tail 80 api >&2
-              exit 1
-              ;;
-          esac
-
-          health_code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 http://127.0.0.1/health || echo 000)"
-          echo "HTTP /health -> $health_code"
-          case "$health_code" in
-            200) ;;
-            503) echo "::warning::La sonda /health devolvio 503: el despliegue esta activo pero MongoDB o Redis no responden." ;;
-            *) echo "::warning::La sonda /health devolvio $health_code; se requiere verificacion manual." ;;
-          esac
-
-          docker compose ps
-          REMOTE
-
-          # GITHUB_OUTPUT solo existe en el runner: la sonda se consulta por SSH desde aqui.
-          health_code="$(ssh "${ssh_options[@]}" "$EC2_USER@$EC2_HOST" \
-            "curl -s -o /dev/null -w '%{http_code}' --max-time 15 http://127.0.0.1/health" 2>/dev/null || true)"
+          # GITHUB_OUTPUT solo existe en el runner: la sonda se consulta desde aqui.
+          health_code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$API_BASE/health" || echo 000)"
           health_code="${health_code:-000}"
           echo "Sonda /health registrada: $health_code"
           echo "health_code=$health_code" >> "$GITHUB_OUTPUT"
@@ -247,24 +170,33 @@ jobs:
         if: always()
         env:
           TARGET_SHA: ${{ needs.gate.outputs.target_sha }}
-          EC2_HOST: ${{ secrets.EC2_HOST }}
-          EC2_USER: ${{ secrets.EC2_USER }}
-          DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+          API_BASE: ${{ env.API_BASE_URL }}
           DEPLOY_OUTCOME: ${{ steps.deploy.outcome }}
           HEALTH_STATUS: ${{ steps.deploy.outputs.health_code }}
+          LOG_GROUP: /utttgo/api/dev
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         run: |
           set -euo pipefail
           mkdir -p ci-evidence
           {
             printf 'CD backend UTTT-GO\n'
+            printf 'Transporte: AWS Systems Manager (send-command) con usuario IAM de privilegio minimo\n'
             printf 'SHA objetivo: %s\n' "$TARGET_SHA"
-            printf 'Instancia: %s\n' "$EC2_HOST"
-            printf 'Usuario: %s\n' "$EC2_USER"
-            printf 'Ruta de despliegue: %s\n' "$DEPLOY_PATH"
+            printf 'API: %s\n' "$API_BASE"
             printf 'Resultado: %s\n' "$DEPLOY_OUTCOME"
             printf 'Sonda /health: %s\n' "${HEALTH_STATUS:-no ejecutada}"
             printf 'Fecha UTC: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           } > ci-evidence/cd-deploy.txt
+
+          # Los logs de los contenedores se publican en CloudWatch Logs con el
+          # driver awslogs de Docker; el runner los consulta para la evidencia.
+          if [ -n "${AWS_ACCESS_KEY_ID:-}" ] && [ -n "${AWS_SECRET_ACCESS_KEY:-}" ]; then
+            {
+              printf '\nUltimos eventos de %s:\n' "$LOG_GROUP"
+              aws logs tail "$LOG_GROUP" --since 10m --format short 2>/dev/null | tail -n 40 || true
+            } >> ci-evidence/cd-deploy.txt
+          fi
 
       - name: Subir evidencia (sin secretos ni logs crudos)
         if: always()

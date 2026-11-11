@@ -104,9 +104,9 @@ El estado de decisiones, pendientes y mapa de colecciones se mantiene en [`memor
 └── README.md
 ```
 
-Las 42 fichas del Excel no se modifican sin aprobación. `docs/academic-requirements-phase-02.md` coteja el PDF oficial con la fase 02; `docs/traceability.md` vincula sus siete rutas prioritarias a HU/UI/PB. `src/UTTTGO.Api` incluye API-001/002 locales candidatas y `tests/UtttGo.UnitTests/`, `tests/UtttGo.IntegrationTests/` y `tests/UtttGo.SecurityTests/` las verifican **solo con dobles**, sin servicios externos (`docs/qa-api-001.md`, `docs/qa-api-002.md`). `infra/terraform` **ya existe** con el stack AWS de DEC-018 (EC2, S3, IAM, CloudWatch, Budget) validado y **aplicado por el propietario** (Elastic IP `3.129.142.54`); falta la evidencia de costo $0 (alerta AWS Budget). `docker-compose.yml`, `Dockerfile`, `nginx/` y `setup.sh` materializan el despliegue en la EC2 (2 réplicas de la API + Redis + Nginx) y están validados localmente, sin ejecución en la instancia todavía.
+Las 42 fichas del Excel no se modifican sin aprobación. `docs/academic-requirements-phase-02.md` coteja el PDF oficial con la fase 02; `docs/traceability.md` vincula sus siete rutas prioritarias a HU/UI/PB. `src/UTTTGO.Api` incluye API-001/002 locales candidatas y `tests/UtttGo.UnitTests/`, `tests/UtttGo.IntegrationTests/` y `tests/UtttGo.SecurityTests/` las verifican **solo con dobles**, sin servicios externos (`docs/qa-api-001.md`, `docs/qa-api-002.md`). `infra/terraform` **ya existe** con el stack AWS de DEC-018/020/021 (EC2, S3, IAM, CloudWatch Logs, SSM, Budget) validado y **aplicado en la cuenta real** (Elastic IP `3.129.142.54`), con el cierre de infraestructura verificado el 2026-11-11: Security Group sin el puerto 22, CD-1 por AWS Systems Manager, Budget con alerta institucional activa (costo del mes 0.00 USD) y logs de contenedores en CloudWatch Logs. `docker-compose.yml`, `docker-compose.prod.yml`, `Dockerfile`, `nginx/` y `setup.sh` materializan el despliegue en la EC2 (2 réplicas de la API + Redis + Nginx), **ya en ejecución y verificado** en la instancia.
 
-**Gate académico documental:** el PDF exige SDD, pruebas, CI/CD, dos instancias en nube y costo cero; recomienda Terraform y sugiere herramientas concretas de IA, pero Terraform es **obligatorio por la constitución**, no por el PDF. El requisito estructural se resolvió con **DEC-018** (constitución v2.4): nube única AWS, una EC2 t3.micro ($0 en Free Tier) con **2 réplicas Docker Compose detrás de Nginx** como las «dos instancias». La evidencia final de costo $0 queda pendiente de la alerta AWS Budget tras el primer apply; ni el cambio de nube ni esta documentación acreditan despliegue.
+**Gate académico documental:** el PDF exige SDD, pruebas, CI/CD, dos instancias en nube y costo cero; recomienda Terraform y sugiere herramientas concretas de IA, pero Terraform es **obligatorio por la constitución**, no por el PDF. El requisito estructural se resolvió con **DEC-018** (constitución v2.4): nube única AWS, una EC2 t3.micro ($0 en Free Tier) con **2 réplicas Docker Compose detrás de Nginx** como las «dos instancias». La evidencia de costo $0 quedó acreditada el 2026-11-11 con el **AWS Budget activo** (notificación `OK`, umbral 0 %) y Cost Explorer en 0.00 USD; el cierre de facturación del mes lo aporta el propietario.
 
 ---
 
@@ -246,8 +246,14 @@ Requisitos: el dominio debe apuntar con un registro A a `3.129.142.54` (Let's En
 
 ```bash
 docker compose ps
-docker compose logs -f api
 docker compose up -d --scale api=2
+```
+
+En la EC2 los logs de los contenedores se publican en **CloudWatch Logs** con el driver `awslogs` de Docker (grupo `/utttgo/api/dev`), por lo que `docker compose logs` no está disponible:
+
+```bash
+aws logs tail /utttgo/api/dev --since 10m
+aws logs tail /utttgo/api/dev --follow
 ```
 
 Notas operativas:
@@ -260,18 +266,20 @@ Notas operativas:
 
 ### CD automático (GitHub Actions)
 
-`.github/workflows/cd-deploy.yml` despliega en la EC2 **solo cuando CI-1 (`ci-1.yml`) termina en verde en un push a `main`** (`workflow_run`, con verificación de resultado, evento y rama). Descarga por SSH el SHA exacto verificado, ejecuta `docker compose up -d --build --scale api=2`, espera que las réplicas queden sanas, hace smoke HTTP y publica la evidencia del despliegue. Un despliegue manual (`workflow_dispatch`) exige indicar el motivo.
+`.github/workflows/cd-deploy.yml` despliega en la EC2 **solo cuando CI-1 (`ci-1.yml`) termina en verde en un push a `main`** (`workflow_run`, con verificación de resultado, evento y rama). El despliegue se hace por **AWS Systems Manager** (`aws ssm send-command` sobre el documento `utttgo-dev-deploy` declarado en Terraform): **no hay SSH** y el puerto 22 del Security Group está cerrado. El script remoto (`infra/ssm/deploy.sh`) descarga el SHA exacto verificado, ejecuta `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build --scale api=2`, espera que las réplicas queden sanas, hace smoke HTTP y deja la evidencia. Un despliegue manual (`workflow_dispatch`) exige indicar el motivo.
 
 Secretos que hay que configurar en **Settings → Secrets and variables → Actions**:
 
 | Secreto | Valor |
 |---|---|
-| `EC2_SSH_KEY` | Clave privada completa del usuario de despliegue (con permisos de lectura en el repositorio y acceso a Docker en la instancia) |
-| `EC2_HOST` | `3.129.142.54` |
-| `EC2_USER` | `ubuntu` (o el usuario de despliegue creado en la instancia) |
-| `EC2_KNOWN_HOSTS` | Recomendado: línea `known_hosts` de la instancia (evita aceptar la clave del host sin verificar) |
+| `AWS_ACCESS_KEY_ID` | `AccessKeyId` del usuario IAM `utttgo-dev-github-actions-deploy` |
+| `AWS_SECRET_ACCESS_KEY` | `SecretAccessKey` del mismo usuario |
 
-Variables opcionales: `DEPLOY_PATH` (`/opt/utttgo`), `EC2_PORT` (`22`) y `REPO_URL` (`https://github.com/utttgo-2026/utttgo-backend.git`). El primer despliegue **clona** el repositorio en la instancia si la ruta no es un repositorio Git; después solo hace `fetch`/`reset` al SHA verificado. El repositorio es privado: el workflow autentica el `clone`/`fetch` con el token del propio job (solo lectura, con vida útil limitada al run), sin guardar credenciales en la instancia. Además, crea el environment `production` con revisores requeridos y, si prefieres evitar el token, registra la clave pública de despliegue como **deploy key de solo lectura** del repositorio en la instancia.
+La clave se crea a mano (`aws iam create-access-key --user-name utttgo-dev-github-actions-deploy`; ver `infra/terraform/README.md`) y **nunca** pasa por Terraform, el estado ni el repositorio. El usuario solo puede enviar comandos SSM y leer los logs del grupo de la API. El SCP de la organización deniega `iam:CreateOpenIDConnectProvider`, por lo que **OIDC no es posible** en esta cuenta: se usa este usuario IAM de privilegio mínimo en su lugar.
+
+El repositorio es **público**, así que el `fetch` del despliegue no transporta credenciales. Si en el futuro pasa a privado, el documento acepta el token del job (`GITHUBTOKEN`, como cabecera extra de git, sin escribirlo en disco) o una deploy key de solo lectura instalada en la instancia.
+
+> El build de la imagen ocurre en la propia instancia: con los CPU credits agotados de la t3.micro, `dotnet publish` tarda ≈ 30 min. CD‑1 sube su timeout a 75 min; construir la imagen en CI (ECR) es la mejora pendiente (INFRA-T21).
 
 ---
 
