@@ -44,12 +44,6 @@ variable "root_volume_size" {
   }
 }
 
-variable "key_name" {
-  description = "Name of an existing EC2 key pair (us-east-2) for SSH. Leave null to skip; SSM Session Manager is the recommended alternative."
-  type        = string
-  default     = null
-}
-
 variable "install_docker" {
   description = "Install Docker Engine and the Compose plugin on boot (needed for the 2 API replicas + Nginx + Redis Compose stack)."
   type        = bool
@@ -87,21 +81,60 @@ variable "bucket_force_destroy" {
 }
 
 variable "allowed_origins" {
-  description = "Origins allowed by the images bucket CORS for presigned PUT/GET traffic. Replace '*' with explicit origins before production (constitution § 6.1)."
+  description = <<-EOT
+    Orígenes permitidos por el CORS del bucket de imágenes para el tráfico presigned
+    PUT/GET. Lista ESTRICTA: el comodín "*" queda prohibido (constitución § 6.1).
+    Por defecto está vacía, es decir, el bucket NO expone ninguna regla CORS: el
+    cliente móvil nativo no envía cabecera Origin y no la necesita, y ningún
+    navegador puede leer el bucket. Cuando exista el dominio de la API, declarar
+    aquí el origen exacto (p. ej. ["https://api.tudominio.mx"]) y aplicar.
+  EOT
   type        = list(string)
-  default     = ["*"]
+  default     = []
+
+  validation {
+    condition = length(var.allowed_origins) == 0 || (
+      alltrue([
+        for origin in var.allowed_origins :
+        can(regex("^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?$", origin))
+      ])
+    )
+    error_message = "allowed_origins debe estar vacia o contener solo origenes https:// explicitos; el comodin esta prohibido."
+  }
 }
 
 variable "budget_alert_email" {
-  description = "Email subscriber for the AWS Budget alert that evidences the $0 objective. Leave null to skip the budget."
+  description = <<-EOT
+    Buzón suscriptor de la alerta de costo de AWS Budget (objetivo $0).
+    Es dato personal: se inyecta por variable de entorno (TF_VAR_budget_alert_email)
+    o por un archivo *.tfvars local ignorado por Git; nunca se versiona.
+    Debe ser un correo institucional @uttt.edu.mx real para recibir la notificación.
+  EOT
   type        = string
-  default     = null
+  nullable    = false
+
+  validation {
+    condition     = can(regex("^[A-Za-z0-9._%+-]+@uttt\\.edu\\.mx$", var.budget_alert_email))
+    error_message = "budget_alert_email debe ser un correo institucional valido con dominio @uttt.edu.mx."
+  }
 }
 
 variable "budget_limit_usd" {
-  description = "Monthly cost alert threshold in USD. Any real charge trips the notification."
+  description = "Umbral mensual de alerta de costo en USD. Cualquier cargo real dispara la notificacion."
   type        = number
   default     = 1
+}
+
+variable "github_repository" {
+  description = "Repositorio GitHub propietario del flujo CD-1 (formato owner/repo)."
+  type        = string
+  default     = "utttgo-2026/utttgo-backend"
+}
+
+variable "github_branch" {
+  description = "Rama cuyo workflow despliega a la EC2."
+  type        = string
+  default     = "main"
 }
 
 # Credentials note: supply AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_REGION as

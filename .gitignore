@@ -116,6 +116,8 @@ docker-compose.override.yaml
 *.tfvars
 *.tfvars.json
 *.tfplan
+plan.json
+*.plan.json
 crash.log
 crash.*.log
 override.tf

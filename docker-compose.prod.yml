@@ -1,0 +1,40 @@
+# =============================================================================
+# UTTT-GO Backend — override de Docker Compose para la instancia EC2.
+#
+# En produccion la salida de los contenedores se publica en CloudWatch Logs con
+# el driver nativo de Docker (awslogs), usando el Instance Profile de la
+# instancia (IMDSv2): no hay access keys en la imagen ni en el Compose.
+#
+# El desarrollo local usa `docker-compose.yml` sin este override y conserva el
+# driver json-file, de modo que `docker compose logs` sigue disponible en local.
+# En la EC2 los logs viven en CloudWatch Logs (grupo /utttgo/api/dev), no en el
+# disco del contenedor.
+# =============================================================================
+
+services:
+  api:
+    logging:
+      driver: awslogs
+      options:
+        awslogs-group: "${UTTTGO_LOG_GROUP:-/utttgo/api/dev}"
+        awslogs-region: "${AWS_REGION:-us-east-2}"
+        awslogs-create-group: "false"
+        tag: "api"
+
+  redis:
+    logging:
+      driver: awslogs
+      options:
+        awslogs-group: "${UTTTGO_LOG_GROUP:-/utttgo/api/dev}"
+        awslogs-region: "${AWS_REGION:-us-east-2}"
+        awslogs-create-group: "false"
+        tag: "redis"
+
+  nginx:
+    logging:
+      driver: awslogs
+      options:
+        awslogs-group: "${UTTTGO_LOG_GROUP:-/utttgo/api/dev}"
+        awslogs-region: "${AWS_REGION:-us-east-2}"
+        awslogs-create-group: "false"
+        tag: "nginx"
