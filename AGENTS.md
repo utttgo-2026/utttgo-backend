@@ -1,6 +1,6 @@
 # AGENTS.md — Backend UTTT-GO
 > Manual operativo de agentes y desarrolladores del backend.
-> Versión 2.4 · 2026-11-08
+> Versión 2.6 · 2026-11-11
 > Alineado con `docs/constitution.md` v2.5 (DEC-018: nube AWS; DEC-019: retirada de API-016 e identidad del vendedor). Si hay conflicto, gana `docs/constitution.md`.
 > Flujo SDD obligatorio: `docs/constitution.md` → `spec.md` → `plan.md` → `task.md` → implementación.
 > Referencias metodológicas y técnicas del profesor para **todo el backend**: `docs/referencias-profesor-backend.md`; son subordinadas a la constitución y no modifican contratos aprobados.
@@ -30,7 +30,7 @@
 
 ### 1.2 Setup local
 
-La solución y el proyecto **existentes** son `UTTTGO.Backend.slnx` y `src/UTTTGO.Api/UTTTGO.Api.csproj` (Controllers). Ya existen `tests/UtttGo.UnitTests/`, `tests/UtttGo.IntegrationTests/` y `tests/UtttGo.SecurityTests/` **solo con cobertura local simulada de API-001/002**. El despliegue en la EC2 **ya existe como configuración**: `Dockerfile`, `docker-compose.yml` (2 réplicas de la API + Redis interno + Nginx; MongoDB solo en perfil `local`), `nginx/` y `setup.sh` (Docker, Compose, Certbot, TLS); validado localmente con `docker compose config`, build de imagen, `nginx -t` y prueba de balanceo entre réplicas, **sin ejecutarse todavía en la instancia**. Los workflows de CD siguen siendo objetivo **aún no implementado**. `infra/terraform` **existe y fue aplicado por el propietario** (DEC-018: EC2, EIP, SG, S3, IAM, CloudWatch, Budget; Elastic IP `3.129.142.54`), con la alerta de Budget y el ajuste de hop limit de IMDS pendientes de un nuevo `apply`. No ejecutar sus comandos como si fueran verificaciones realizadas. La conciliación técnica de la solución `.slnx` sustituye la prohibición documental anterior, sin cambiar el stack.
+La solución y el proyecto **existentes** son `UTTTGO.Backend.slnx` y `src/UTTTGO.Api/UTTTGO.Api.csproj` (Controllers). Ya existen `tests/UtttGo.UnitTests/`, `tests/UtttGo.IntegrationTests/` y `tests/UtttGo.SecurityTests/` **solo con cobertura local simulada de API-001/002**. El despliegue en la EC2 **ya está ejecutado y verificado**: `Dockerfile`, `docker-compose.yml` (2 réplicas de la API + Redis interno + Nginx; MongoDB solo en perfil `local`), `docker-compose.prod.yml` (override de la EC2 que publica los logs en CloudWatch Logs con el driver `awslogs`), `nginx/` y `setup.sh` (Docker, Compose, Certbot, TLS). `infra/terraform` **existe y fue aplicado en la cuenta real** (DEC-018/020/021: EC2, EIP, SG sin 22, S3, IAM, CloudWatch Logs, SSM, Budget con alerta institucional; Elastic IP `3.129.142.54`), y el despliegue CD-1 por `aws ssm send-command` se validó en vivo (2/2 réplicas sanas, `/health` 200, logs publicados). No ejecutar sus comandos como si fueran verificaciones realizadas. La conciliación técnica de la solución `.slnx` sustituye la prohibición documental anterior, sin cambiar el stack.
 
 En fase 02, `docs/academic-requirements-phase-02.md` distingue obligaciones del PDF (incluidas **dos instancias y costo cero**) de recomendaciones (Terraform en el PDF, obligatorio por la constitución) y herramientas sugeridas. La viabilidad se resolvó con **DEC-018** (cambio a AWS: una EC2 + 2 réplicas Compose + Nginx); la **evidencia final de costo $0 queda pendiente** de la alerta AWS Budget tras el primer apply. TASK-AUTH-001/006 están cerradas por evidencia documental; eso no cierra TASK-AUTH-007.
 
@@ -297,7 +297,7 @@ Flujo obligatorio:
 
 ## 8. Observabilidad
 
-- Serilog con consola JSON en desarrollo y entrega de logs a CloudWatch Logs desde la instancia (cuando se habilite el agente o el sink en la app).
+- Serilog con consola JSON en desarrollo y entrega de logs a CloudWatch Logs desde la instancia con el driver `awslogs` de Docker (grupo `/utttgo/api/<env>`); en la EC2 `docker compose logs` no está disponible: usar `aws logs tail /utttgo/api/dev`.
 - `correlationId` en cada evento de log del ciclo de vida.
 - `GET /health` verifica MongoDB y Redis; devuelve `503` si una dependencia crítica falla. Es la **readiness** del stack: el healthcheck de Nginx la consulta; el healthcheck del contenedor de la API sigue siendo **liveness** (TCP al puerto 8080) para no reiniciar réplicas por una caída de Atlas.
 - Logs de moderación y FCM con resultado y `correlationId`, sin payloads sensibles.
@@ -313,11 +313,11 @@ Flujo obligatorio:
 - SignalR con backplane Redis para las 2 réplicas.
 - Terraform en `infra/terraform` (proveedor AWS, región `us-east-2`):
   - Estado local fuera de Git en el MVP; backend remoto (S3 + DynamoDB) es refactor obligatorio antes de producción.
-  - EC2 + EIP, Security Group (22/80/443), bucket S3 privado (CORS, Block Public Access, SSE), rol/Instance Profile IAM (CloudWatch Logs, opcional SSM), log group y alerta AWS Budget.
+  - EC2 + EIP, Security Group (**80/443; el 22 está cerrado**), bucket S3 privado (CORS estricto, Block Public Access, SSE), rol/Instance Profile IAM (CloudWatch Logs y SSM), log group `/utttgo/api/dev`, documento SSM de despliegue y alerta AWS Budget.
   - Sin secretos: las credenciales del propio dueño llegan por variables de entorno, nunca por código.
 - MongoDB Atlas se aprovisiona por su mecanismo documentado; connection strings solo por variables de entorno de la instancia.
 - FCM service account en variables de entorno de la instancia.
-- CI/CD futuro con GitHub Actions e OIDC hacia AWS sin credenciales estáticas; mientras tanto `apply` manual local del propietario con su aprobación.
+- CD-1 desplega por **AWS Systems Manager** (`aws ssm send-command`, documento `utttgo-dev-deploy`); el SCP de la organización deniega OIDC, así que CI se autentica con un **usuario IAM de privilegio mínimo** cuya clave vive en los secretos del repositorio (DEC-020). El `apply` de Terraform sigue siendo manual local del propietario, con su aprobación.
 - Prohibido crear o modificar recursos a mano en staging/producción (cambios solo por Terraform).
 - Promoción entre entornos por pipeline, no manual.
 - Redis: timeouts cortos, retry exponencial y comportamiento de degradación de § 6.1.
@@ -410,7 +410,7 @@ No se importan de la guía de referencia ni se usan en UTTT-GO:
 | `tests/UtttGo.UnitTests/` | xUnit unitarias |
 | `tests/UtttGo.IntegrationTests/` | xUnit + WebApplicationFactory + Testcontainers |
 | `tests/UtttGo.SecurityTests/` | Seguridad y autorización |
-| `infra/terraform/` | IaC AWS Free Tier de DEC-018 (EC2, EIP, SG, S3, IAM, CloudWatch, Budget) |
+| `infra/terraform/` | IaC AWS Free Tier de DEC-018/020/021 (EC2, EIP, SG, S3, IAM, CloudWatch, Budget, documento SSM de despliegue) |
 | `Dockerfile` / `.dockerignore` | Imagen de la API .NET 10 (multi-stage, usuario no root, sin secretos) |
 | `docker-compose.yml` | Despliegue en la EC2: 2 réplicas de la API + Redis interno + Nginx; MongoDB solo en perfil `local` |
 | `nginx/` | Proxy inverso: balanceo entre réplicas, WebSocket, ACME y plantilla TLS |

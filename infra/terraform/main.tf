@@ -259,7 +259,7 @@ resource "aws_ssm_document" "deploy" {
       }
       REPOURL = {
         type    = "String"
-        default = "https://github.com:${var.github_repository}.git"
+        default = "https://github.com/${var.github_repository}.git"
       }
       DEPLOYPATH = {
         type    = "String"

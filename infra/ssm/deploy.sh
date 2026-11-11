@@ -10,14 +10,18 @@
 # token de solo lectura del job (GITHUB_TOKEN) como cabecera extra de git o una
 # deploy key de solo lectura ya instalada en la instancia.
 #
-# Entradas (parametros del documento SSM, expuestos como variables de entorno):
+# Entradas (parametros del documento SSM, inyectados por sustitucion textual):
 #   SHA          commit exacto a desplegar
-#   REPOURL      URL del repositorio privado
+#   REPOURL      URL del repositorio
 #   DEPLOYPATH   ruta del checkout en la instancia
 #   GITHUBTOKEN  token de solo lectura del job (opcional): si falta, se usa la
 #                deploy key de solo lectura instalada en la instancia
 # =============================================================================
 set -euo pipefail
+
+# Systems Manager ejecuta el script como root con un entorno minimo: sin HOME
+# git no puede resolver el archivo de configuracion global.
+export HOME="${HOME:-/root}"
 
 # Los parametros del documento SSM se inyectan por sustitucion textual {{ ... }}.
 # Si las variables ya vienen del entorno (ejecucion manual), se respetan.

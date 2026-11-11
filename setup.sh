@@ -9,6 +9,10 @@
 #   sudo bash setup.sh --domain api.tudominio.mx --email tu@correo.com
 #   sudo bash setup.sh --skip-tls              # solo HTTP por IP
 #
+# En la EC2 el despliegue normal lo ejecuta CD-1 por AWS Systems Manager
+# (documento SSM utttgo-dev-deploy); este script queda para el arranque manual
+# y la emisión del certificado TLS.
+#
 # Requisitos: el dominio debe tener un registro A apuntando a la IP pública de
 # la instancia. Let's Encrypt no emite certificados para IPs desnudas.
 # =============================================================================
@@ -20,13 +24,14 @@ PUBLIC_IP="${PUBLIC_IP:-3.129.142.54}"
 REPO_URL="${REPO_URL:-}"
 SKIP_TLS=0
 DEPLOY_USER="${DEPLOY_USER:-ubuntu}"
+PROD_LOGS=1
 
 log()  { printf '\n\033[1;34m==> %s\033[0m\n' "$*"; }
 warn() { printf '\033[1;33m[aviso] %s\033[0m\n' "$*" >&2; }
 die()  { printf '\033[1;31m[error] %s\033[0m\n' "$*" >&2; exit 1; }
 
 usage() {
-    sed -n '2,18p' "$0"
+    sed -n '2,20p' "$0"
     exit 0
 }
 
@@ -37,13 +42,14 @@ while [[ $# -gt 0 ]]; do
         --ip)      PUBLIC_IP="${2:-}"; shift 2 ;;
         --repo)    REPO_URL="${2:-}"; shift 2 ;;
         --skip-tls) SKIP_TLS=1; shift ;;
+        --no-prod-logs) PROD_LOGS=0; shift ;;
         -h|--help) usage ;;
         *) die "Argumento desconocido: $1" ;;
     esac
 done
 
 if [[ $EUID -ne 0 ]]; then
-    exec sudo -E bash "$0" ${DOMAIN:+--domain "$DOMAIN"} ${EMAIL:+--email "$EMAIL"} --ip "$PUBLIC_IP" ${REPO_URL:+--repo "$REPO_URL"} $([[ $SKIP_TLS -eq 1 ]] && echo --skip-tls)
+    exec sudo -E bash "$0" ${DOMAIN:+--domain "$DOMAIN"} ${EMAIL:+--email "$EMAIL"} --ip "$PUBLIC_IP" ${REPO_URL:+--repo "$REPO_URL"} $([[ $SKIP_TLS -eq 1 ]] && echo --skip-tls) $([[ $PROD_LOGS -eq 0 ]] && echo --no-prod-logs)
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -113,23 +119,35 @@ chmod -R 755 certbot/www
 # -----------------------------------------------------------------------------
 # 4. Imágenes y despliegue
 # -----------------------------------------------------------------------------
+# En la EC2 los contenedores publican sus logs en CloudWatch Logs con el driver
+# `awslogs` (override docker-compose.prod.yml) usando el Instance Profile. El
+# driver requiere credenciales de AWS: solo se activa si la instancia tiene
+# Instance Profile y el override existe.
+COMPOSE=(docker compose)
+if [[ $PROD_LOGS -eq 1 ]] && [[ -f docker-compose.prod.yml ]] && curl -sf --max-time 2 http://169.254.169.254/latest/meta-data/iam/security-credentials/ >/dev/null; then
+    COMPOSE=(docker compose -f docker-compose.yml -f docker-compose.prod.yml)
+    log "Publicación de logs habilitada (driver awslogs -> /utttgo/api/dev)"
+else
+    log "Publicación de logs con el driver local (json-file)"
+fi
+
 log "4/7 Construyendo la imagen de la API y descargando las imágenes base"
-docker compose pull --ignore-buildable redis nginx
-docker compose build --pull api
+"${COMPOSE[@]}" pull --ignore-buildable redis nginx
+"${COMPOSE[@]}" build --pull api
 
 log "5/7 Levantando el stack (2 replicas de la API, Redis y Nginx)"
-docker compose up -d --scale api=2
-docker compose ps
+"${COMPOSE[@]}" up -d --scale api=2
+"${COMPOSE[@]}" ps
 
 log "Esperando a que las réplicas de la API estén sanas"
 for attempt in $(seq 1 30); do
-    healthy=$(docker compose ps --format json api 2>/dev/null | grep -c '"Health":"healthy"' || true)
+    healthy=$("${COMPOSE[@]}" ps --format json api 2>/dev/null | grep -c '"Health":"healthy"' || true)
     if [[ "${healthy:-0}" -ge 2 ]]; then
         break
     fi
     sleep 5
 done
-docker compose ps
+"${COMPOSE[@]}" ps
 
 # -----------------------------------------------------------------------------
 # 5. TLS con Let's Encrypt
@@ -195,5 +213,5 @@ if [[ -n "$DOMAIN" && -f "/etc/letsencrypt/live/${DOMAIN}/fullchain.pem" ]]; the
 fi
 
 docker compose ps
-log "API desplegada. Comandos útiles: docker compose logs -f api | docker compose ps | docker compose up -d --scale api=2"
+log "API desplegada. Comandos útiles: aws logs tail /utttgo/api/dev --follow | docker compose ps | docker compose up -d --scale api=2"
 warn "El bucket S3, MongoDB Atlas y Supabase siguen siendo externos: revisa que .env tenga los valores reales."
