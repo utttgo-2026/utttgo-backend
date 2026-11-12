@@ -91,8 +91,9 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: ci-1-backend-local-doubles
+          name: ci-evidence-${{ github.job }}
           path: ci-evidence/
+          overwrite: true
           if-no-files-found: error
           retention-days: 7 # limited CI-only evidence; revisit with repository retention policy
 
@@ -123,16 +124,9 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: ci-1-sast
+          name: ci-evidence-${{ github.job }}
           path: ci-evidence/semgrep-summary.json
-          if-no-files-found: warn
-          retention-days: 7
-      - name: Upload Semgrep summary (no raw JSON with code snippets)
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: ci-1-sast
-          path: ci-evidence/semgrep-summary.json
+          overwrite: true
           if-no-files-found: warn
           retention-days: 7
 
@@ -161,8 +155,9 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ci-1-mutation
+          name: ci-evidence-${{ github.job }}
           path: ci-evidence/mutation-summary.json
+          overwrite: true
           if-no-files-found: warn
           retention-days: 7
 
@@ -177,25 +172,21 @@ jobs:
           docker save utttgo/api:ci | gzip > "$RUNNER_TEMP/api-image.tar.gz"
       - name: Dockle (error-level only = Alto/CrÃ­tico)
         run: |
+          mkdir -p ci-evidence
           docker run --rm \
             -v /var/run/docker.sock:/var/run/docker.sock \
             -v $PWD/ci-evidence:/results \
             goodwithtech/dockle:v0.4.15@sha256:eade932f793742de0aa8755406c7677cd7696f8675b6180926f7eeffa7abe6b9 \
             utttgo/api:ci -f json -o /results/dockle-report.json -l ERROR -c 1
-      - name: Publish Dockle summary
-        if: always()
-        run: python3 scripts/ci/devsecops.py dockle
-      - name: Fix ci-evidence permissions
-        run: sudo chown -R "$(id -u):$(id -g)" ci-evidence
-      - name: Publish Dockle summary
-        if: always()
-        run: python3 scripts/ci/devsecops.py dockle
+          sudo chown -R "$(id -u):$(id -g)" ci-evidence
+          python3 scripts/ci/devsecops.py dockle
       - name: Upload Dockle artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ci-1-container
+          name: ci-evidence-${{ github.job }}
           path: ci-evidence/dockle-report.json
+          overwrite: true
           retention-days: 7
 
   dast:
@@ -253,8 +244,9 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ci-1-dast
+          name: ci-evidence-${{ github.job }}
           path: ci-evidence/dast-summary.json
+          overwrite: true
           retention-days: 7
 
   fuzz:
@@ -315,8 +307,9 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ci-1-fuzz
+          name: ci-evidence-${{ github.job }}
           path: ci-evidence/restler-summary.json
+          overwrite: true
           retention-days: 7
 
   quality-gate:
@@ -329,18 +322,16 @@ jobs:
       - name: Download all CI evidence artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: ci-1-*
+          pattern: ci-evidence-*
           merge-multiple: true
           root: ci-evidence/
       - name: Generate Hardening Report + step summary
-        run: python3 scripts/ci/devsecops.py report \
-          --outdir ci-evidence \
-          --step-summary "$GITHUB_STEP_SUMMARY" \
-          --artifact-root ci-evidence
+        run: python3 scripts/ci/devsecops.py report --outdir ci-evidence --step-summary "$GITHUB_STEP_SUMMARY" --artifact-root ci-evidence
       - name: Upload Hardening Report artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ci-1-hardening-report
+          name: ci-evidence-${{ github.job }}
           path: ci-evidence/hardening-report.md
+          overwrite: true
           retention-days: 7
