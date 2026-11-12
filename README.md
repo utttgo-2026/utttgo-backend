@@ -235,14 +235,19 @@ dotnet test tests/UtttGo.SecurityTests/UtttGo.SecurityTests.csproj
 La instancia (EC2 t3.micro, Elastic IP `3.129.142.54`, Ubuntu 24.04) ejecuta el stack con Docker Compose: **2 réplicas de la API** detrás de **Nginx** (balanceo local) y **Redis 7** solo en la red interna. `setup.sh` instala Docker, Docker Compose y Certbot, despliega el stack y emite el TLS:
 
 ```bash
-# En la instancia, con el repositorio clonado
+# En la instancia, con el repositorio clonado (TLS por defecto: 3.129.142.54.nip.io, gratis)
+sudo bash setup.sh
+
+# Con un dominio propio (registro A apuntando a 3.129.142.54)
 sudo bash setup.sh --domain api.tudominio.mx --email tu@correo.com
 
 # Sin TLS (solo HTTP por la IP)
 sudo bash setup.sh --skip-tls
 ```
 
-Requisitos: el dominio debe apuntar con un registro A a `3.129.142.54` (Let's Encrypt no emite certificados para IP desnudas) y el `.env` de la instancia debe tener los valores reales de Atlas, Supabase y S3 (el script lo crea desde `.env.example` si no existe).
+Sin `--domain` se usa `3.129.142.54.nip.io`: **nip.io** resuelve gratis el hostname a la Elastic IP y Let's Encrypt emite el certificado sin configurar DNS. Con `--domain` propio hace falta un registro A apuntando a `3.129.142.54` (Let's Encrypt no emite certificados para IP desnudas). El `.env` de la instancia debe tener los valores reales de Atlas, Supabase y S3 (el script lo crea desde `.env.example` si no existe).
+
+El mismo flujo de TLS (`scripts/tls/provision-tls.sh`, idempotente: valida el certificado, emite si falta, renderiza `nginx/conf.d/tls.conf`, recarga Nginx y deja el hook de renovación) lo ejecuta **CD-1 en cada despliegue**; opcionalmente se pueden fijar `TLS_DOMAIN` y `TLS_EMAIL` en el `.env` de la instancia. La guía para el equipo móvil (base HTTPS, OpenAPI y flujo de verificación de correo) está en [`docs/mobile-integration.md`](docs/mobile-integration.md).
 
 ```bash
 docker compose ps
@@ -266,7 +271,9 @@ Notas operativas:
 
 ### CD automático (GitHub Actions)
 
-`.github/workflows/cd-deploy.yml` despliega en la EC2 **solo cuando CI-1 (`ci-1.yml`) termina en verde en un push a `main`** (`workflow_run`, con verificación de resultado, evento y rama). El despliegue se hace por **AWS Systems Manager** (`aws ssm send-command` sobre el documento `utttgo-dev-deploy` declarado en Terraform): **no hay SSH** y el puerto 22 del Security Group está cerrado. El script remoto (`infra/ssm/deploy.sh`) descarga el SHA exacto verificado, ejecuta `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build --scale api=2`, espera que las réplicas queden sanas, hace smoke HTTP y deja la evidencia. Un despliegue manual (`workflow_dispatch`) exige indicar el motivo.
+`.github/workflows/cd-deploy.yml` despliega en la EC2 **solo cuando CI-1 (`ci-1.yml`) termina en verde en un push a `main`** (`workflow_run`, con verificación de resultado, evento y rama). El despliegue se hace por **AWS Systems Manager** (`aws ssm send-command` sobre el documento `utttgo-dev-deploy` declarado en Terraform): **no hay SSH** y el puerto 22 del Security Group está cerrado. El script remoto (`infra/ssm/deploy.sh`) descarga el SHA exacto verificado, ejecuta `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build --scale api=2`, espera que las réplicas queden sanas, hace smoke HTTP, **aprovisiona o renueva el TLS** (`scripts/tls/provision-tls.sh`) con smoke HTTPS y deja la evidencia. Un despliegue manual (`workflow_dispatch`) exige indicar el motivo.
+
+> El contenido del script remoto va **incrustado en el documento SSM** por Terraform (`file(".../deploy.sh")`): tras cambiar `infra/ssm/deploy.sh` hay que ejecutar `terraform apply` (local, con credenciales del propietario) para que CD-1 use la versión nueva.
 
 Secretos que hay que configurar en **Settings → Secrets and variables → Actions**:
 
