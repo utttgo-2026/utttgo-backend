@@ -98,6 +98,9 @@ def cmd_report(args):
     Reads all *-summary.json files from ci-evidence/ (downloaded artifacts)
     and builds a markdown table plus a summary block for $GITHUB_STEP_SUMMARY.
     Also writes ci-evidence/hardening-report.md.
+
+    Args:
+        args: namespace with possible attributes: outdir, step_summary, artifact_root
     """
     # Collect per-job status
     jobs = ["backend", "sast", "mutation", "container", "dast", "fuzz"]
@@ -204,6 +207,9 @@ def main():
     p_restler.set_defaults(func=cmd_restler)
 
     p_report = subparsers.add_parser("report", help="Generate Hardening Report and step summary")
+    p_report.add_argument("--outdir", help="Directorio donde se encuentran los artefactos (por defecto: ci-evidence)")
+    p_report.add_argument("--step-summary", help="Variable de entorno o ruta para el step summary de GitHub Actions")
+    p_report.add_argument("--artifact-root", help="Raíz de los artefactos descargados")
     p_report.set_defaults(func=cmd_report)
 
     args = parser.parse_args()
