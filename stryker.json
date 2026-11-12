@@ -1,0 +1,12 @@
+{
+  "$schema": "https://stryker-mutator.github.io/stryker-schema/",
+  "testProjects": ["tests/UtttGo.UnitTests/UtttGo.UnitTests.csproj"],
+  "thresholds": {
+    "break": 50,
+    "high": 80,
+    "low": 60
+  },
+  "reporters": ["json", "progress"],
+  "concurrency": 4,
+  "ignore-mutations": []
+}
