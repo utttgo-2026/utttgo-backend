@@ -58,18 +58,18 @@ Las decisiones de arquitectura y las reglas transversales están en [`docs/const
 
 ## Metodología: Spec-Driven Development (SDD)
 
-**Migración documental por lotes:** [matriz y árbol de tres bloques](docs/migracion-sdd.md) (1 arquitectura/base, 2 fichas atómicas por endpoint o función, 3 infraestructura). El [CHECKLIST_PR.md](CHECKLIST_PR.md) y los cinco agentes [@spec-keeper](.opencode/agents/spec-keeper.md), [@endpoint-builder](.opencode/agents/endpoint-builder.md), [@infra-builder](.opencode/agents/infra-builder.md), [@security-reviewer](.opencode/agents/security-reviewer.md) y [@traceability-clerk](.opencode/agents/traceability-clerk.md) detallan el procedimiento y los permisos. En el **lote 0 solo se preparan las herramientas documentales**: el árbol por fase que sigue aún es el vigente; no se han movido specs ni cambiado contratos. Los [skills de OpenCode](.opencode/skills/) solo enlazan a [las guías originales](skills/). Un PR por lote con CI verde antes de fusionar.
+**Migración documental por lotes:** [matriz y árbol de tres bloques](docs/migracion-sdd.md) (1 arquitectura/base, 2 fichas atómicas por endpoint o función, 3 infraestructura). El [CHECKLIST_PR.md](CHECKLIST_PR.md) y los cinco agentes [@spec-keeper](.opencode/agents/spec-keeper.md), [@endpoint-builder](.opencode/agents/endpoint-builder.md), [@infra-builder](.opencode/agents/infra-builder.md), [@security-reviewer](.opencode/agents/security-reviewer.md) y [@traceability-clerk](.opencode/agents/traceability-clerk.md) detallan el procedimiento y los permisos. El lote 0 preparó las herramientas; el lote 1 separa la fase 00 en cuatro tríos del bloque 1 y conserva sus originales en `_archivo/`. Las fases 02/03 aún usan sus rutas históricas; ninguna ficha nueva hereda aprobación por traslado. Los [skills de OpenCode](.opencode/skills/) solo enlazan a [las guías originales](skills/). Un PR por lote con CI verde antes de fusionar.
 
 Cada fase funcional sigue el mismo pipeline, en este orden y sin saltos:
 
 ```
 docs/constitution.md
         ↓
-specs/phase-XX-<modulo>/spec.md      → qué y por qué (RF, RNF, casos límite, contratos)
+specs/<bloque>/<ficha>/spec.md        → qué y por qué (RF, RNF, casos límite, contratos)
         ↓
-specs/phase-XX-<modulo>/plan.md      → cómo (estructura, modelos, servicios, endpoints, pruebas)
+specs/<bloque>/<ficha>/plan.md        → cómo (estructura, modelos, servicios, endpoints, pruebas)
         ↓
-specs/phase-XX-<modulo>/task.md      → tareas atómicas de 20–30 min con "Hecho cuando"
+specs/<bloque>/<ficha>/task.md        → tareas verificables con "Hecho cuando"
         ↓
 implementación + pruebas
 ```
@@ -78,7 +78,7 @@ implementación + pruebas
 
 | Fase | Módulo | Artefactos |
 |---|---|---|
-| `phase-00-constitution` | Principios, stack y reglas transversales | [`spec.md`](specs/phase-00-constitution/00-01-principles-stack/spec.md) |
+| Bloque 1 (fase 00 histórica) | Arquitectura y contratos base; fichas pendientes de aprobación | [Base modular](specs/bloque-1-arquitectura/base-modular/spec.md) · [MongoDB](specs/bloque-1-arquitectura/persistencia-mongodb/spec.md) · [Redis](specs/bloque-1-arquitectura/redis-rate-limit-revocacion/spec.md) · [Contratos](specs/bloque-1-arquitectura/contratos-transversales/spec.md) · [Original archivado](specs/_archivo/phase-00-constitution/00-01-principles-stack/spec.md) |
 | `phase-02-auth-users` | Autenticación, usuarios y perfiles de vendedor | [`spec.md`](specs/phase-02-auth-users/spec.md) · [`plan.md`](specs/phase-02-auth-users/plan.md) · [`task.md`](specs/phase-02-auth-users/task.md) |
 | `phase-03-catalog-offers` (nombre histórico) | Productos independientes por vendedor; Sprint 1 (vendedor) aprobado por DEC-019, Sprint 2 (catálogo) pendiente de aprobación | [`spec.md`](specs/phase-03-catalog-offers/spec.md) · [`plan.md`](specs/phase-03-catalog-offers/plan.md) · [`task.md`](specs/phase-03-catalog-offers/task.md) |
 
@@ -93,7 +93,8 @@ El estado de decisiones, pendientes y mapa de colecciones se mantiene en [`memor
 ├── docs/
 │   └── constitution.md          # Fuente de verdad: stack, reglas de negocio, seguridad
 ├── specs/
-│   ├── phase-00-constitution/
+│   ├── bloque-1-arquitectura/    # Cuatro tríos: base, MongoDB, Redis y contratos
+│   ├── _archivo/phase-00-constitution/ # Trío original intacto, no vigente
 │   ├── phase-02-auth-users/
 │   └── phase-03-catalog-offers/
 ├── skills/                      # Guías operativas reutilizables
