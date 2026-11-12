@@ -32,3 +32,30 @@
 | Wrapper `be-memory` | `opencode run --standalone --agent traceability-clerk --archived`, instrucción de usar `skill` | **Carga real:** evento `Skill "be-memory"`; citó la instrucción «Lee [skills/be-memory.md](../../../skills/be-memory.md) antes de trabajar» y leyó `skills/be-memory.md`. Un intento adicional de leer `.opencode/skills/be-memory.md` falló por ruta incorrecta, **no** por fallo del wrapper. |
 
 La invocación real del clerk hace obsoleta la frase «no se probó invocación» de su dictamen, conservada arriba como estado del instante inspeccionado y aclarada aquí. Se comprobó que ninguno de los dos archivos de prueba existe. CI no ejecutada: **no fusionar hasta que el PR esté verde**.
+
+## Conciliación posterior a la invocación, antes del push
+
+El reporte del clerk anterior refleja el corte `31bd1a4`; **no verificó** los tres archivos incorporados después a `origin/main` por el PR #7 (`51dcfb5`). Se revisó ese delta y se actualizó la rama local sobre el nuevo `origin/main` sin tocar `feature/siete-endpoints-locales`. `specs/phase-04-orders-cash/{spec,plan,task}.md` son un **borrador v0.1 pendiente de aprobación** de API-023..029; D-ORD-01..10 y el gate de catálogo Sprint 2 siguen abiertos. Se corrigió `docs/migracion-sdd.md`: 25 archivos originales en lugar de 22, trío Orders como origen histórico, propiedad de API-023 en Orders y clasificación de esas siete fichas como borrador, no como «sin spec» ni «Verificado». `docs/traceability.md` de `origin/main` aún titula API-023..038 «sin spec»: debe conciliarse en su lote, sin declarar aprobados los siete endpoints. Estos ajustes **no son salida del clerk**; requieren revisión de trazabilidad posterior antes del cierre/merge. No se modificó ninguna ficha de pedidos.
+
+**Hallazgos del borrador de Orders:** ver mensaje para el propietario de Orders en la conversación previa (sin constancia de envío); trío no modificado en lote 0.
+
+## Salida de @traceability-clerk sobre el delta posterior al rebase (2026-11-12)
+
+> Segunda invocación real: `opencode run --standalone --agent traceability-clerk --archived --model openai/gpt-6-sol-fast`, frente a `origin/main` `51dcfb5`. Un intento previo con el modelo predeterminado no ejecutó la revisión: `Free usage limit reached`. A continuación se conserva **la respuesta del agente**, separada de la conciliación manual de arriba; no editó archivos.
+
+Revisé el delta frente a `51dcfb5`: cambian la matriz, `lote-0.md` y `memoria.md`; el trío de Orders y `docs/traceability.md` no cambian.
+
+| ID/origen | destino | evidencia | estado | drift |
+|---|---|---|---|---|
+| RF-ORD-01..32 / `phase-04-orders-cash/spec.md` | API-023..029 y referencias compartidas, **previstas** para lote 3b | Matriz §«Correspondencia»; RF en spec §§3–4 | Borrador; sin prueba de endpoints | Falta asignación individual a fichas, propia de 3b |
+| T-ORD-01..20 / `spec.md` §7 | Pruebas de las fichas, previstas para 3b | Casos Given/When/Then en spec; `task.md` TASK-ORD-030..032 propone pruebas | No ejecutadas | No confundir pruebas propuestas con evidencia |
+| TASK-ORD-001..004, 010..013, 020..026, 030..032, 040..042 / `task.md` | Tareas de Orders y fichas previstas para 3b | Todos figuran `[ ]`; la matriz incluye **040..042**, también 041 | Pendientes; 004 bloqueada por Catalog Sprint 2 | Falta reparto individual, no ID perdido |
+| D-ORD-01..10 / `spec.md` §9.2 | Decisiones a resolver antes de aprobar las fichas | Tabla §9.2 y gate de `plan.md` §7 | Pendientes; **09 bloqueada por DEC-003** | Ninguna puede darse por aprobada al dividir |
+
+**IDs huérfanos en el origen:** ninguno de esos cuatro conjuntos; todos tienen referencia histórica y destino planificado, no destino atómico materializado todavía. No encontré «Verificado» atribuido a Orders sin curl o test concreto: el lote 0 niega expresamente esa verificación. Los tests con dobles descritos en el plan son futuros, no integración externa acreditada.
+
+**Drift documental pendiente:** `docs/traceability.md:51` aún titula API-023..038 «sin spec», y `memoria.md:85` aún dice que Orders está «pendiente de spec/plan», pese al trío borrador existente. La conciliación de `lote-0.md:38` reconoce el primer caso, pero no actualiza esas referencias.
+
+**Dictamen: BLOQUEADO para cerrar/fusionar el lote 0.** La incorporación de Orders está trazada sin aprobarla ni modificar sus fuentes; quedan la conciliación documental indicada y el gate de PR/CI, que `lote-0.md` declara no ejecutado. Esta revisión no firma aprobación final. Guías: [diseño API](../../skills/be-api-design.md) y [memoria](../../skills/be-memory.md).
+
+**Acción posterior al reporte (no atribuible al clerk):** se corrige `memoria.md` §Mapa de colecciones para indicar el borrador existente; el título de `docs/traceability.md` queda pendiente de conciliación en lote 3b y no se declara cierre ni «Verificado». La salida del clerk conserva el estado previo a esa corrección.
