@@ -134,6 +134,7 @@
 
 | Fecha | Tarea | Resultado |
 |---|---|---|
+| 2026-11-11 | Lote 0 de migración SDD atómica (preparado) | Rama `docs/sdd-atomico` desde `origin/main` `31bd1a4` en worktree separado. Cinco agentes V2, seis wrappers que enlazan `skills/be-*.md`, matriz `docs/migracion-sdd.md`, `CHECKLIST_PR.md` y enlaces AGENTS/README; verificación en `docs/migracion-sdd/lote-0.md` (resultado y límites actualizados antes del commit). Sin mover specs ni tocar constitución/código/infraestructura; API-016 retirada y DEC-018..021 conservadas. @traceability-clerk usa `git diff`, `git status` y `git grep`, no requiere `rg`. Evitar interpretar el plan como aprobación o prueba externa de API-009/010/DEC-019.d. |
 | 2026-10-29 | Reubicar documentos base al árbol SDD `specs/` | `spec.md`, `plan.md` y `task.md` movidos a `specs/phase-00-constitution/00-01-principles-stack/`; la raíz queda sin estos archivos |
 | 2026-10-29 | Formalizar el spec constitucional | `specs/phase-00-constitution/00-01-principles-stack/spec.md` reescrito con la estructura SDD formal (contexto, requisitos, diseño, contratos N/A, tests, criterios de aceptación, límites y aprobación); estado **Aprobado** |
 | 2026-10-29 | Crear spec de autenticación y usuarios | `specs/phase-02-auth-users/spec.md` creado con RF-01..RF-11, RNF-01..RNF-14, casos límite y DoD; estado **Aprobado**; cierra DEC-002 (autoactivación de vendedores) y deja DEC-003 abierta |

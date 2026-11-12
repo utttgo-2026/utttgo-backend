@@ -58,6 +58,8 @@ Las decisiones de arquitectura y las reglas transversales están en [`docs/const
 
 ## Metodología: Spec-Driven Development (SDD)
 
+**Migración documental por lotes:** [matriz y árbol de tres bloques](docs/migracion-sdd.md) (1 arquitectura/base, 2 fichas atómicas por endpoint o función, 3 infraestructura). El [CHECKLIST_PR.md](CHECKLIST_PR.md) y los cinco agentes [@spec-keeper](.opencode/agents/spec-keeper.md), [@endpoint-builder](.opencode/agents/endpoint-builder.md), [@infra-builder](.opencode/agents/infra-builder.md), [@security-reviewer](.opencode/agents/security-reviewer.md) y [@traceability-clerk](.opencode/agents/traceability-clerk.md) detallan el procedimiento y los permisos. En el **lote 0 solo se preparan las herramientas documentales**: el árbol por fase que sigue aún es el vigente; no se han movido specs ni cambiado contratos. Los [skills de OpenCode](.opencode/skills/) solo enlazan a [las guías originales](skills/). Un PR por lote con CI verde antes de fusionar.
+
 Cada fase funcional sigue el mismo pipeline, en este orden y sin saltos:
 
 ```
