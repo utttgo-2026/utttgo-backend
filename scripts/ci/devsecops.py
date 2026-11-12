@@ -29,10 +29,37 @@ def _read_evidence(name: str) -> dict:
 
 
 def cmd_semgrep(args):
-    evidence = _read_evidence("semgrep")
-    total = evidence.get("total_findings", 0)
-    new_errors = evidence.get("new_ERRORs", 0)
-    rule_ids = evidence.get("ruleIds", [])
+    # Intentar leer el summary generado previamente; si no existe, derivarlo del raw
+    raw_path = Path("ci-evidence/semgrep-raw.json")
+    summary_path = Path("ci-evidence/semgrep-summary.json")
+    if summary_path.exists():
+        evidence = _read_evidence("semgrep")
+        total = evidence.get("total_findings", 0)
+        new_errors = evidence.get("new_ERRORs", 0)
+        rule_ids = evidence.get("ruleIds", [])
+    elif raw_path.exists():
+        # Derivar summary desde el raw (no hay baseline, todos los ERRORES son "nuevos")
+        try:
+            raw = raw_path.read_text(encoding="utf-8")
+            results = json.loads(raw)
+            error_findings = [r for r in results.get("results", []) if r.get("severity") == "ERROR"]
+            summary = {
+                "mode": "sast-blocking",
+                "total_findings": len(results.get("results", [])),
+                "new_ERRORs": len(error_findings),
+                "ruleIds": sorted({r["check_id"] for r in results.get("results", [])}),
+            }
+            # Escribir el summary para futuras ejecuciones
+            summary_path.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+            total = summary["total_findings"]
+            new_errors = summary["new_ERRORs"]
+            rule_ids = summary["ruleIds"]
+        except Exception:
+            total = new_errors = 0
+            rule_ids = []
+    else:
+        total = new_errors = 0
+        rule_ids = []
     out = {
         "total_findings": total,
         "new_ERRORs": new_errors,

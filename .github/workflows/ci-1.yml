@@ -113,34 +113,20 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p ci-evidence
-          # Ejecutar Semgrep y guardar el reporte sin baseline (Fase A: bloques si hay ERRORes)
+          # Ejecutar Semgrep y guardar el reporte raw
           docker run --rm -v "$PWD:/src:ro" -w /src \
             semgrep/semgrep:1.183.0@sha256:2e45517a85e13a9cca14a2a00df6bb48affd66b8ebfae1b0991cd57578362fb0 \
             semgrep scan --config .semgrep/ci-1.yaml --config p/csharp --metrics=off --json > ci-evidence/semgrep-raw.json 2> "$RUNNER_TEMP/semgrep-error.log"
-          rc=$?
-          python3 - "$RUNNER_TEMP/semgrep-error.log" "$?" <<'PY'
-          import json, sys
-          try:
-              raw = Path(sys.argv[1]).read_text(encoding="utf-8")
-              results = json.loads(raw)
-              # Contar hallazgos ERROR (Fase A: bloqueante si hay ERRORes; sin baseline, todos son "nuevos")
-              error_findings = [r for r in results.get("results", []) if r.get("severity") == "ERROR"]
-              summary = {
-                  "mode": "sast-blocking",
-                  "total_findings": len(results.get("results", [])),
-                  "new_ERRORs": len(error_findings),
-                  "ruleIds": sorted({r["check_id"] for r in results.get("results", [])}),
-              }
-          except Exception:
-              summary = {
-                  "mode": "sast-blocking",
-                  "total_findings": 0,
-                  "new_ERRORs": 0,
-                  "status": "scan-unavailable"
-              }
-          Path("ci-evidence/semgrep-summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
-          print("SAST summary:", json.dumps(summary, indent=2))
-          PY
+          # Generar summary usando el script devsecops.py (modo semgrep)
+          python3 scripts/ci/devsecops.py semgrep
+      - name: Upload Semgrep summary
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ci-1-sast
+          path: ci-evidence/semgrep-summary.json
+          if-no-files-found: warn
+          retention-days: 7
       - name: Upload Semgrep summary (no raw JSON with code snippets)
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -170,7 +156,7 @@ jobs:
         run: dotnet stryker
       - name: Publish mutation summary
         if: always()
-        run: python3 scripts/ci/devsecops.py mutation --report ci-evidence/mutation-summary.json --threshold 50
+        run: python3 scripts/ci/devsecops.py mutation --threshold 50
       - name: Upload mutation summary artifact
         if: always()
         uses: actions/upload-artifact@v4
@@ -198,7 +184,7 @@ jobs:
             utttgo/api:ci -f json -o /results/dockle-report.json -l ERROR -c 1
       - name: Publish Dockle summary
         if: always()
-        run: python3 scripts/ci/devsecops.py dockle --report ci-evidence/dockle-summary.json
+        run: python3 scripts/ci/devsecops.py dockle
       - name: Upload Dockle artifact
         if: always()
         uses: actions/upload-artifact@v4
@@ -254,7 +240,7 @@ jobs:
           docker run --rm --network host -v "$PWD/ci-evidence:/zap/wrk" ghcr.io/zaproxy/zaproxy:stable@sha256:9624669db72f54d86c4b46a7064518bd9bf79d8c61a4c31befa9923489f328af zap-api-scan.py -t http://127.0.0.1:8080/openapi/v1.json -f openapi -J zap-api.json -r zap-api.html -w zap-api-warnings.md -I 2>/dev/null || true
       - name: Publish DAST summary
         if: always()
-        run: python3 scripts/ci/devsecops.py dast --report ci-evidence/dast-summary.json
+        run: python3 scripts/ci/devsecops.py dast
       - name: Compose down (acotado)
         if: always()
         run: docker compose -f docker-compose.yml -f docker-compose.ci.yml down -v --remove-orphans
@@ -316,7 +302,7 @@ jobs:
           docker run --rm --network host -v "$PWD:/work" -w /work mcr.microsoft.com/restlerfuzzer/restler:v9.2.4@sha256:f37705fc4a11071f1de67ac4708fd97c71c1b4e5a0bc0f9c16c21028c0c41cbb dotnet /RESTler/restler/Restler.dll fuzz-lean --time_budget 10
       - name: Publish fuzz summary
         if: always()
-        run: python3 scripts/ci/devsecops.py restler --report ci-evidence/restler-summary.json
+        run: python3 scripts/ci/devsecops.py restler
       - name: Compose down
         if: always()
         run: docker compose -f docker-compose.yml -f docker-compose.ci.yml down -v --remove-orphans
