@@ -61,6 +61,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          echo "[secret scan] Starting secret scan"
           version=8.30.1
           archive="$RUNNER_TEMP/gitleaks.tar.gz"
           curl --fail --location --silent --show-error --retry 2 \
@@ -69,22 +70,29 @@ jobs:
           mkdir -p "$RUNNER_TEMP/ci1-bin" "$RUNNER_TEMP/ci1-tracked"
           tar -xzf "$archive" -C "$RUNNER_TEMP/ci1-bin" gitleaks
           scanner="$RUNNER_TEMP/ci1-bin/gitleaks"
-          base=$(git merge-base HEAD origin/main)
+          echo "[secret scan] Fetching origin/main for baseline"
+          git fetch origin main:refs/remotes/origin/main 2>/dev/null || true
+          base=$(git merge-base HEAD origin/main 2>/dev/null || echo "")
           if [ -z "$base" ]; then
+            echo "[secret scan] No trusted base found"
             printf 'Secret scan: FAIL (no trusted base)\n' > ci-evidence/secrets.txt
             exit 1
           fi
+          echo "[secret scan] Base found: $base"
           # Archive only the committed tree, never bin/obj or ignored local files.
           git archive HEAD | tar -x -C "$RUNNER_TEMP/ci1-tracked"
           printf 'Secret scan: git commits plus tracked tree; Gitleaks %s\n' "$version" > ci-evidence/secrets.txt
           if ! "$scanner" git . --log-opts="$base..HEAD" --redact --no-banner > "$RUNNER_TEMP/gitleaks-git.log" 2>&1; then
+            echo "[secret scan] Gitleaks found secrets in commits"
             printf 'Secret scan: FAIL (commits; output withheld)\n' >> ci-evidence/secrets.txt
             exit 1
           fi
           if ! "$scanner" dir "$RUNNER_TEMP/ci1-tracked" --redact --no-banner > "$RUNNER_TEMP/gitleaks-tree.log" 2>&1; then
+            echo "[secret scan] Gitleaks found secrets in tracked tree"
             printf 'Secret scan: FAIL (tracked tree; output withheld)\n' >> ci-evidence/secrets.txt
             exit 1
           fi
+          echo "[secret scan] Both scans passed"
           printf 'Secret scan: PASS (both scans executed)\n' >> ci-evidence/secrets.txt
 
       - name: Upload safe CI evidence (no raw scanner output)
@@ -217,7 +225,8 @@ jobs:
           S3_BUCKET_IMAGES: utttgo-ci-dummy
           COMPOSE_PROFILES: local
         run: |
-          docker load -i "$RUNNER_TEMP/api-image.tar.gz"
+          echo "[dast] Building API image locally"
+          docker build -t utttgo/api:ci .
           docker tag utttgo/api:ci utttgo/api:0.1.0
           export COMPOSE_PROFILES=local
           docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d --no-build --scale api=1
@@ -277,7 +286,8 @@ jobs:
           S3_BUCKET_IMAGES: utttgo-ci-dummy
           COMPOSE_PROFILES: local
         run: |
-          docker load -i "$RUNNER_TEMP/api-image.tar.gz"
+          echo "[dast] Building API image locally"
+          docker build -t utttgo/api:ci .
           docker tag utttgo/api:ci utttgo/api:0.1.0
           export COMPOSE_PROFILES=local
           docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d --no-build --scale api=1
