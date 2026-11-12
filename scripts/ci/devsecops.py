@@ -85,6 +85,7 @@ def cmd_mutation(args):
         "over_threshold": over,
     }
     out_path = Path("ci-evidence/mutation-summary.json")
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(out, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(out, indent=2))
 
@@ -95,6 +96,7 @@ def cmd_dockle(args):
     warns = evidence.get("warns", 0)
     out = {"errors": errors, "warns": warns}
     out_path = Path("ci-evidence/dockle-summary.json")
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(out, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(out, indent=2))
 
@@ -105,6 +107,7 @@ def cmd_dast(args):
     critical_alerts = evidence.get("critical_alerts", 0)
     out = {"high_alerts": high_alerts, "critical_alerts": critical_alerts}
     out_path = Path("ci-evidence/dast-summary.json")
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(out, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(out, indent=2))
 
@@ -115,6 +118,7 @@ def cmd_restler(args):
     stats = evidence.get("stats", {})
     out = {"bug_buckets": bug_buckets, "stats": stats}
     out_path = Path("ci-evidence/restler-summary.json")
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(out, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(out, indent=2))
 

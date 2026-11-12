@@ -1,4 +1,4 @@
-name: CI-1 Backend (local doubles)
+﻿name: CI-1 Backend (local doubles)
 
 on:
   pull_request:
@@ -147,11 +147,11 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
-          # También instalaremos el runtime .NET 8.0 para Stryker si es necesario
+          # TambiÃ©n instalaremos el runtime .NET 8.0 para Stryker si es necesario
       - name: Install Stryker globally
-        run: dotnet tool install --global dotnet-stryker --version 5.1.0
-        env:
-          PATH: "$PATH:$HOME/.dotnet/tools"
+        run: |
+          dotnet tool install --global dotnet-stryker --version 5.1.0
+          echo "$HOME/.dotnet/tools" >> $GITHUB_PATH
       - name: Run Stryker mutation testing
         run: dotnet stryker
       - name: Publish mutation summary
@@ -175,13 +175,18 @@ jobs:
         run: |
           docker build -t utttgo/api:ci .
           docker save utttgo/api:ci | gzip > "$RUNNER_TEMP/api-image.tar.gz"
-      - name: Dockle (error-level only = Alto/Crítico)
+      - name: Dockle (error-level only = Alto/CrÃ­tico)
         run: |
           docker run --rm \
             -v /var/run/docker.sock:/var/run/docker.sock \
             -v $PWD/ci-evidence:/results \
             goodwithtech/dockle:v0.4.15@sha256:eade932f793742de0aa8755406c7677cd7696f8675b6180926f7eeffa7abe6b9 \
             utttgo/api:ci -f json -o /results/dockle-report.json -l ERROR -c 1
+      - name: Publish Dockle summary
+        if: always()
+        run: python3 scripts/ci/devsecops.py dockle
+      - name: Fix ci-evidence permissions
+        run: sudo chown -R "$(id -u):$(id -g)" ci-evidence
       - name: Publish Dockle summary
         if: always()
         run: python3 scripts/ci/devsecops.py dockle
