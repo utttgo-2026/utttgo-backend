@@ -131,6 +131,7 @@ terraform.rc
 certbot/www/*
 !certbot/www/.gitkeep
 certbot/conf/
+nginx/conf.d/tls.conf
 *.pem
 *.key
 
