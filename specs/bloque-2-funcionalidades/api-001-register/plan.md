@@ -1,0 +1,10 @@
+# API-001 — Registro · plan
+
+> Lote 2a · **Pendiente de aprobación**; plan documental, sin autorización de cambios de producción.
+
+[Constitución](../../../docs/constitution.md) → [spec](spec.md) → este plan → [tareas](task.md). Mantener intactos [spec](../../phase-02-auth-users/spec.md), [plan](../../phase-02-auth-users/plan.md) y [task](../../phase-02-auth-users/task.md) de fase 02; no renumerar IDs.
+
+1. **Contrato real:** cotejar `AuthController`, `RegisterRequest`, `RegisterRequestValidator` y `RegistrationRequestSizeFilter` en `src/UTTTGO.Api/Modules/Identity/`; conservar `202` genérico/no `409` como aprobación individual, describir `400/422/429/503` y `413` de 8 KiB como comportamiento candidato, no aprobación integral ni umbral RNF. Contrato de error con `correlationId` según constitución.
+2. **Persistencia y límites:** rastrear `RegistrationService` → `RedisAuthRateLimitGate` (partición `auth-register` por IP; `RateLimiting.AuthRegister` 5/900 s provisional) → Supabase `signUp` → repositorio de `users`. Contrastar `Buyer/PendingEmailVerification`, unicidad por `sub`, ausencia de contraseña local, antienumeración de duplicados y `503` fail-closed sin atribuir a dobles garantías de Atlas/Supabase; probar después fallos parciales y Redis compartido. No modificar middleware ni políticas en este lote.
+3. **Verificación:** mapear RF-01/03/15 y RNF/AC/T-AUTH de [spec](spec.md#trazabilidad-y-escenarios-de-aceptación) contra `docs/qa-api-001.md` y sus tres suites; separar los dos resultados reales locales de 2026-11-06 de la mera presencia en OpenAPI AWS de 2026-11-12. No ejecutar curl ni declarar registro AWS verificado.
+4. **Gates abiertos:** TASK-AUTH-002 (OTP/SMTP/estado y móvil), 007/008 (aprobaciones), 010/011/012/020/030 (contrato, integraciones, seguridad y pruebas); RF-06 de recuperación se conserva fuera de API-001. Aprobar ficha/HTTP restantes y comprobar OTP/reconciliación sin crear endpoint nuevo implícito. El lote no mueve/archiva fase 02 ni llama al clerk; su trazabilidad se concilia al cierre del lote.
