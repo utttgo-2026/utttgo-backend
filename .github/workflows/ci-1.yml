@@ -168,9 +168,6 @@ jobs:
           PATH: "$PATH:$HOME/.dotnet/tools"
       - name: Run Stryker mutation testing
         run: dotnet stryker
-        env:
-          # Asegurar que stryker.json en la raíz sea detectado
-          # No se requieren variables de entorno adicionales
       - name: Publish mutation summary
         if: always()
         run: python3 scripts/ci/devsecops.py mutation --report ci-evidence/mutation-summary.json --threshold 50
