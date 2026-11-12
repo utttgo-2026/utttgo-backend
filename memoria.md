@@ -82,7 +82,7 @@
 | `IdentityAndUsers` | `users` (dueño: Identity) | `users` implementada con roles locales y **nuevo campo `sellerId`** (enlace al vendedor, DEC-019.b). El `sellerProfiles` previsto queda **descartado**: su función la cumple `sellers` |
 | `Sellers` | `sellers` (dueño: Sellers) | `sellers` con `_id` propio (ObjectId) y, desde el Sprint 1 de la Fase 03, `ownerUserId` (índice único **parcial** `ownerUserId_unique`), `displayName`, `description`, `pickupPoint`, `status`, `version`, `createdAt`, `updatedAt`; índice `status_updatedAt_desc`. Estados: `PendingActivation` (invisible en API-008) y `Active`. `sellers` es la **única** colección que escribe el módulo `Sellers` |
 | `Catalog` | `products`, `categories` | Borradores spec/plan/task v2.0; producto propio por vendedor. `offers` era propuesta histórica superada, no colección obligatoria. |
-| `Orders` | `orders` | Pendiente de spec/plan de módulo |
+| `Orders` | `orders`, `orderAuditLogs` (propuestas) | Trío spec/plan/task v0.1 de fase 04 en borrador, no aprobado; API-023..029, D-ORD-01..10 y gate Sprint 2 pendientes. Colecciones aún no implementadas. |
 | `Chat` | Almacenamiento por diseñar | Spec funcional v0.1 borrador; historial temporal DEC-005, sin decidir colección/mecanismo. |
 | Demás módulos | — | Pendiente de spec/plan de módulo |
 
@@ -134,6 +134,8 @@
 
 | Fecha | Tarea | Resultado |
 |---|---|---|
+| 2026-11-12 | Ajustar destino del borrador Orders en la matriz SDD | Por indicación del propietario: archivar íntegro el trío fase 04 como borrador no migrado en lote 3 (autorizado por su autor); atomizar API-023..029 solo cuando Orders se apruebe e implemente, en lote 3b diferido. Conservar RF-ORD/T-ORD/TASK-ORD/D-ORD y referencia al origen en índice/matriz; no marcar aprobación, código ni verificación. El reporte del clerk antecede a este cambio y no lo valida. |
+| 2026-11-11 | Lote 0 de migración SDD atómica (preparado) | Rama `docs/sdd-atomico` iniciada en `origin/main` `31bd1a4`, actualizada localmente sobre `51dcfb5` (PR #7: borrador Orders fase 04, sin aprobar). Cinco agentes V2, seis wrappers, matriz `docs/migracion-sdd.md`, checklist y enlaces AGENTS/README; verificación original del clerk y conciliación posterior identificadas por separado en `docs/migracion-sdd/lote-0.md`. API-023..029 tienen borrador, no aprobación ni código; D-ORD-01..10 y gate Sprint 2 siguen abiertos. Sin mover specs ni tocar constitución/código/infraestructura; API-016 retirada y DEC-018..021 conservadas. @traceability-clerk usa `git diff`, `git status` y `git grep`; no afirmar verificación externa de API-009/010/DEC-019.d ni de Orders. Sin push/PR/CI. |
 | 2026-10-29 | Reubicar documentos base al árbol SDD `specs/` | `spec.md`, `plan.md` y `task.md` movidos a `specs/phase-00-constitution/00-01-principles-stack/`; la raíz queda sin estos archivos |
 | 2026-10-29 | Formalizar el spec constitucional | `specs/phase-00-constitution/00-01-principles-stack/spec.md` reescrito con la estructura SDD formal (contexto, requisitos, diseño, contratos N/A, tests, criterios de aceptación, límites y aprobación); estado **Aprobado** |
 | 2026-10-29 | Crear spec de autenticación y usuarios | `specs/phase-02-auth-users/spec.md` creado con RF-01..RF-11, RNF-01..RNF-14, casos límite y DoD; estado **Aprobado**; cierra DEC-002 (autoactivación de vendedores) y deja DEC-003 abierta |

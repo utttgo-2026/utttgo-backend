@@ -1,7 +1,7 @@
 # AGENTS.md — Backend UTTT-GO
 > Manual operativo de agentes y desarrolladores del backend.
 > Versión 2.6 · 2026-11-11
-> Alineado con `docs/constitution.md` v2.5 (DEC-018: nube AWS; DEC-019: retirada de API-016 e identidad del vendedor). Si hay conflicto, gana `docs/constitution.md`.
+> Alineado con `docs/constitution.md` v2.6 (DEC-018..021). Si hay conflicto, gana `docs/constitution.md`.
 > Flujo SDD obligatorio: `docs/constitution.md` → `spec.md` → `plan.md` → `task.md` → implementación.
 > Referencias metodológicas y técnicas del profesor para **todo el backend**: `docs/referencias-profesor-backend.md`; son subordinadas a la constitución y no modifican contratos aprobados.
 
@@ -327,6 +327,14 @@ Flujo obligatorio:
 
 ## 10. Agentes y sub-agentes
 
+### Migración SDD atómica (lote 0)
+
+El [plan y matriz de migración](docs/migracion-sdd.md) organiza el trabajo **documental** en tres bloques y lotes independientes; el [checklist de PR](CHECKLIST_PR.md) rige su revisión. Hasta ejecutar cada lote, las rutas `specs/phase-*` y `specs/cross-cutting/` **siguen siendo las rutas existentes**, no se declaran migradas. La constitución v2.6 conserva toda la autoridad y el inventario Excel de 42 fichas permanece intacto.
+
+Agentes operativos propuestos para estos lotes: [@spec-keeper](.opencode/agents/spec-keeper.md) (Markdown autorizado), [@endpoint-builder](.opencode/agents/endpoint-builder.md) (código y tests, no se invoca para migración documental), [@infra-builder](.opencode/agents/infra-builder.md) (infraestructura; revisión sin edición en lote 4), [@security-reviewer](.opencode/agents/security-reviewer.md) (sin editar) y [@traceability-clerk](.opencode/agents/traceability-clerk.md) (sin editar; solo inspección de `git diff`, `git status` y `git grep`). **Permisos y alcances viven en sus archivos**, no en esta tabla. Los roles AGENT-BE y los sub-agentes históricos de § 10.1–10.4 se mantienen como antecedente mientras se concilia la migración; no se les atribuyen permisos nuevos por este enlace. Los seis [skills existentes](skills/) se exponen mediante wrappers en `.opencode/skills/` sin duplicar su contenido.
+
+Al cierre de cada lote, el clerk emite la tabla ID/origen → destino → evidencia → estado; @spec-keeper la guarda en `docs/migracion-sdd/lote-N.md` y registra una fila en `memoria.md`. Ningún «Verificado» sin curl documentado o test concreto. El PR requiere CI verde **antes de fusionar**; crear estos agentes no autoriza ejecutar infraestructura ni cambiar contratos.
+
 ### 10.1 Roles SDD del proyecto
 
 | Agente | Rol | Responsabilidad principal |
@@ -340,9 +348,9 @@ Flujo obligatorio:
 
 Ningún agente genera código de producción sin `spec.md` aprobado. Ningún agente cambia el stack, las reglas de negocio ni la infraestructura unilateralmente.
 
-### 10.2 Sub-agentes operativos
+### 10.2 Roles históricos (no son los permisos de `.opencode/agents/`)
 
-Solo se integran los que tienen sentido directo para UTTT-GO:
+Se conserva la descripción histórica para no perder contexto; durante la migración manda el archivo del agente enlazado arriba cuando coincida el nombre. `module-scaffolder` no se configura en el lote 0.
 
 #### `module-scaffolder`
 - **Propósito:** crear el esqueleto compilable de un módulo (contratos, endpoint base, servicio, repositorio, validadores y pruebas esqueleto).
@@ -359,14 +367,14 @@ Solo se integran los que tienen sentido directo para UTTT-GO:
 - **Dueño:** AGENT-BE-04.
 
 #### `traceability-clerk`
-- **Propósito:** mantener la matriz viva `spec ↔ plan ↔ task ↔ endpoint ↔ test`.
-- **Salida:** matriz actualizada en `docs/traceability.md` y reporte de drift.
-- **Límites:** no edita `spec.md`, `plan.md`, `task.md` ni código; solo reporta y actualiza la matriz.
+- **Propósito:** comprobar la matriz viva `spec ↔ plan ↔ task ↔ endpoint ↔ test`.
+- **Salida:** reporte de drift; @spec-keeper actualiza la matriz y guarda el reporte por lote.
+- **Límites:** `edit: deny`; solo inspección de lectura y los comandos shell permitidos en [su archivo](.opencode/agents/traceability-clerk.md).
 - **Dueño:** AGENT-BE-06, con apoyo de AGENT-BE-02.
 
 ### 10.3 Invocación
 
-- En desarrollo: invocación manual (`@module-scaffolder`, `@security-reviewer`, `@traceability-clerk`).
+- En la migración documental: invocación manual según los cinco archivos enlazados al inicio de § 10; `@module-scaffolder` queda como descripción histórica, no como agente creado en el lote 0.
 - En CI: solo checks ligeros (build, tests, formato, secret scan, terraform validate). La revisión de seguridad matizada y la trazabilidad son manuales.
 - Los sub-agentes solo enlazan skills; no copian reglas dentro de sus archivos.
 
