@@ -1,0 +1,11 @@
+# Forzar LF en scripts de shell.
+#
+# infra/ssm/deploy.sh se incrusta en el documento SSM con terraform file()
+# desde el working tree y se ejecuta como bash en la instancia Linux; el
+# runner de CI lo compara ademas contra el blob (LF). Con core.autocrlf=true
+# en Windows el working tree era CRLF: el documento quedaba con CRLF, el
+# diff del paso "Verificar sincronia del documento SSM" marcaba los 202
+# renglones como distintos (incidente 2026-11-12) y el script podia fallar
+# al ejecutarse en la instancia. Con eol=lf, el blob y cualquier checkout
+# quedan en LF sin importar la configuracion local.
+*.sh text eol=lf
