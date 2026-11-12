@@ -273,7 +273,7 @@ Notas operativas:
 
 `.github/workflows/cd-deploy.yml` despliega en la EC2 **solo cuando CI-1 (`ci-1.yml`) termina en verde en un push a `main`** (`workflow_run`, con verificación de resultado, evento y rama). El despliegue se hace por **AWS Systems Manager** (`aws ssm send-command` sobre el documento `utttgo-dev-deploy` declarado en Terraform): **no hay SSH** y el puerto 22 del Security Group está cerrado. El script remoto (`infra/ssm/deploy.sh`) descarga el SHA exacto verificado, ejecuta `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build --scale api=2`, espera que las réplicas queden sanas, hace smoke HTTP, **aprovisiona o renueva el TLS** (`scripts/tls/provision-tls.sh`) con smoke HTTPS y deja la evidencia. Un despliegue manual (`workflow_dispatch`) exige indicar el motivo.
 
-> El contenido del script remoto va **incrustado en el documento SSM** por Terraform (`file(".../deploy.sh")`): tras cambiar `infra/ssm/deploy.sh` hay que ejecutar `terraform apply` (local, con credenciales del propietario) para que CD-1 use la versión nueva.
+> El contenido del script remoto va **incrustado en el documento SSM** por Terraform (`file(".../deploy.sh")`): tras cambiar `infra/ssm/deploy.sh` hay que ejecutar `terraform apply` (local, con credenciales del propietario) para que CD-1 use la versión nueva. CD-1 **verifica esa sincronía** antes de desplegar (paso «Verificar sincronia del documento SSM»: si el documento difiere del repo, el run falla con la instrucción de aplicar Terraform) y después hace un smoke público de `https://3.129.142.54.nip.io/health`.
 
 Secretos que hay que configurar en **Settings → Secrets and variables → Actions**:
 

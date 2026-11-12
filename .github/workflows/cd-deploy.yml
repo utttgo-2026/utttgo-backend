@@ -35,6 +35,7 @@ env:
   AWS_REGION: us-east-2
   SSM_DEPLOY_DOCUMENT: utttgo-dev-deploy
   API_BASE_URL: http://3.129.142.54
+  TLS_BASE_URL: https://3.129.142.54.nip.io
 
 jobs:
   gate:
@@ -92,6 +93,37 @@ jobs:
             exit 1
           fi
           aws sts get-caller-identity --query 'User.UserName' --output text
+
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.gate.outputs.target_sha }}
+
+      # El documento SSM incrusta infra/ssm/deploy.sh con file() (main.tf):
+      # sin terraform apply el CD ejecuta un script antiguo y las partes nuevas
+      # (p. ej. el aprovisionamiento TLS) se omiten en silencio. El 2026-11-12
+      # esto dejo la API sin TLS (443 sin servidor) con un run de CD en verde.
+      - name: Verificar sincronia del documento SSM
+        id: ssm_doc
+        env:
+          SSM_DOCUMENT: ${{ env.SSM_DEPLOY_DOCUMENT }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: |
+          set -euo pipefail
+          doc="$(aws ssm get-document \
+            --name "$SSM_DOCUMENT" \
+            --query Content \
+            --output text)"
+          printf '%s' "$doc" | python3 -c 'import json,sys; sys.stdout.write(json.load(sys.stdin)["mainSteps"][0]["inputs"]["runCommand"][0])' > /tmp/ssm-embedded-deploy.sh
+          if diff -u --label "repositorio: infra/ssm/deploy.sh" --label "documento SSM incrustado" \
+              infra/ssm/deploy.sh /tmp/ssm-embedded-deploy.sh > /tmp/ssm-doc.diff; then
+            echo "Documento SSM sincronizado con infra/ssm/deploy.sh."
+            echo "synced=true" >> "$GITHUB_OUTPUT"
+          else
+            cat /tmp/ssm-doc.diff
+            echo "::error::El documento SSM '$SSM_DOCUMENT' esta desactualizado: su script incrustado no coincide con infra/ssm/deploy.sh. CD-1 se detiene para no desplegar con un script antiguo (asi el TLS no se aprovisiono el 2026-11-12). Solucion: con credenciales del propietario ejecutar 'terraform -chdir=infra/terraform apply' (main.tf incrusta el script con file()) y volver a disparar CD-1."
+            exit 1
+          fi
 
       - name: Desplegar en la EC2 por Systems Manager
         id: deploy
@@ -171,6 +203,26 @@ jobs:
           echo "Sonda /health registrada: $health_code"
           echo "health_code=$health_code" >> "$GITHUB_OUTPUT"
 
+      # Verifica desde fuera de la instancia lo que el equipo movil consume:
+      # TLS real de Let's Encrypt para el hostname nip.io (sin -k: la cadena
+      # debe ser valida). Fallo no bloqueante: el despliegue ya esta activo en
+      # HTTP y provision-tls.sh es best-effort por diseno.
+      - name: Smoke HTTPS publico
+        id: https_smoke
+        if: steps.deploy.outcome == 'success'
+        env:
+          TLS_BASE: ${{ env.TLS_BASE_URL }}
+        run: |
+          set -euo pipefail
+          code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$TLS_BASE/health" || echo 000)"
+          code="${code:-000}"
+          echo "HTTPS $TLS_BASE/health -> $code"
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          case "$code" in
+            200|503) ;;
+            *) echo "::warning::HTTPS no responde ($code): certificado ausente, fallo de provision-tls.sh o SKIP_TLS=1 en el .env. Revisa la salida del despliegue y 'terraform apply'." ;;
+          esac
+
       - name: Evidencia de despliegue
         if: always()
         env:
@@ -178,6 +230,8 @@ jobs:
           API_BASE: ${{ env.API_BASE_URL }}
           DEPLOY_OUTCOME: ${{ steps.deploy.outcome }}
           HEALTH_STATUS: ${{ steps.deploy.outputs.health_code }}
+          DOC_SYNC: ${{ steps.ssm_doc.outcome }}
+          HTTPS_STATUS: ${{ steps.https_smoke.outputs.code }}
           LOG_GROUP: /utttgo/api/dev
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -191,6 +245,8 @@ jobs:
             printf 'API: %s\n' "$API_BASE"
             printf 'Resultado: %s\n' "$DEPLOY_OUTCOME"
             printf 'Sonda /health: %s\n' "${HEALTH_STATUS:-no ejecutada}"
+            printf 'Documento SSM sincronizado: %s\n' "${DOC_SYNC:-no ejecutada}"
+            printf 'HTTPS /health: %s\n' "${HTTPS_STATUS:-no ejecutada}"
             printf 'Fecha UTC: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           } > ci-evidence/cd-deploy.txt
 
