@@ -118,6 +118,18 @@ if [ ! -f "$DEPLOY_PATH/.env" ]; then
   echo "::warning::No existe .env en $DEPLOY_PATH: Atlas, Supabase y S3 deben estar configurados en la instancia."
 fi
 
+# TLS: valores opcionales del .env (si faltan, provision-tls.sh usa
+# ${PUBLIC_IP}.nip.io). Un tls.conf sin certificados impide que Nginx arranque:
+# se retira antes del up y vuelve a emitirse al final del despliegue.
+if [ -f "$DEPLOY_PATH/.env" ]; then
+  _tls_domain="$(sed -n 's/^TLS_DOMAIN=//p' "$DEPLOY_PATH/.env" | head -n 1 | tr -d "\"'\r")"
+  _tls_email="$(sed -n 's/^TLS_EMAIL=//p' "$DEPLOY_PATH/.env" | head -n 1 | tr -d "\"'\r")"
+  [ -n "$_tls_domain" ] && TLS_DOMAIN="$_tls_domain"
+  [ -n "$_tls_email" ] && TLS_EMAIL="$_tls_email"
+  export TLS_DOMAIN TLS_EMAIL
+fi
+bash scripts/tls/provision-tls.sh guard
+
 docker compose pull --ignore-buildable redis nginx
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build --remove-orphans --scale api=2
 
@@ -161,6 +173,26 @@ case "$health_code" in
   200) ;;
   503) echo "::warning::La sonda /health devolvio 503: el despliegue esta activo pero MongoDB o Redis no responden." ;;
   *) echo "::warning::La sonda /health devolvio $health_code; se requiere verificacion manual." ;;
+esac
+
+# TLS (Let's Encrypt): emision o renovacion idempotente; nunca rompe el
+# despliegue si falla (el stack sigue sirviendo por HTTP).
+tls_rc=0
+bash scripts/tls/provision-tls.sh provision || tls_rc=$?
+case "$tls_rc" in
+  0)
+    if [ -f nginx/conf.d/tls.conf ]; then
+      tls_domain="$(bash scripts/tls/provision-tls.sh print-domain)"
+      https_code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "https://${tls_domain}/health" || echo 000)"
+      echo "HTTPS https://${tls_domain}/health -> $https_code"
+      case "$https_code" in
+        200|503) ;;
+        *) echo "::warning::Smoke HTTPS devolvio $https_code; verificacion manual requerida." ;;
+      esac
+    fi
+    ;;
+  2) echo "TLS omitido (SKIP_TLS=1)." ;;
+  *) echo "::warning::Aprovisionamiento TLS fallo (codigo $tls_rc); el stack sigue en HTTP." ;;
 esac
 
 if id "$DEPLOY_USER" >/dev/null 2>&1; then

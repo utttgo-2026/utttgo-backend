@@ -6,15 +6,18 @@
 # Redis y Nginx, y opcionalmente emite el certificado TLS (Let's Encrypt).
 #
 # Uso:
+#   sudo bash setup.sh                      # TLS por defecto: ${PUBLIC_IP}.nip.io (gratis)
 #   sudo bash setup.sh --domain api.tudominio.mx --email tu@correo.com
-#   sudo bash setup.sh --skip-tls              # solo HTTP por IP
+#   sudo bash setup.sh --skip-tls           # solo HTTP por IP
 #
 # En la EC2 el despliegue normal lo ejecuta CD-1 por AWS Systems Manager
 # (documento SSM utttgo-dev-deploy); este script queda para el arranque manual
-# y la emisión del certificado TLS.
+# y la emisión del certificado TLS. El mismo flujo (scripts/tls/provision-tls.sh)
+# lo ejecuta CD-1 en cada despliegue.
 #
-# Requisitos: el dominio debe tener un registro A apuntando a la IP pública de
-# la instancia. Let's Encrypt no emite certificados para IPs desnudas.
+# Requisitos: con --domain, un registro A apuntando a la IP pública de la
+# instancia; sin --domain se usa ${PUBLIC_IP}.nip.io (nip.io resuelve gratis a
+# la EIP y Let's Encrypt emite el certificado sin configurar DNS).
 # =============================================================================
 set -euo pipefail
 
@@ -31,7 +34,7 @@ warn() { printf '\033[1;33m[aviso] %s\033[0m\n' "$*" >&2; }
 die()  { printf '\033[1;31m[error] %s\033[0m\n' "$*" >&2; exit 1; }
 
 usage() {
-    sed -n '2,20p' "$0"
+    sed -n '2,23p' "$0"
     exit 0
 }
 
@@ -54,6 +57,9 @@ fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
+
+TLS_DOMAIN="${DOMAIN:-${PUBLIC_IP}.nip.io}"
+TLS_EMAIL="$EMAIL"
 
 export DEBIAN_FRONTEND=noninteractive
 
@@ -136,6 +142,7 @@ log "4/7 Construyendo la imagen de la API y descargando las imágenes base"
 "${COMPOSE[@]}" build --pull api
 
 log "5/7 Levantando el stack (2 replicas de la API, Redis y Nginx)"
+TLS_DOMAIN="$TLS_DOMAIN" bash scripts/tls/provision-tls.sh guard
 "${COMPOSE[@]}" up -d --scale api=2
 "${COMPOSE[@]}" ps
 
@@ -150,42 +157,25 @@ done
 "${COMPOSE[@]}" ps
 
 # -----------------------------------------------------------------------------
-# 5. TLS con Let's Encrypt
+# 5. TLS con Let's Encrypt (scripts/tls/provision-tls.sh)
 # -----------------------------------------------------------------------------
 if [[ $SKIP_TLS -eq 1 ]]; then
     log "6/7 TLS omitido (--skip-tls): el API queda disponible solo por HTTP en ${PUBLIC_IP}"
-elif [[ -z "$DOMAIN" || -z "$EMAIL" ]]; then
-    log "6/7 TLS omitido: faltan --domain y --email (el API queda disponible solo por HTTP en ${PUBLIC_IP})"
 else
-    log "6/7 Emitiendo certificado TLS para ${DOMAIN}"
-    resolved="$(getent hosts "$DOMAIN" | awk '{print $1}' | head -n 1 || true)"
-    if [[ -n "$resolved" && "$resolved" != "$PUBLIC_IP" ]]; then
-        warn "El dominio ${DOMAIN} resuelve a ${resolved}, no a ${PUBLIC_IP}. Corrige el registro DNS antes de continuar."
+    if [[ -z "$DOMAIN" ]]; then
+        log "6/7 Aprovisionando TLS con el dominio gratuito por defecto ${TLS_DOMAIN}"
+    else
+        log "6/7 Emitiendo certificado TLS para ${TLS_DOMAIN}"
     fi
-
-    certbot certonly \
-        --webroot \
-        --webroot-path "$(pwd)/certbot/www" \
-        --domain "$DOMAIN" \
-        --email "$EMAIL" \
-        --agree-tos \
-        --non-interactive \
-        --no-eff-email \
-        || warn "La emisión del certificado falló; el API sigue disponible por HTTP."
-
-    if [[ -f "/etc/letsencrypt/live/${DOMAIN}/fullchain.pem" ]]; then
-        sed "s/__DOMAIN__/${DOMAIN}/g" nginx/conf.d/tls.conf.template > nginx/conf.d/tls.conf
-        install -d /etc/letsencrypt/renewal-hooks/deploy
-        cat > /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh <<'HOOK'
-#!/usr/bin/env bash
-set -euo pipefail
-cd "$(dirname "$0")/../../.." 2>/dev/null || true
-docker compose exec -T nginx nginx -s reload
-HOOK
-        chmod +x /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh
-        docker compose exec -T nginx nginx -t
-        docker compose exec -T nginx nginx -s reload
-        log "TLS habilitado: https://${DOMAIN}"
+    tls_rc=0
+    TLS_DOMAIN="$TLS_DOMAIN" TLS_EMAIL="$TLS_EMAIL" PUBLIC_IP="$PUBLIC_IP" \
+        bash scripts/tls/provision-tls.sh provision || tls_rc=$?
+    if [[ $tls_rc -eq 0 ]]; then
+        log "TLS habilitado: https://${TLS_DOMAIN}"
+    elif [[ $tls_rc -eq 2 ]]; then
+        log "TLS omitido por SKIP_TLS=1"
+    else
+        warn "No se pudo aprovisionar el TLS (código ${tls_rc}); el API sigue disponible por HTTP."
     fi
 fi
 
@@ -207,9 +197,11 @@ fi
 log "Verificación final"
 printf 'API por HTTP (debe responder 401 sin token): '
 curl -s -o /dev/null -w '%{http_code}\n' "http://127.0.0.1/api/v1/auth/me" || true
-if [[ -n "$DOMAIN" && -f "/etc/letsencrypt/live/${DOMAIN}/fullchain.pem" ]]; then
+if [[ -f nginx/conf.d/tls.conf ]]; then
     printf 'API por HTTPS: '
-    curl -s -o /dev/null -w '%{http_code}\n' "https://${DOMAIN}/api/v1/auth/me" || true
+    curl -s -o /dev/null -w '%{http_code}\n' --max-time 10 "https://${TLS_DOMAIN}/api/v1/auth/me" || true
+    printf 'OpenAPI: '
+    curl -s -o /dev/null -w '%{http_code}\n' --max-time 10 "https://${TLS_DOMAIN}/openapi/v1.json" || true
 fi
 
 docker compose ps

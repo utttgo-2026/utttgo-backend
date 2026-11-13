@@ -18,6 +18,7 @@ using UTTTGO.Api.Modules.Sellers.Validators;
 using UTTTGO.Api.Shared.Contracts;
 using UTTTGO.Api.Shared.Health;
 using UTTTGO.Api.Shared.Infrastructure;
+using UTTTGO.Api.Shared.OpenApi;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -143,10 +144,8 @@ builder.Services.AddOpenApi();
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
-{
-    app.MapOpenApi();
-}
+app.MapOpenApi();
+app.MapGet("/openapi", () => Results.Content(OpenApiUiPage.Html, "text/html; charset=utf-8"));
 
 app.UseHttpsRedirection();
 

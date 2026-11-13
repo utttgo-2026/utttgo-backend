@@ -11,10 +11,10 @@
 | Pruebas | `xUnit 2.9.3`, `FluentAssertions 6.12.2`, `Microsoft.AspNetCore.Mvc.Testing 10.0.9`. **Sin Testcontainers**: las suites usan dobles; no hay pruebas contra Atlas/Redis reales. |
 | Nube | AWS `us-east-2`: 1 × EC2 t3.micro (Ubuntu 24.04) + EIP `3.129.142.54`, Security Group **solo 80/443** (22 cerrado), S3 privado con CORS estricto (sin reglas por defecto), IAM Instance Profile, CloudWatch Logs, Systems Manager, Budget con alerta institucional. Terraform **aplicado por el propietario** (DEC‑018/020/021). |
 | Contenedores | `docker-compose.yml`: `api` con `deploy.replicas: 2`, `redis:7-alpine` sin puertos publicados en red interna (`noeviction` + AOF), `nginx:alpine` con 80/443, `mongo:7` solo en perfil `local`. `docker-compose.prod.yml` (solo EC2) añade el driver `awslogs` para publicar los logs en `/utttgo/api/dev`. |
-| Estado en la instancia | **En ejecución y verificado**: `GET /health` → `200` con MongoDB y Redis en `Healthy`; CD‑1 ejecutó un run **verde** el 2026-11-08 con evidencia `ci-evidence/cd-deploy.txt` y el **2026-11-11** desplegó por SSM el SHA `355db03` (2/2 réplicas sanas, `/health` 200). TLS/dominio sigue pendiente (solo HTTP). |
+| Estado en la instancia | **En ejecución y verificado**: `GET /health` → `200` con MongoDB y Redis en `Healthy`; CD‑1 ejecutó un run **verde** el 2026-11-08 con evidencia `ci-evidence/cd-deploy.txt` y el **2026-11-11** desplegó por SSM el SHA `355db03` (2/2 réplicas sanas, `/health` 200). La instancia sirve todavía solo HTTP: el TLS con `3.129.142.54.nip.io` (Let's Encrypt) está implementado en código y se emitirá en el próximo despliegue tras el `terraform apply` del documento SSM. |
 | CI/CD | `ci-1.yml` (gate en `pull_request` a `main` y `push` a `feature/**` y `main`: restore, NuGetAudit, formato, build Release, tres suites, Gitleaks bloqueante, Semgrep informativo) y `cd-deploy.yml` (CD‑1 por `workflow_run` con CI‑1 verde; **despliegue por `aws ssm send-command`** sobre el documento `utttgo-dev-deploy`, `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build --scale api=2`, espera de réplicas sanas, smoke, evidencia y últimos eventos de CloudWatch Logs). |
 | Logs | La salida de `api`, `nginx` y `redis` llega a CloudWatch Logs (`/utttgo/api/dev`, streams `api`/`nginx`/`redis`) por el driver `awslogs` de Docker con el Instance Profile (DEC‑021). En la EC2 `docker compose logs` **no** está disponible: `aws logs tail /utttgo/api/dev`. |
-| Configuración | `.env.example` documenta `REDIS_URL`, `MONGODB_URI`, `MONGODB_DATABASE`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_JWKS_URL`, `SUPABASE_JWT_SECRET`, `SUPABASE_JWT_ISSUER`, `SUPABASE_JWT_AUDIENCE`, `S3_BUCKET_IMAGES` y `AWS_REGION`. Los valores reales viven **solo** en el entorno de la instancia y en secretos locales; nunca en Git. `appsettings.json` contiene únicamente quotas de rate limiting y registro. |
+| Configuración | `.env.example` documenta `REDIS_URL`, `MONGODB_URI`, `MONGODB_DATABASE`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_JWKS_URL`, `SUPABASE_JWT_SECRET`, `SUPABASE_JWT_ISSUER`, `SUPABASE_JWT_AUDIENCE`, `S3_BUCKET_IMAGES`, `AWS_REGION` y los opcionales `TLS_DOMAIN`/`TLS_EMAIL` (si faltan, el TLS usa `3.129.142.54.nip.io`). Los valores reales viven **solo** en el entorno de la instancia y en secretos locales; nunca en Git. `appsettings.json` contiene únicamente quotas de rate limiting y registro. |
 
 Estructura del árbol (sin `.git`, `.vs`, `bin`, `obj` ni `node_modules`):
 
@@ -27,7 +27,7 @@ utttgo-backend/
 ├── infra/terraform/          # IaC AWS (aplicada)
 ├── material/                 # fuentes PDF/DOCX/XLSX (no son specs)
 ├── nginx/conf.d/
-├── scripts/{ci,dev}/         # auditoría NuGet, resumen de tests, siembra local de vendedor
+├── scripts/{ci,dev,tls}/     # auditoría NuGet, resumen de tests, siembra local de vendedor, aprovisionamiento TLS
 ├── skills/
 ├── specs/
 │   ├── cross-cutting/        # api-health-probe, ci-cd-devsecops, infra-aws-free-tier
@@ -37,7 +37,7 @@ utttgo-backend/
 │   └── phase-07-chat-realtime/
 ├── src/UTTTGO.Api/
 │   ├── Modules/{Identity,Sellers,Admin}/
-│   └── Shared/{Contracts,Health,Infrastructure}/
+│   └── Shared/{Contracts,Health,Infrastructure,OpenApi}/
 ├── tests/{UtttGo.UnitTests,UtttGo.IntegrationTests,UtttGo.SecurityTests}/
 ├── AGENTS.md, Dockerfile, docker-compose.yml, memoria.md, nginx/, setup.sh
 └── UTTTGO.Backend.slnx
@@ -60,7 +60,8 @@ Las rutas se derivan de los atributos de los controladores y de `Program.cs`. La
 | POST | `/api/v1/sellers/activation-requests` | Bearer + cuenta `Active` | `201`/`200` (perfil de negocio con `sellerId`); `400`/`401`/`403`/`404`/`409`/`429`/`503` | **Sprint 1 de la fase 03**: autoactivación sin aprobación administrativa (DEC‑002); asigna el rol `Seller` en el perfil local. |
 | GET | `/api/v1/sellers/me` | Bearer | `200` perfil de negocio propio; `401`/`404`/`429`/`503` | Ficha nueva aprobada (DEC‑019.d). No expone `email`, `phone` ni `version`. |
 | PATCH | `/api/v1/sellers/me` | Bearer | `200`; `400`/`401`/`404`/`409`/`429`/`503` | Edición del propio perfil con control de concurrencia por `version`. |
-| GET | `/openapi/v1.json` | Solo Development | `200` documento OpenAPI | Sin servicios externos. No es ficha funcional. |
+| GET | `/openapi/v1.json` | Público | `200` documento OpenAPI (todos los entornos, antes solo Development) | Sin servicios externos. No es ficha funcional. |
+| GET | `/openapi` | Público | `200` HTML con Swagger UI de solo lectura (`tryItOut` deshabilitado) | CDN de Swagger UI; documentación para el equipo móvil (`docs/mobile-integration.md`). |
 
 No existen todavía: productos, categorías, media/imágenes, pedidos, reseñas, favoritos, notificaciones push, chat, recuperación de contraseña, logout y refresh token.
 
@@ -111,6 +112,7 @@ Además, contra **MongoDB 7 real** (contenedor local) se validó el diseño del 
 | `docs/traceability.md` | Matriz de las 42 fichas + fichas nuevas, con el estado real de cada ruta y la evidencia de despliegue. |
 | `docs/academic-requirements-phase-02.md`, `docs/decisiones-pendientes-fase-02.md` | Matriz académica y decisiones técnicas pendientes de la fase 02 (OTP, refresh, SemVer). |
 | `docs/qa-api-*.md` | Evidencia de QA local con dobles de API‑001/002/004/006/007/008/039. |
+| `docs/mobile-integration.md` | Guía para el equipo móvil: base HTTPS (`3.129.142.54.nip.io`), OpenAPI/Swagger, JSON real de login y flujo de 3 pasos de verificación de correo antes del login. |
 | `specs/phase-02-auth-users/*` | Identidad, usuarios y vendedores: contratos y tareas con gates documentales abiertos (TASK‑AUTH‑002/003/007/008). |
 | `specs/phase-03-catalog-offers/*` | **v2.1 aprobada para el Sprint 1 (vendedor)** por DEC‑019; el Sprint 2 (catálogo y categorías) sigue bloqueado hasta su propia aprobación. |
 | `specs/cross-cutting/api-health-probe/*` | v1.1: ficha de `GET /health` (HP‑01..HP‑11) con el fix del registro de la sonda en CD‑1. |
@@ -120,7 +122,7 @@ Además, contra **MongoDB 7 real** (contenedor local) se validó el diseño del 
 
 ## 6. Faltantes o configuraciones a revisar
 
-- **TLS y dominio:** la instancia solo sirve HTTP en la IP. `certbot` requiere un dominio real, y las tiendas móviles exigen HTTPS. Decisión abierta: dominio en un registrador con DNS gratuito y desafío DNS‑01 contra la EIP (evita Route 53, que sí tendría costo). Mientras no exista HTTPS, la API registra el aviso `Failed to determine the https port for redirect` (ruido de `HttpsRedirectionMiddleware`, sin impacto funcional).
+- **TLS y dominio:** implementado en código con el hostname gratuito `3.129.142.54.nip.io` (nip.io resuelve a la EIP sin registro DNS; Let's Encrypt por `webroot` con `scripts/tls/provision-tls.sh`, integrado en `setup.sh` y en CD-1, con renovación automática). La instancia **aún sirve solo HTTP**: falta fusionar el PR, ejecutar `terraform apply` (el script va incrustado en el documento SSM `utttgo-dev-deploy`) y desplegar para emitir el primer certificado. El aviso `Failed to determine the https port for redirect` persiste hasta entonces (ruido de `HttpsRedirectionMiddleware`, sin impacto funcional; el TLS termina en Nginx).
 - **Media e imágenes (fase 05):** no hay `AWSSDK.S3` ni cliente de Content Safety; `avatarUrl` es siempre `null` y no se puede publicar ninguna imagen (BR‑007).
 - **Catálogo (Sprint 2 de la fase 03):** no existen `products` ni `categories`; API‑011..015 y API‑019..022 necesitan `spec/plan/task` v2.2 y aprobación propia antes de código.
 - **Sesiones:** no hay `POST /api/v1/auth/logout` (API‑003) ni refresh token; el access token expira (3600 s) y la app móvil debe volver a autenticarse. TASK‑AUTH‑003 abierto.
@@ -138,7 +140,7 @@ Además, contra **MongoDB 7 real** (contenedor local) se validó el diseño del 
 
 ### Cinco bloqueos principales (ordenados por impacto)
 
-1. **HTTPS con dominio:** sin TLS la app móvil no puede publicarse en las tiendas ni cumplir las políticas de las plataformas.
+1. **HTTPS con dominio:** el código TLS ya está listo (nip.io + Let's Encrypt, costo $0); falta el `terraform apply` del documento SSM y el despliegue que emite el certificado para que la app móvil cumpla las políticas de las tiendas.
 2. **Catálogo y Media ausentes:** no hay productos, categorías ni imágenes; el valor funcional para el comprador todavía no existe.
 3. **Ciclo de sesión incompleto:** sin refresh ni logout, la experiencia móvil se corta cada hora y no existe cierre de sesión en servidor.
 4. **Secretos de CI en AWS:** sin la clave del usuario IAM de despliegue, el pipeline no puede publicar en la EC2 (el camino manual por SSM sí está validado).

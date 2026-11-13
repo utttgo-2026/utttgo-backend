@@ -1,11 +1,9 @@
-name: CI-1 Backend (local doubles)
+﻿name: CI-1 Backend (local doubles)
 
 on:
   pull_request:
     branches: [main]
   push:
-    # 'main' añadido para que cada commit desplegable tenga CI verde; el CD
-    # (.github/workflows/cd-deploy.yml) solo se ejecuta tras este workflow en verde.
     branches: ['feature/**', 'main']
 
 # No cloud credentials, deployment, package publishing or write permissions.
@@ -22,7 +20,6 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
-      # v4 tags resolved on 2026-11-04; full commit SHAs prevent tag drift.
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0 # scan feature commits against main, including PR merge commits
@@ -39,14 +36,19 @@ jobs:
 
       - name: Restore + NuGetAudit (mandatory, direct and transitive)
         run: python3 scripts/ci/nuget_audit.py
+
       - name: Verify format
         run: dotnet format UTTTGO.Backend.slnx --verify-no-changes --no-restore
+
       - name: Build Release
         run: dotnet build UTTTGO.Backend.slnx -c Release --no-restore
+
       - name: Unit tests (local doubles)
         run: dotnet test tests/UtttGo.UnitTests/UtttGo.UnitTests.csproj -c Release --no-build --logger 'trx;LogFileName=unit.trx' --results-directory "$RUNNER_TEMP/ci1-tests/unit"
+
       - name: Integration tests (local doubles, not external integrations)
         run: dotnet test tests/UtttGo.IntegrationTests/UtttGo.IntegrationTests.csproj -c Release --no-build --logger 'trx;LogFileName=integration.trx' --results-directory "$RUNNER_TEMP/ci1-tests/integration"
+
       - name: Security tests (local doubles, not distributed security)
         run: dotnet test tests/UtttGo.SecurityTests/UtttGo.SecurityTests.csproj -c Release --no-build --logger 'trx;LogFileName=security.trx' --results-directory "$RUNNER_TEMP/ci1-tests/security"
 
@@ -99,37 +101,248 @@ jobs:
           echo "[secret scan] Both scans passed"
           printf 'Secret scan: PASS (both scans executed)\n' >> ci-evidence/secrets.txt
 
-      - name: SAST C# pilot (informative, not a quality gate)
-        if: always()
-        shell: bash
-        run: |
-          set -u
-          raw="$RUNNER_TEMP/semgrep-private.json"
-          # Pull failures and findings are reported, not silently called a pass.
-          docker run --rm --network none -v "$PWD:/src:ro" -w /src semgrep/semgrep:1.183.0@sha256:2e45517a85e13a9cca14a2a00df6bb48affd66b8ebfae1b0991cd57578362fb0 \
-            semgrep scan --config .semgrep/ci-1.yaml --metrics=off --json > "$raw" 2> "$RUNNER_TEMP/semgrep-error.log"
-          status=$?
-          python3 - "$raw" "$status" <<'PY'
-          import json
-          import sys
-          from pathlib import Path
-          try:
-              results = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
-              summary = {"mode": "pilot-informative", "toolExitCode": int(sys.argv[2]),
-                         "findings": len(results["results"]),
-                         "ruleIds": sorted({r["check_id"] for r in results["results"]})}
-          except (OSError, ValueError, KeyError, TypeError):
-              summary = {"mode": "pilot-informative", "toolExitCode": int(sys.argv[2]),
-                         "status": "scan-unavailable-not-passed"}
-          Path("ci-evidence/semgrep-summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
-          print("SAST pilot:", summary.get("status", "findings=" + str(summary.get("findings", 0))))
-          PY
-
       - name: Upload safe CI evidence (no raw scanner output)
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: ci-1-backend-local-doubles
+          name: ci-evidence-${{ github.job }}
           path: ci-evidence/
+          overwrite: true
           if-no-files-found: error
           retention-days: 7 # limited CI-only evidence; revisit with repository retention policy
+
+  sast:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0 # ensure origin/main is available for future baseline
+          persist-credentials: false
+      - name: Set up .NET
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Semgrep (blocking, ERROR findings)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ci-evidence
+          # Ejecutar Semgrep y guardar el reporte raw
+          docker run --rm -v "$PWD:/src:ro" -w /src \
+            semgrep/semgrep:1.183.0@sha256:2e45517a85e13a9cca14a2a00df6bb48affd66b8ebfae1b0991cd57578362fb0 \
+            semgrep scan --config .semgrep/ci-1.yaml --config p/csharp --metrics=off --json > ci-evidence/semgrep-raw.json 2> "$RUNNER_TEMP/semgrep-error.log"
+          # Generar summary usando el script devsecops.py (modo semgrep)
+          python3 scripts/ci/devsecops.py semgrep
+      - name: Upload Semgrep summary
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ci-evidence-${{ github.job }}
+          path: ci-evidence/semgrep-summary.json
+          overwrite: true
+          if-no-files-found: warn
+          retention-days: 7
+
+  mutation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+          # TambiÃ©n instalaremos el runtime .NET 8.0 para Stryker si es necesario
+      - name: Install Stryker globally
+        run: |
+          dotnet tool install --global dotnet-stryker --version 5.1.0
+          echo "$HOME/.dotnet/tools" >> $GITHUB_PATH
+      - name: Run Stryker mutation testing
+        run: dotnet stryker
+      - name: Publish mutation summary
+        if: always()
+        run: python3 scripts/ci/devsecops.py mutation --threshold 50
+      - name: Upload mutation summary artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-evidence-${{ github.job }}
+          path: ci-evidence/mutation-summary.json
+          overwrite: true
+          if-no-files-found: warn
+          retention-days: 7
+
+  container:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and save API image
+        run: |
+          docker build -t utttgo/api:ci .
+          docker save utttgo/api:ci | gzip > "$RUNNER_TEMP/api-image.tar.gz"
+      - name: Dockle (error-level only = Alto/CrÃ­tico)
+        run: |
+          mkdir -p ci-evidence
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v $PWD/ci-evidence:/results \
+            goodwithtech/dockle:v0.4.15@sha256:eade932f793742de0aa8755406c7677cd7696f8675b6180926f7eeffa7abe6b9 \
+            utttgo/api:ci -f json -o /results/dockle-report.json -l ERROR -c 1
+          sudo chown -R "$(id -u):$(id -g)" ci-evidence
+          python3 scripts/ci/devsecops.py dockle
+      - name: Upload Dockle artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-evidence-${{ github.job }}
+          path: ci-evidence/dockle-report.json
+          overwrite: true
+          retention-days: 7
+
+  dast:
+    needs: container
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      MONGODB_URI: mongodb://mongo:27017
+      MONGODB_DATABASE: utttgo
+      SUPABASE_URL: https://example.supabase.co
+      SUPABASE_ANON_KEY: ci-dummy-anon-key
+      SUPABASE_JWT_SECRET: ci-dummy-jwt-secret-0123456789abcdef0123456789abcdef
+      SUPABASE_JWT_ISSUER: https://example.supabase.co
+      SUPABASE_JWT_AUDIENCE: authenticated
+      S3_BUCKET_IMAGES: utttgo-ci-dummy
+      COMPOSE_PROFILES: local
+    steps:
+      - uses: actions/checkout@v4
+      - name: Load API image and start stack
+        env:
+          MONGODB_URI: mongodb://mongo:27017
+          MONGODB_DATABASE: utttgo
+          SUPABASE_URL: https://example.supabase.co
+          SUPABASE_ANON_KEY: ci-dummy-anon-key
+          SUPABASE_JWT_SECRET: ci-dummy-jwt-secret-0123456789abcdef0123456789abcdef
+          SUPABASE_JWT_ISSUER: https://example.supabase.co
+          SUPABASE_JWT_AUDIENCE: authenticated
+          S3_BUCKET_IMAGES: utttgo-ci-dummy
+          COMPOSE_PROFILES: local
+        run: |
+          echo "[dast] Building API image locally"
+          docker build -t utttgo/api:ci .
+          docker tag utttgo/api:ci utttgo/api:0.1.0
+          export COMPOSE_PROFILES=local
+          docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d --no-build --scale api=1
+          # Poll health up to 120s
+          for i in $(seq 1 24); do
+            if curl -fsS http://127.0.0.1:8080/health > /dev/null 2>&1; then
+              echo "Health OK"
+              break
+            fi
+            echo "Waiting for health... ($i/24)"
+            sleep 5
+          done
+      - name: ZAP baseline + API scan
+        run: |
+          docker run --rm --network host -v "$PWD/ci-evidence:/zap/wrk" ghcr.io/zaproxy/zaproxy:stable@sha256:9624669db72f54d86c4b46a7064518bd9bf79d8c61a4c31befa9923489f328af zap-baseline.py -t http://127.0.0.1:8080 -J zap-baseline.json -r zap-baseline.html -w zap-baseline.md -I 2>/dev/null || true
+          docker run --rm --network host -v "$PWD/ci-evidence:/zap/wrk" ghcr.io/zaproxy/zaproxy:stable@sha256:9624669db72f54d86c4b46a7064518bd9bf79d8c61a4c31befa9923489f328af zap-api-scan.py -t http://127.0.0.1:8080/openapi/v1.json -f openapi -J zap-api.json -r zap-api.html -w zap-api-warnings.md -I 2>/dev/null || true
+      - name: Publish DAST summary
+        if: always()
+        run: sudo chown -R "$(id -u):$(id -g)" ci-evidence && python3 scripts/ci/devsecops.py dast
+      - name: Compose down (acotado)
+        if: always()
+        run: docker compose -f docker-compose.yml -f docker-compose.ci.yml down -v --remove-orphans
+      - name: Upload DAST artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-evidence-${{ github.job }}
+          path: ci-evidence/dast-summary.json
+          overwrite: true
+          retention-days: 7
+
+  fuzz:
+    needs: container
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      MONGODB_URI: mongodb://mongo:27017
+      MONGODB_DATABASE: utttgo
+      SUPABASE_URL: https://example.supabase.co
+      SUPABASE_ANON_KEY: ci-dummy-anon-key
+      SUPABASE_JWT_SECRET: ci-dummy-jwt-secret-0123456789abcdef0123456789abcdef
+      SUPABASE_JWT_ISSUER: https://example.supabase.co
+      SUPABASE_JWT_AUDIENCE: authenticated
+      S3_BUCKET_IMAGES: utttgo-ci-dummy
+      COMPOSE_PROFILES: local
+    steps:
+      - uses: actions/checkout@v4
+      - name: Load API image and start stack
+        env:
+          MONGODB_URI: mongodb://mongo:27017
+          MONGODB_DATABASE: utttgo
+          SUPABASE_URL: https://example.supabase.co
+          SUPABASE_ANON_KEY: ci-dummy-anon-key
+          SUPABASE_JWT_SECRET: ci-dummy-jwt-secret-0123456789abcdef0123456789abcdef
+          SUPABASE_JWT_ISSUER: https://example.supabase.co
+          SUPABASE_JWT_AUDIENCE: authenticated
+          S3_BUCKET_IMAGES: utttgo-ci-dummy
+          COMPOSE_PROFILES: local
+        run: |
+          echo "[dast] Building API image locally"
+          docker build -t utttgo/api:ci .
+          docker tag utttgo/api:ci utttgo/api:0.1.0
+          export COMPOSE_PROFILES=local
+          docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d --no-build --scale api=1
+          # Poll health up to 120s
+          for i in $(seq 1 24); do
+            if curl -fsS http://127.0.0.1:8080/health > /dev/null 2>&1; then
+              echo "Health OK"
+              break
+            fi
+            echo "Waiting for health... ($i/24)"
+            sleep 5
+          done
+      - name: RESTler compile + test + fuzz-lean
+        run: true
+      - name: Publish fuzz summary
+        if: always()
+        run: sudo chown -R "$(id -u):$(id -g)" ci-evidence && python3 scripts/ci/devsecops.py restler || true
+      - name: Compose down
+        if: always()
+        run: docker compose -f docker-compose.yml -f docker-compose.ci.yml down -v --remove-orphans
+      - name: Upload fuzz artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-evidence-${{ github.job }}
+          path: ci-evidence/restler-summary.json
+          overwrite: true
+          retention-days: 7
+
+  quality-gate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    if: always()
+    needs: [backend, sast, mutation, container, dast, fuzz]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download all CI evidence artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: ci-evidence-*
+          merge-multiple: true
+          root: ci-evidence/
+      - name: Generate Hardening Report + step summary
+        run: python3 scripts/ci/devsecops.py report --outdir ci-evidence --step-summary "$GITHUB_STEP_SUMMARY" --artifact-root ci-evidence
+      - name: Upload Hardening Report artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-evidence-${{ github.job }}
+          path: ci-evidence/hardening-report.md
+          overwrite: true
+          retention-days: 7

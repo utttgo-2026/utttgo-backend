@@ -212,6 +212,15 @@ resource "aws_iam_user_policy" "github_deploy" {
         Resource = "*"
       },
       {
+        # Verificacion de sincronia en CD-1 (2026-11-12): leer el script
+        # incrustado en el documento para difearlo contra infra/ssm/deploy.sh
+        # y evitar desplegar con un script antiguo. Permiso concedido solo al
+        # documento de despliegue.
+        Effect   = "Allow"
+        Action   = ["ssm:GetDocument"]
+        Resource = aws_ssm_document.deploy.arn
+      },
+      {
         Effect = "Allow"
         Action = [
           "ec2:DescribeInstances",
