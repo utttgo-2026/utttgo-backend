@@ -1,0 +1,16 @@
+# CI-only override for the ephemeral DAST/Fuzz stack in GitHub Actions runners.
+# Never used on the EC2 (CD uses docker-compose.yml + docker-compose.prod.yml).
+# - api publishes on loopback only, single replica, no restart loops in CI.
+# - nginx is excluded via an inactive profile (no Certbot/TLS in runners).
+services:
+  api:
+    restart: "no"
+    ports:
+      - "127.0.0.1:8080:8080"
+    deploy:
+      replicas: 1
+  nginx:
+    profiles:
+      - ci-disabled
+  mongo:
+    ports: [] # no host port in CI: own project/volumes, nothing else may use 27017
