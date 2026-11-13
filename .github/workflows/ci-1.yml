@@ -55,6 +55,7 @@ jobs:
         run: python3 scripts/ci/test_summary.py "$RUNNER_TEMP/ci1-tests"
 
       - name: Secret scan (mandatory; no raw findings in logs or artifacts)
+        # Fix: git fetch origin main before merge-base to handle PR runners
         if: always()
         shell: bash
         run: |
