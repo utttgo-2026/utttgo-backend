@@ -91,7 +91,7 @@ Registro (API-001)
 
 ```json
 {
-  "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "accessToken": "<jwt_de_ejemplo_aqui>",
   "expiresIn": 3600,
   "tokenType": "Bearer",
   "user": {
