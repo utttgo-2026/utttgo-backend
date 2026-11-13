@@ -114,3 +114,5 @@ Notas:
 
 ---
 *Este documento es de referencia interna. No contiene secretos ni valores de entorno reales. Todas las credenciales viven solo en variables de entorno de la instancia EC2.*
+
+Última actualización: 2026-11-13 - TASK-AUTH-002 cerrada (SMTP configurado en Supabase).
