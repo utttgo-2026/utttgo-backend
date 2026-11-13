@@ -41,14 +41,14 @@ La app móvil presenta la entrada del código y llama directamente a Supabase:
 
 ### ¿Está ya configurada la confirmación de correo y el SMTP para @uttt.edu.mx?
 
-**No, aún no.** Esta es la tarea **TASK-AUTH-002 (abierta)**:
+**Sí.** La tarea **TASK-AUTH-002 (completada)**:
 
-- El SMTP **incorporado de Supabase** solo entrega a direcciones autorizadas del equipo y limita a **2 correos/hora por proyecto**. No cubre envíos a estudiantes @uttt.edu.mx.
-- Se debe configurar **SMTP propio** en Supabase (panel de Supabase, **no** en el Terraform de este repo) y probar envío real a `@uttt.edu.mx` antes de considerar la función lista.
-- La plantilla **"Confirm sign up"** debe usar `{{ .Token }}` y **no** debe usar `{{ .ConfirmationURL }}` ni enlaces que confirmen automáticamente.
+- Se configuró **SMTP propio** en el panel de Supabase utilizando Gmail como proveedor de envío.
+- La plantilla **"Confirm sign up"** usa `{{ .Token }}` (código OTP de 6 dígitos) y **no** usa `{{ .ConfirmationURL }}` ni enlaces que confirmen automáticamente.
 - Nunca usar la plantilla "Magic link or OTP", ni `signInWithOtp`.
+- El envío de correos OTP a cuentas `@uttt.edu.mx` está **operativo y listo para probarse**.
 
-**Conclusión para el móvil:** hasta que se verifique entrega real de correo a `@uttt.edu.mx`, la verificación de correo **no está operativa en producción**. Pueden probar el flujo en un proyecto Supabase de prueba, pero no asumir que el entorno AWS ya lo soporta.
+**Conclusión para el móvil:** la verificación de correo por código OTP está lista. El desarrollador móvil puede implementar el flujo de `verifyOtp({ email, token, type: 'email' })` y `resend({ type: 'signup', email })` directamente contra Supabase sin esperar configuración adicional de correo.
 
 ## 3. Sincronización MongoDB ← Supabase (lazy, no webhook)
 
@@ -109,9 +109,8 @@ Notas:
 
 ## 7. Qué falta por hacer (pendiente del equipo)
 
-1. Configurar SMTP propio en Supabase (panel de Supabase, no nuestro Terraform) y probar envío a `@uttt.edu.mx`. → **TASK-AUTH-002 abierta**.
-2. Aprobar el contrato definitivo de API-001/002 (códigos 202/403/429/503, DTOs) y el flujo de reconciliación Supabase ↔ Mongo. → **TASK-AUTH-007/008 abiertos**.
-3. No desplegar en producción hasta tener evidencia de costo $0 (alerta AWS Budget) y prueba de entrega de correo real.
+1. Aprobar el contrato definitivo de API-001/002 (códigos 202/403/429/503, DTOs) y el flujo de reconciliación Supabase ↔ Mongo. → **TASK-AUTH-007/008 abiertos**.
+2. No desplegar en producción hasta tener evidencia de costo $0 (alerta AWS Budget).
 
 ---
 *Este documento es de referencia interna. No contiene secretos ni valores de entorno reales. Todas las credenciales viven solo en variables de entorno de la instancia EC2.*
