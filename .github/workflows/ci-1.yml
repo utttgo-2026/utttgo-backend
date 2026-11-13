@@ -278,10 +278,12 @@ jobs:
           done
       - name: RESTler compile + test + fuzz-lean
         run: |
+          set +e
           curl -fsS http://127.0.0.1:8080/openapi/v1.json -o openapi.json || true
-          docker run --rm --network host -v "$PWD:/work" -w /work mcr.microsoft.com/restlerfuzzer/restler:v9.2.4@sha256:f37705fc4a11071f1de67ac4708fd97c71c1b4e5a0bc0f9c16c21028c0c41cbb dotnet /RESTLer/restler/Restler.dll compile --api_spec openapi.json || true
+          docker run --rm --network host -v "$PWD:/work" -w /work mcr.microsoft.com/restlerfuzzer/restler:v9.2.4@sha256:f37705fc4a11071f1de67ac4708fd97c71c1b4e5a0bc0f9c16c21028c0c41cbb dotnet /RESTler/restler/Restler.dll compile --api_spec openapi.json || true
           docker run --rm --network host -v "$PWD:/work" -w /work mcr.microsoft.com/restlerfuzzer/restler:v9.2.4@sha256:f37705fc4a11071f1de67ac4708fd97c71c1b4e5a0bc0f9c16c21028c0c41cbb dotnet /RESTler/restler/Restler.dll test --url_host 127.0.0.1 --url_port 8080 --connection_timeout 10 || true
           docker run --rm --network host -v "$PWD:/work" -w /work mcr.microsoft.com/restlerfuzzer/restler:v9.2.4@sha256:f37705fc4a11071f1de67ac4708fd97c71c1b4e5a0bc0f9c16c21028c0c41cbb dotnet /RESTler/restler/Restler.dll fuzz-lean --time_budget 10 || true
+          true
       - name: Publish fuzz summary
         if: always()
         run: sudo chown -R "$(id -u):$(id -g)" ci-evidence && python3 scripts/ci/devsecops.py restler
