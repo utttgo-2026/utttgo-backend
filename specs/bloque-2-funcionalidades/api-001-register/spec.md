@@ -38,7 +38,7 @@ El desglose Given/When/Then por escenario, cobertura y autorización está en [R
 - **Real local (2026-11-06; Atlas + Redis + Supabase reales)**: registro de prueba con correo institucional → `202`; correo fuera del dominio (gmail) → `422 INSTITUTIONAL_EMAIL_REQUIRED`. Evidencia comunicada para estos dos casos, **no reejecutada aquí**; no demuestra OTP, entrega de correo, duplicados reales ni recuperación.
 - **AWS (2026-11-12)**: `POST /api/v1/auth/register` figura en el OpenAPI del despliegue. **Ruta presente ≠ «Verificado»**: no hay curl de registro en AWS en esta evidencia.
 
-**Pendiente:** RF-15, verificación por código/OTP y reconciliación de perfil; RF-06/BR-013, recuperación por enlace al correo registrado (sin inventar ruta backend). Aprobar contrato restante, entrega SMTP/flujo móvil y pruebas reales antes de cerrar tareas o AC; conservar fase 02 sin archivar.
+**Pendiente:** RF-15, pruebas del flujo OTP y reconciliación de perfil; RF-06/BR-013, recuperación por enlace al correo registrado (sin inventar ruta backend). [Guía móvil incorporada en `origin/main` (2026-11-13)](https://github.com/utttgo-2026/utttgo-backend/blob/b4d81b8/docs/auth-mobile-integration.md) **reporta** SMTP Gmail configurado en Supabase y plantilla Confirm sign up `{{ .Token }}`; no aporta en este corte prueba reproducible de OTP erróneo/vencido/reenvío, entrega a correo institucional, cuotas ni costo cero. El [TASK-AUTH-002 histórico](../../phase-02-auth-users/task.md) conserva otros criterios abiertos y no se cierra aquí. Aprobar contrato restante y acreditar flujo móvil/entrega y pruebas reales antes de cerrar tareas o AC; conservar fase 02 sin archivar.
 
 ## Niveles de autoridad y responsabilidades
 
@@ -46,7 +46,7 @@ El desglose Given/When/Then por escenario, cobertura y autorización está en [R
 
 **B — implementado candidato:** la tabla «Alcance y contrato vigente» enumera DTO/HTTP, obligatoriedad de `email`, `password`, `displayName` (sin opcionales admitidos), normalización, `413` de 8 KiB exclusivo de registro, cuota IP 5/900 s provisional, `Buyer/PendingEmailVerification` guardado por `sub`, respuesta literal y errores. El controlador es público sin JWT; los errores usan `ApiError`/`correlationId`. No hay política de fortaleza de contraseña ratificada. El orden es Redis → preflight Mongo → `signUp` Supabase → guardado Mongo si identidad nueva coherente; no persiste contraseña. **No** usar ese código para ratificar su contrato.
 
-**C — requerido no implementado integralmente:** RF-15/AC-011 OTP/SMTP, comprobación confiable y reconciliación Supabase–Mongo ante fallos y reintentos; protección privada integral requiere su propio alcance. RF-06/BR-013 recuperación por enlace es otra funcionalidad; no agregar ruta aquí. Registro no inicia sesión ni emite JWT.
+**C — requerido no implementado integralmente:** RF-15/AC-011 pruebas OTP/SMTP de entrega real, comprobación confiable y reconciliación Supabase–Mongo ante fallos y reintentos; la configuración SMTP/plantilla reportada no acredita estos resultados. Protección privada integral requiere su propio alcance. RF-06/BR-013 recuperación por enlace es otra funcionalidad; no agregar ruta aquí. Registro no inicia sesión ni emite JWT.
 
 ## Escenarios locales y brechas ejecutables
 
@@ -68,7 +68,7 @@ IDs `REG-01..09` no sustituyen AC/T-AUTH. Estado: **A parcial** = solo la regla 
 
 | ID y fuente | Alternativas documentadas / impacto concreto | Tareas afectadas y desbloqueo |
 |---|---|---|
-| [DF02-01/10](../../../docs/decisiones-pendientes-fase-02.md), TASK-AUTH-002 | OTP aprobado; plantilla `{{ .Token }}`/SDK/SMTP propuestos, [guía móvil](../../../docs/mobile-integration.md) § 5 describe enlace contradictorio; enlace no sustituye OTP, `signInWithOtp` passwordless no autorizado. | REG-08, DEV-API001-07/11: decisión técnica OTP/SMTP y evidencia autorizada. |
+| [DF02-01/10](../../../docs/decisiones-pendientes-fase-02.md), TASK-AUTH-002 | OTP aprobado; [guía nueva de main](https://github.com/utttgo-2026/utttgo-backend/blob/b4d81b8/docs/auth-mobile-integration.md) reporta plantilla `{{ .Token }}` y SMTP Gmail configurados, pero no acredita pruebas/costo ni cierra el gate histórico. [Guía anterior](../../../docs/mobile-integration.md) § 5 conserva el ejemplo contradictorio de enlace; no sustituye OTP ni autoriza `signInWithOtp` passwordless. | REG-08, DEV-API001-07/11: ratificar detalles SDK/seguridad y aportar pruebas OTP/SMTP verificables. |
 | DF02-02/07, TASK-AUTH-010; Excel | `201/status:Active/409` del Excel frente a `202` parcial aprobado; faltan JSON exacto, validaciones, `400/422/413/429/502/503`, reintentos y antienumeración temporal. | REG-01..07, DEV-API001-05/06: acta de ratificación por ficha del resto sin revocar `202`. |
 | DF02-09, TASK-AUTH-011/012 | Fuentes/frecuencia de confirmación, idempotencia y reparación de cuenta Supabase sin perfil no resueltas; no crear perfil de JWT arbitrario. | REG-07..09, DEV-API001-10/08: aprobar diseño y prueba de fallos parciales. |
 | DF02-08, TASK-AUTH-007/008 y [task histórico](../../phase-02-auth-users/task.md) | Aprobación individual de SemVer ≠ aprobación de equipo/delegación; 008 depende de 002..007 y 010 de 007/008. | Toda programación DEV-API001-05..11: cerrar cadena SDD formalmente. |
