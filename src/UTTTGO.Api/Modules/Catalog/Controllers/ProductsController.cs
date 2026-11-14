@@ -171,13 +171,20 @@ public sealed class ProductsController(IListProductsService list, IGetProductSer
             : decimal.MinValue;
     }
 
-    private static int ParsePage(string? value) =>
-        int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed) && parsed > 0
+    private static int ParsePage(string? value)
+    {
+        // An absent parameter takes the default; a present but invalid one is rejected by the validator.
+        if (string.IsNullOrWhiteSpace(value)) return 1;
+        return int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)
             ? parsed
-            : 1;
+            : 0;
+    }
 
-    private static int ParsePageSize(string? value) =>
-        int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed) && parsed > 0
+    private static int ParsePageSize(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return ProductListQuery.DefaultPageSize;
+        return int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)
             ? parsed
-            : ProductListQuery.DefaultPageSize;
+            : 0;
+    }
 }

@@ -15,15 +15,18 @@ public sealed class CategoriesController(IListCategoriesService categories) : Co
     public async Task<IActionResult> List([FromQuery] string? page, [FromQuery] string? pageSize,
         CancellationToken cancellationToken)
     {
-        var parsedPage = int.TryParse(page, NumberStyles.Integer, CultureInfo.InvariantCulture, out var pageValue)
-            && pageValue > 0
-            ? pageValue
-            : 1;
-        var parsedPageSize = int.TryParse(pageSize, NumberStyles.Integer, CultureInfo.InvariantCulture,
-            out var pageSizeValue) && pageSizeValue > 0
-            ? pageSizeValue
-            : ProductListQuery.DefaultPageSize;
-        if (parsedPage > ProductListQuery.MaxPage || parsedPageSize > ProductListQuery.MaxPageSize)
+        var parsedPage = string.IsNullOrWhiteSpace(page)
+            ? 1
+            : int.TryParse(page, NumberStyles.Integer, CultureInfo.InvariantCulture, out var pageValue)
+                ? pageValue
+                : 0;
+        var parsedPageSize = string.IsNullOrWhiteSpace(pageSize)
+            ? ProductListQuery.DefaultPageSize
+            : int.TryParse(pageSize, NumberStyles.Integer, CultureInfo.InvariantCulture, out var pageSizeValue)
+                ? pageSizeValue
+                : 0;
+        if (parsedPage < 1 || parsedPage > ProductListQuery.MaxPage || parsedPageSize < 1 ||
+            parsedPageSize > ProductListQuery.MaxPageSize)
             return BadRequest(ApiError.Create(HttpContext, 400, "VALIDATION_ERROR", "Solicitud inválida."));
 
         var result = await categories.ListAsync(parsedPage, parsedPageSize, cancellationToken);
