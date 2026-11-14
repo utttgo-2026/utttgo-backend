@@ -16,6 +16,8 @@ internal sealed class CatalogProductRepository : IProductRepository
         if (Fail) throw new InvalidOperationException("internal-secret");
         var items = Products.Values
             .Where(product => product.Status == ProductAvailability.Active)
+                .Where(product => query.AllowedCategoryIds is null ||
+                query.AllowedCategoryIds.Contains(product.CategoryId))
             .OrderByDescending(product => product.CreatedAt)
             .ToList();
         return Task.FromResult(new ProductPage(items, items.Count));

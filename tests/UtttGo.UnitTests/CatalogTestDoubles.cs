@@ -24,6 +24,8 @@ internal sealed class CatalogProductRepository : IProductRepository
         LastQuery = query;
         var items = Products.Values
             .Where(product => product.Status == ProductAvailability.Active)
+            .Where(product => query.AllowedCategoryIds is null ||
+                query.AllowedCategoryIds.Contains(product.CategoryId))
             .OrderByDescending(product => product.CreatedAt)
             .ToList();
         return Task.FromResult(new ProductPage(items, items.Count));
@@ -45,6 +47,7 @@ internal sealed class CatalogProductRepository : IProductRepository
         var record = new ProductRecord(CatalogFixtures.ProductId, product.SellerId, product.Name,
             product.Description, product.Ingredients, product.CategoryId, product.Price, product.Stock,
             ProductAvailability.Active, 0, DateTime.UtcNow, DateTime.UtcNow);
+        if (ForceTampered) record = record with { SellerId = "other-seller" };
         Products[record.ProductId] = record;
         return Task.FromResult(record);
     }
