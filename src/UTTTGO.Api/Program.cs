@@ -7,6 +7,10 @@ using UTTTGO.Api.Modules.Admin.Application;
 using UTTTGO.Api.Modules.Admin.Contracts;
 using UTTTGO.Api.Modules.Admin.Infrastructure;
 using UTTTGO.Api.Modules.Admin.Validators;
+using UTTTGO.Api.Modules.Catalog.Application;
+using UTTTGO.Api.Modules.Catalog.Contracts;
+using UTTTGO.Api.Modules.Catalog.Infrastructure;
+using UTTTGO.Api.Modules.Catalog.Validators;
 using UTTTGO.Api.Modules.Identity.Application;
 using UTTTGO.Api.Modules.Identity.Contracts;
 using UTTTGO.Api.Modules.Identity.Infrastructure;
@@ -138,6 +142,22 @@ builder.Services.AddScoped<IUpdateOwnSellerProfileService, UpdateOwnSellerProfil
 builder.Services.AddScoped<IValidator<SellerActivationRequest>, SellerActivationRequestValidator>();
 builder.Services.AddScoped<IValidator<UpdateSellerProfileRequest>, UpdateSellerProfileRequestValidator>();
 builder.Services.AddHostedService<SellersMongoIndexes>();
+builder.Services.AddSingleton<ISellerDisplayNames, MongoSellerDisplayNames>();
+builder.Services.AddScoped<IValidator<ProductListQuery>, ProductListQueryValidator>();
+builder.Services.AddScoped<IValidator<CreateProductRequest>, CreateProductRequestValidator>();
+builder.Services.AddScoped<IValidator<UpdateProductRequest>, UpdateProductRequestValidator>();
+builder.Services.AddScoped<IValidator<UpdateProductAvailabilityRequest>, UpdateProductAvailabilityRequestValidator>();
+builder.Services.AddSingleton<IProductRepository, MongoProductRepository>();
+builder.Services.AddSingleton<ICategoryRepository, MongoCategoryRepository>();
+builder.Services.AddScoped<ICatalogRateLimitGate, RedisCatalogRateLimitGate>();
+builder.Services.AddSingleton<IProductRatingsReader, UnconfiguredProductRatingsReader>();
+builder.Services.AddScoped<IListProductsService, ListProductsService>();
+builder.Services.AddScoped<IGetProductService, GetProductService>();
+builder.Services.AddScoped<IListCategoriesService, ListCategoriesService>();
+builder.Services.AddScoped<ICreateProductService, CreateProductService>();
+builder.Services.AddScoped<IUpdateProductService, UpdateProductService>();
+builder.Services.AddScoped<IUpdateProductAvailabilityService, UpdateProductAvailabilityService>();
+builder.Services.AddHostedService<CatalogMongoIndexes>();
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
 
