@@ -112,6 +112,24 @@ No son contratos aprobados del MVP por el solo hecho de figurar en un spec, plan
 
 La evidencia de costo $0 está en el **AWS Budget activo** (`utttgo-dev-zero-cost-guard`, notificación `OK`, umbral 0 %) con `ActualSpend` 0.00 USD y Cost Explorer del mes en 0.00 USD (2026-11-11); el cierre de facturación del mes lo aporta el propietario. La verificación de TLS en la nube sigue pendiente de ejecución: el código usa el hostname gratuito `3.129.142.54.nip.io` (Let's Encrypt, costo $0) y el certificado se emitirá en el próximo despliegue tras el `terraform apply` del documento SSM.
 
+## Verificación E2E de los endpoints implementados (2026-11-15)
+
+> Suite `tests/UtttGo.IntegrationTests/EndToEnd/CatalogSellerJourneyTests.cs`: MongoDB 7 y Redis 7 en contenedores locales de Testcontainers, aplicación real por HTTP (controladores, validadores, servicios, repositorios y rate limiters de producción). Solo se doblan las fronteras de autenticación externas (Supabase, validación de JWT y blacklist), porque CI no tiene credenciales. Evidencia: CI-1 run `43662818741` (job `backend`) en `ubuntu-24.04`: 235 unitarias, **207 de integración (204 previas + 3 E2E)** y 107 de seguridad, 0 fallos; build Release, `dotnet format`, NuGetAudit y Gitleaks en verde.
+
+| Paso | Endpoint | Códigos verificados | Contrato / persistencia comprobada |
+|---|---|---|---|
+| a | `POST /api/v1/auth/register` | `202` | Respuesta genérica con `message`; no filtra `accessToken`, correo ni contraseña; escribe `users` con rol `Buyer` y estado `PendingEmailVerification` |
+| b | `POST /api/v1/auth/login` | `200` | `accessToken`, `expiresIn` 3600, `tokenType` `Bearer`, `user.id` (ObjectId 24 hex), `roles` `["Buyer"]`, `accountStatus` `Active` (promoción del perfil local) |
+| c | `GET /api/v1/users/me` | `200` | Contrato exacto `id`, `displayName`, `email`, `phone`, `avatarUrl`, `roles` |
+| d | `POST /api/v1/sellers/activation-requests` | `201` | Contrato exacto `sellerId`, `businessName`, `description`, `pickupPoint`, `status` `Active`, `isActive`, `roles` `["Buyer","Seller"]`, `createdAt`, `updatedAt`; escribe `sellers` y promueve `users.roles`/`sellerId` |
+| e | `GET /api/v1/categories` | `200` | 3 categorías sembradas y activas (`Comida Preparada`, `Bebidas`, `Snacks`), `sortOrder` 10/20/30, `total` 3, ids ObjectId 24 hex |
+| f | `POST /api/v1/products` | `201` | Contrato exacto de 16 campos; `sellerId` y `sellerDisplayName` desde `sellers`, `categoryId`/`categoryName` desde `categories`, precio `55.50`, `stock` 10, `status` `Active`, `isAvailable` `true`, `ratingAverage`/`ratingCount` `null`; en Mongo: precio `Decimal128`, `version` 0 |
+| g | `GET /api/v1/products` y `GET /api/v1/products/{id}` | `200` | Listado paginado (`items`, `page`, `pageSize`, `total`) con el producto publicado; detalle con los mismos valores públicos y sin datos privados |
+| h | `PATCH /api/v1/products/{id}` | `200` | Precio `60.00` y `stock` 8, `status` `Active`, `isAvailable` `true` (concurrencia optimista por `version`) |
+| h | `PATCH /api/v1/products/{id}/availability` | `200` | `status` `Paused` con `stock` 8 intacto (pausar no altera existencias); el producto pausado responde `404 PRODUCT_NOT_FOUND` en detalle y desaparece del listado público |
+| — | `GET /api/v1/categories` (seeding) | `200` | Seeding idempotente: dos ejecuciones devuelven los mismos ids y no duplican documentos; `normalizedName` `comida preparada`, `bebidas`, `snacks` |
+| — | Índices MongoDB | — | Verificados sobre MongoDB real: `supabaseUserId_unique`, `ownerUserId_unique`, `price_status`, `sellerId_status`, `normalizedName_unique`, `isActive_sortOrder_name` |
+
 ## Orden de conciliación y evidencias pendientes
 
 1. **Equipo de producto/API:** aprobar o ajustar propuesta OTP de API-001/002 (`spec.md` § 4.3) con móvil/SMTP y costo cero antes de cerrar TASK-AUTH-002; conciliar API-003/006/007/008 (refresh, avatar y composición) y descripciones/payloads de API-011..015/023; **API-016 ya está resuelta por DEC-019 (no se implementa ni redirige)**; ficha nueva para eliminar producto y, solo si se elige endpoint backend, para recuperación o verificación de correo. El Excel no fue modificado.
