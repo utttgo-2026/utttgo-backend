@@ -31,7 +31,7 @@ jobs:
       - name: Identify CI evidence (no external service credentials)
         run: |
           mkdir -p ci-evidence
-          printf 'CI-1 backend with local doubles only\nSHA: %s\nEvent: %s\nSDK: %s\n' \
+            printf 'CI-1 backend with local doubles and local containers only\nSHA: %s\nEvent: %s\nSDK: %s\n' \
             "$GITHUB_SHA" "$GITHUB_EVENT_NAME" "$(dotnet --version)" > ci-evidence/context.txt
 
       - name: Restore + NuGetAudit (mandatory, direct and transitive)
@@ -46,7 +46,7 @@ jobs:
       - name: Unit tests (local doubles)
         run: dotnet test tests/UtttGo.UnitTests/UtttGo.UnitTests.csproj -c Release --no-build --logger 'trx;LogFileName=unit.trx' --results-directory "$RUNNER_TEMP/ci1-tests/unit"
 
-      - name: Integration tests (local doubles, not external integrations)
+      - name: Integration tests (local doubles and container E2E, no external integrations)
         run: dotnet test tests/UtttGo.IntegrationTests/UtttGo.IntegrationTests.csproj -c Release --no-build --logger 'trx;LogFileName=integration.trx' --results-directory "$RUNNER_TEMP/ci1-tests/integration"
 
       - name: Security tests (local doubles, not distributed security)

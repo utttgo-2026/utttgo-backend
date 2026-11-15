@@ -48,6 +48,8 @@ builder.Services.AddSingleton<MongoStore>();
 builder.Services.AddHostedService<IdentityMongoIndexes>();
 builder.Services.Configure<RedisOptions>(options => options.Url = builder.Configuration["REDIS_URL"]);
 builder.Services.Configure<RateLimitingOptions>(builder.Configuration.GetSection("RateLimiting"));
+builder.Services.Configure<CatalogSeedOptions>(options =>
+    options.Enabled = bool.TryParse(builder.Configuration["CATALOG_SEED_ENABLED"], out var enabled) && enabled);
 builder.Services.Configure<SupabaseJwtOptions>(options =>
 {
     options.JwksUrl = builder.Configuration["SUPABASE_JWKS_URL"];
@@ -158,6 +160,8 @@ builder.Services.AddScoped<ICreateProductService, CreateProductService>();
 builder.Services.AddScoped<IUpdateProductService, UpdateProductService>();
 builder.Services.AddScoped<IUpdateProductAvailabilityService, UpdateProductAvailabilityService>();
 builder.Services.AddHostedService<CatalogMongoIndexes>();
+builder.Services.AddSingleton<ICatalogSeeder, MongoCatalogSeeder>();
+builder.Services.AddHostedService<CatalogSeedHostedService>();
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
 
