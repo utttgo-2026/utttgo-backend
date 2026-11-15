@@ -58,7 +58,8 @@ public sealed class CatalogSellerJourneyTests : IAsyncLifetime
         loginDocument.RootElement.GetProperty("tokenType").GetString().Should().Be("Bearer");
         loginDocument.RootElement.GetProperty("user").GetProperty("accountStatus").GetString()
             .Should().Be("Active");
-        Roles(loginDocument.RootElement.GetProperty("user")).Should().BeEquivalentTo(["Buyer"]);
+        Roles(loginDocument.RootElement.GetProperty("user").GetProperty("roles"))
+            .Should().BeEquivalentTo(["Buyer"]);
 
         host.Client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
 

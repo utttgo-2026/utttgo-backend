@@ -1,6 +1,5 @@
 using System.Net;
 using DotNet.Testcontainers.Builders;
-using DotNet.Testcontainers.Containers;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -11,6 +10,8 @@ using Microsoft.Extensions.Options;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using StackExchange.Redis;
+using Testcontainers.MongoDb;
+using Testcontainers.Redis;
 using UTTTGO.Api.Modules.Identity.Application;
 using UTTTGO.Api.Shared.Infrastructure;
 
@@ -33,11 +34,12 @@ internal sealed class EndToEndHost : IAsyncDisposable
 {
     public const string DatabaseName = "utttgo_e2e";
 
-    private readonly IContainer mongo;
-    private readonly IContainer redis;
+    private readonly MongoDbContainer mongo;
+    private readonly RedisContainer redis;
     private readonly WebApplicationFactory<Program> factory;
 
-    private EndToEndHost(IContainer mongo, IContainer redis, WebApplicationFactory<Program> factory)
+    private EndToEndHost(MongoDbContainer mongo, RedisContainer redis,
+        WebApplicationFactory<Program> factory)
     {
         this.mongo = mongo;
         this.redis = redis;
@@ -55,22 +57,17 @@ internal sealed class EndToEndHost : IAsyncDisposable
 
     public static async Task<EndToEndHost> StartAsync()
     {
-        var mongo = new ContainerBuilder("mongo:7")
-            .WithPortBinding(27017, true)
-            .WithWaitStrategy(Wait.ForUnixContainer().UntilExternalTcpPortIsAvailable(27017))
-            .Build();
-        var redis = new ContainerBuilder("redis:7-alpine")
-            .WithPortBinding(6379, true)
-            .WithWaitStrategy(Wait.ForUnixContainer().UntilExternalTcpPortIsAvailable(6379))
-            .Build();
+        var mongo = new MongoDbBuilder("mongo:7").Build();
+        var redis = new RedisBuilder("redis:7-alpine").Build();
 
         await mongo.StartAsync();
         await redis.StartAsync();
 
-        var mongoUri = $"mongodb://{mongo.Hostname}:{mongo.GetMappedPublicPort(27017)}";
-        var redisUri = $"redis://{redis.Hostname}:{redis.GetMappedPublicPort(6379)}";
+        var mongoUri = mongo.GetConnectionString();
+        var redisHost = redis.Hostname;
+        var redisPort = redis.GetMappedPublicPort(6379);
         await WaitForMongoAsync(mongoUri);
-        await WaitForRedisAsync(redisUri);
+        await WaitForRedisAsync(redisHost, redisPort);
 
         var auth = new EndToEndAuthDoubles();
         var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
@@ -83,7 +80,7 @@ internal sealed class EndToEndHost : IAsyncDisposable
                     Database = DatabaseName
                 }));
                 services.RemoveAll<IConnectionMultiplexer>();
-                services.AddSingleton<IConnectionMultiplexer>(ConnectionMultiplexer.Connect(redisUri));
+                services.AddSingleton<IConnectionMultiplexer>(CreateMultiplexer(redisHost, redisPort));
                 services.AddSingleton<IStartupFilter, RemoteIpStartupFilter>();
                 services.RemoveAll<ISupabaseRegistration>();
                 services.AddSingleton<ISupabaseRegistration>(auth);
@@ -108,10 +105,24 @@ internal sealed class EndToEndHost : IAsyncDisposable
         await mongo.DisposeAsync();
     }
 
+    private static IConnectionMultiplexer CreateMultiplexer(string host, int port)
+    {
+        var configuration = new ConfigurationOptions
+        {
+            AbortOnConnectFail = false,
+            ConnectTimeout = 2000,
+            SyncTimeout = 5000
+        };
+        configuration.EndPoints.Add(host, port);
+        return ConnectionMultiplexer.Connect(configuration);
+    }
+
     private static async Task WaitForMongoAsync(string uri)
     {
-        var client = new MongoClient(uri);
-        var deadline = DateTime.UtcNow.AddSeconds(120);
+        var settings = MongoClientSettings.FromConnectionString(uri);
+        settings.ServerSelectionTimeout = TimeSpan.FromSeconds(5);
+        var client = new MongoClient(settings);
+        var deadline = DateTime.UtcNow.AddSeconds(90);
         while (DateTime.UtcNow < deadline)
         {
             try
@@ -128,16 +139,22 @@ internal sealed class EndToEndHost : IAsyncDisposable
         throw new InvalidOperationException("MongoDB container did not answer the ping command.");
     }
 
-    private static async Task WaitForRedisAsync(string uri)
+    private static async Task WaitForRedisAsync(string host, int port)
     {
-        var deadline = DateTime.UtcNow.AddSeconds(120);
+        var configuration = new ConfigurationOptions
+        {
+            AbortOnConnectFail = false,
+            ConnectTimeout = 2000,
+            SyncTimeout = 5000
+        };
+        configuration.EndPoints.Add(host, port);
+        await using var multiplexer = await ConnectionMultiplexer.ConnectAsync(configuration);
+        var deadline = DateTime.UtcNow.AddSeconds(90);
         while (DateTime.UtcNow < deadline)
         {
             try
             {
-                var multiplexer = await ConnectionMultiplexer.ConnectAsync(uri);
                 await multiplexer.GetDatabase().PingAsync();
-                await multiplexer.DisposeAsync();
                 return;
             }
             catch (Exception) when (DateTime.UtcNow < deadline)
