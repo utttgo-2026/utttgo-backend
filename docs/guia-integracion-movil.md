@@ -1,6 +1,6 @@
 # Guía de integración móvil · UTTT-GO Backend
 
-> Versión 1.1 · 2026-11-16 · Contrato vigente de la API pública desplegada.
+> Versión 1.2 · 2026-11-16 · Contrato vigente de la API pública desplegada (incluye la Fase 2 de pedidos, API-026..029, pendiente de PR/CI-1).
 > Fuente canónica: `docs/constitution.md` y `docs/traceability.md`; el documento OpenAPI vivo es `GET /openapi/v1.json` y la consola de lectura es `GET /openapi`.
 
 ## 1. Entorno y transporte
@@ -32,6 +32,10 @@ Reglas de transporte:
 | `catalog-write` | 30 | 60 s | usuario |
 | `order-create` | 10 | 60 s | usuario |
 | `order-read` | 60 | 60 s | usuario |
+| `order-write` | 30 | 60 s | usuario |
+| `order-cancel` | 10 | 60 s | usuario |
+| `order-delivery-token` | 5 | 300 s | usuario |
+| `order-delivery-confirm` | 20 | 60 s | usuario |
 | `seller-me` / `seller-write` | 60 / 30 | 60 s | usuario |
 | `admin-users` | 30 | 60 s | usuario |
 
@@ -232,9 +236,25 @@ Solo el dueño (verificado por recurso). `409 PRODUCT_CONFLICT` si el `version` 
 
 `Active` publica y `Paused` pausa la publicación. Pausar **nunca** altera el stock.
 
-## 5. Pedidos (API-023, API-024, API-025)
+## 5. Pedidos (API-023 a API-029)
 
 Compra directa e individual: **no hay carrito** y **no hay pasarela de pago**. El único método de pago es `Cash` en el campus.
+
+### 5.0 Flujo de estados y quién puede actuar
+
+```
+Pending ──(vendedor, API-027)──> Accepted ──(vendedor, API-027)──> InPreparation ──(vendedor, API-027)──> Ready
+   │                                                                                                    │
+   │(comprador, API-026)                                                                                │(vendedor, API-029 + token)
+   ▼                                                                                                    ▼
+CancelledByBuyer                                                                                     Delivered
+Pending ──(vendedor, API-027)──> Rejected
+```
+
+- Solo el **vendedor del pedido** ejecuta API-027 y API-029; solo el **comprador** ejecuta API-026 y API-028.
+- Un tercero recibe `404 ORDER_NOT_FOUND` (no se revela la existencia); la contraparte del pedido recibe `403 ORDER_FORBIDDEN`.
+- `Accepted → CancelledByBuyer` está **prohibido**: responde `409 ORDER_STATE_CONFLICT`.
+- `Delivered` **solo** se alcanza con API-029 (token de entrega); API-027 no puede fijarlo.
 
 ### 5.1 `POST /api/v1/orders` → `201` (Bearer, cuenta `Active`)
 
@@ -280,7 +300,7 @@ Reglas que la app móvil debe respetar:
 - La compra **reserva stock** de forma atómica: si no hay existencias suficientes → `400 INSUFFICIENT_STOCK` y no se crea el pedido.
 - `quantity` entre 1 y 50; `productId` con 24 hex.
 - Repetir la misma `Idempotency-Key` del mismo comprador devuelve `200` con el pedido ya creado (no `201`) y **no** reserva stock otra vez.
-- Estados: solo `Pending` en esta fase (cancelación y transiciones llegan en la Fase 2, API-026..029).
+- Estados: el pedido nace `Pending`; las transiciones las hace el vendedor con API-027 y la entrega se confirma con API-029 (ver 5.4..5.7).
 
 Errores: `400 VALIDATION_ERROR` / `400 INSUFFICIENT_STOCK`, `401`, `403 ACCOUNT_NOT_ACTIVE`, `404 PRODUCT_NOT_FOUND`, `422 PRODUCT_NOT_AVAILABLE` (producto pausado, categoría inactiva o vendedor no activo), `429 RATE_LIMITED`, `503 ORDER_UNAVAILABLE`.
 
@@ -316,6 +336,93 @@ Solo devuelve pedidos del comprador autenticado (el filtro por rol vendedor aún
 
 Devuelve el mismo objeto de `POST /orders`. Solo lo leen el comprador o el vendedor del pedido; un tercero recibe `404 ORDER_NOT_FOUND` **sin** que se revele la existencia.
 
+### 5.4 `POST /api/v1/orders/{orderId}/cancel` → `200` (Bearer, comprador)
+
+Sin cuerpo de petición.
+
+```json
+{
+  "orderId": "6afb4d2b8b3f2a0012ab34d1",
+  "status": "CancelledByBuyer",
+  "completedAt": "2026-11-16T18:10:00Z",
+  "version": 1
+}
+```
+
+- Solo el **comprador** y solo desde `Pending`; desde `Accepted` o cualquier otro estado → `409 ORDER_STATE_CONFLICT`.
+- **Idempotente**: repetir la cancelación devuelve `200` con el estado vigente, sin duplicar auditoría ni devolver el stock dos veces.
+- Libera el stock reservado del producto y fija `completedAt`.
+- El vendedor recibe `403 ORDER_FORBIDDEN`; un tercero `404 ORDER_NOT_FOUND`.
+
+Errores: `401`, `403 ACCOUNT_NOT_ACTIVE`/`403 ORDER_FORBIDDEN`, `404 ORDER_NOT_FOUND`, `409 ORDER_STATE_CONFLICT`, `429 RATE_LIMITED`, `503 ORDER_UNAVAILABLE`.
+
+### 5.5 `PATCH /api/v1/orders/{orderId}/status` → `200` (Bearer, vendedor)
+
+```json
+{ "status": "Accepted", "version": 0 }
+```
+
+```json
+{
+  "orderId": "6afb4d2b8b3f2a0012ab34d1",
+  "status": "Accepted",
+  "version": 1,
+  "updatedAt": "2026-11-16T18:05:00Z"
+}
+```
+
+- Transiciones permitidas: `Pending→Accepted`, `Pending→Rejected`, `Accepted→InPreparation`, `InPreparation→Ready`.
+- `version` es **obligatoria** y es la versión que el móvil leyó del pedido: sirve como control de concurrencia. Si otro actor cambió el pedido primero → `409 ORDER_VERSION_CONFLICT` (el móvil debe releer el pedido y reintentar con la nueva versión).
+- `Delivered` y `CancelledByBuyer` **no** se pueden fijar por esta ruta → `409 ORDER_STATE_CONFLICT`.
+- `Rejected` libera el stock reservado y fija `completedAt` (el pedido queda cerrado).
+- El cuerpo acepta **solo** `status` y `version`; cualquier otro campo → `400 VALIDATION_ERROR`.
+- El comprador recibe `403 ORDER_FORBIDDEN`; un tercero `404 ORDER_NOT_FOUND`.
+
+Errores: `400 VALIDATION_ERROR`, `401`, `403 ACCOUNT_NOT_ACTIVE`/`403 ORDER_FORBIDDEN`, `404 ORDER_NOT_FOUND`, `409 ORDER_STATE_CONFLICT`, `409 ORDER_VERSION_CONFLICT`, `429 RATE_LIMITED`, `503 ORDER_UNAVAILABLE`.
+
+### 5.6 `POST /api/v1/orders/{orderId}/delivery-token` → `201` (Bearer, comprador)
+
+Sin cuerpo de petición. Solo con el pedido en `Ready`.
+
+```json
+{
+  "orderId": "6afb4d2b8b3f2a0012ab34d1",
+  "token": "<token-base64url-de-43-caracteres>",
+  "expiresAt": "2026-11-16T18:25:00Z"
+}
+```
+
+- El token es de un solo uso, tiene **43 caracteres** en base64url (32 bytes aleatorios) y **caduca a los 15 minutos** (`expiresAt`).
+- Pedir un token nuevo **invalida** el anterior: el móvil debe usar siempre el último recibido.
+- El backend guarda **solo** el hash del token; el token en claro nunca se devuelve en el detalle del pedido ni se registra en logs.
+- El **QR lo genera el móvil** a partir de `token` (el backend no genera imágenes).
+- Desde un estado distinto de `Ready` → `409 ORDER_STATE_CONFLICT`; el vendedor recibe `403 ORDER_FORBIDDEN`; un tercero `404 ORDER_NOT_FOUND`.
+
+Errores: `401`, `403 ACCOUNT_NOT_ACTIVE`/`403 ORDER_FORBIDDEN`, `404 ORDER_NOT_FOUND`, `409 ORDER_STATE_CONFLICT`, `429 RATE_LIMITED`, `503 ORDER_UNAVAILABLE`.
+
+### 5.7 `POST /api/v1/orders/{orderId}/delivery-confirmations` → `200` (Bearer, vendedor)
+
+```json
+{ "token": "<token-base64url-de-43-caracteres>" }
+```
+
+```json
+{
+  "orderId": "6afb4d2b8b3f2a0012ab34d1",
+  "status": "Delivered",
+  "deliveredAt": "2026-11-16T18:20:00Z",
+  "version": 5
+}
+```
+
+- Solo el **vendedor del pedido** confirma la entrega en efectivo (BR-003): el comprador recibe `403 ORDER_FORBIDDEN` y un tercero `404 ORDER_NOT_FOUND`.
+- El token debe ser el vigente emitido por API-028: si falta o no coincide → `422 DELIVERY_TOKEN_INVALID`; si expiró → `422 DELIVERY_TOKEN_EXPIRED`; si ya se usó → `409 DELIVERY_TOKEN_ALREADY_USED`.
+- El token se marca como usado de forma atómica: **no se puede reutilizar** para una segunda entrega.
+- Fija `deliveredAt` y `completedAt`, confirma el stock (la reserva pasa a venta) y el pedido queda en `Delivered`.
+- Si otro actor cambió el pedido mientras tanto → `409 ORDER_VERSION_CONFLICT` o `409 ORDER_STATE_CONFLICT`.
+
+Errores: `400 VALIDATION_ERROR`, `401`, `403 ACCOUNT_NOT_ACTIVE`/`403 ORDER_FORBIDDEN`, `404 ORDER_NOT_FOUND`, `409 ORDER_STATE_CONFLICT`, `409 ORDER_VERSION_CONFLICT`, `409 DELIVERY_TOKEN_ALREADY_USED`, `422 DELIVERY_TOKEN_INVALID`, `422 DELIVERY_TOKEN_EXPIRED`, `429 RATE_LIMITED`, `503 ORDER_UNAVAILABLE`.
+
 ## 6. Contrato único de error
 
 ```json
@@ -327,7 +434,7 @@ Devuelve el mismo objeto de `POST /orders`. Solo lo leen el comprador o el vende
 }
 ```
 
-Códigos en uso: `VALIDATION_ERROR`, `UNAUTHORIZED`, `INVALID_CREDENTIALS`, `INSTITUTIONAL_EMAIL_REQUIRED`, `PROFILE_NOT_FOUND`, `ACCOUNT_NOT_ACTIVE`, `SELLER_ROLE_REQUIRED`, `SELLER_ACCOUNT_NOT_ACTIVE`, `SELLER_CONFLICT`, `SELLER_PROFILE_NOT_FOUND`, `PRODUCT_NOT_FOUND`, `CATEGORY_NOT_FOUND`, `INVALID_PRODUCT_ID`, `PRODUCT_CONFLICT`, `ORDER_NOT_FOUND`, `INSUFFICIENT_STOCK`, `PRODUCT_NOT_AVAILABLE`, `IMAGE_NOT_AVAILABLE`, `RATE_LIMITED`, `AUTH_UNAVAILABLE`, `CATALOG_UNAVAILABLE`, `ORDER_UNAVAILABLE`, `SELLER_UNAVAILABLE`.
+Códigos en uso: `VALIDATION_ERROR`, `UNAUTHORIZED`, `INVALID_CREDENTIALS`, `INSTITUTIONAL_EMAIL_REQUIRED`, `PROFILE_NOT_FOUND`, `ACCOUNT_NOT_ACTIVE`, `SELLER_ROLE_REQUIRED`, `SELLER_ACCOUNT_NOT_ACTIVE`, `SELLER_CONFLICT`, `SELLER_PROFILE_NOT_FOUND`, `PRODUCT_NOT_FOUND`, `CATEGORY_NOT_FOUND`, `INVALID_PRODUCT_ID`, `PRODUCT_CONFLICT`, `ORDER_NOT_FOUND`, `ORDER_FORBIDDEN`, `ORDER_STATE_CONFLICT`, `ORDER_VERSION_CONFLICT`, `DELIVERY_TOKEN_INVALID`, `DELIVERY_TOKEN_EXPIRED`, `DELIVERY_TOKEN_ALREADY_USED`, `INSUFFICIENT_STOCK`, `PRODUCT_NOT_AVAILABLE`, `IMAGE_NOT_AVAILABLE`, `RATE_LIMITED`, `AUTH_UNAVAILABLE`, `CATALOG_UNAVAILABLE`, `ORDER_UNAVAILABLE`, `SELLER_UNAVAILABLE`.
 
 ## 7. Flujo mínimo de integración
 
@@ -336,6 +443,10 @@ Códigos en uso: `VALIDATION_ERROR`, `UNAUTHORIZED`, `INVALID_CREDENTIALS`, `INS
 3. `GET /api/v1/categories` → `200`; usar los `id` de categoría al publicar productos.
 4. Vendedor: `POST /api/v1/sellers/activation-requests` → `201` (autoactivación) y luego `POST /api/v1/products` → `201`.
 5. Comprador: `GET /api/v1/products?search=...` → `200`; `POST /api/v1/orders` → `201` con `Idempotency-Key`; `GET /api/v1/orders/mine` y `GET /api/v1/orders/{orderId}` → `200`.
+6. Vendedor: `PATCH /api/v1/orders/{orderId}/status` → `200` con `{status, version}` siguiendo `Pending → Accepted → InPreparation → Ready`.
+7. Comprador (pedido `Ready`): `POST /api/v1/orders/{orderId}/delivery-token` → `201`; el móvil dibuja el QR con `token` y se lo muestra al vendedor.
+8. Vendedor (tras cobrar en efectivo): `POST /api/v1/orders/{orderId}/delivery-confirmations` → `200` con `{token}`; el pedido queda en `Delivered`.
+9. Comprador (mientras el pedido siga en `Pending`): `POST /api/v1/orders/{orderId}/cancel` → `200`.
 
 ## 8. Límites conocidos (no confundir con fallos)
 
@@ -344,6 +455,7 @@ Códigos en uso: `VALIDATION_ERROR`, `UNAUTHORIZED`, `INVALID_CREDENTIALS`, `INS
 - **Sin reseñas**: `ratingAverage` y `ratingCount` son `null` en productos y vendedores.
 - **Sin "mis productos" ni filtro `sellerId`**: el catálogo no permite filtrar por vendedor; está decidido para la siguiente iteración (el índice `sellerId_status` ya existe).
 - **Sin eliminación de producto**: no hay DELETE.
-- **Sin chat, notificaciones push ni token de entrega**: pertenecen a fases posteriores.
+- **Sin chat ni notificaciones push**: pertenecen a fases posteriores; la Fase 2 de pedidos no emite push (D-ORD-15).
 - **Sin `role` en `/orders/mine`**: siempre `buyer`.
-- **Pedidos sin cancelar ni transicionar**: la Fase 2 (API-026..029) habilita cancelación por el comprador, transiciones del vendedor y la confirmación de entrega en efectivo.
+- **Sin listado de pedidos del vendedor**: no existe aún una ruta para que el vendedor liste los pedidos entrantes (D-ORD-05 sin aprobar); por ahora el vendedor conoce sus pedidos por otra vía.
+- **Sin reseñas tras la entrega**: la entrega no genera automáticamente una reseña (fase 06 pendiente).

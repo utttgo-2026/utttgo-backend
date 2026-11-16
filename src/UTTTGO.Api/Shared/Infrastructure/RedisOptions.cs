@@ -31,6 +31,10 @@ public sealed class RateLimitingOptions
     public RateLimitPolicy CatalogWrite { get; set; } = new();
     public RateLimitPolicy OrderCreate { get; set; } = new();
     public RateLimitPolicy OrderRead { get; set; } = new();
+    public RateLimitPolicy OrderWrite { get; set; } = new();
+    public RateLimitPolicy OrderCancel { get; set; } = new();
+    public RateLimitPolicy OrderDeliveryToken { get; set; } = new();
+    public RateLimitPolicy OrderDeliveryConfirm { get; set; } = new();
 }
 
 public sealed class RedisRateLimiter(IServiceProvider services, IOptionsMonitor<RateLimitingOptions> options,
@@ -73,6 +77,10 @@ public sealed class RedisRateLimiter(IServiceProvider services, IOptionsMonitor<
                 "catalog-write" => policies.CatalogWrite,
                 "order-create" => policies.OrderCreate,
                 "order-read" => policies.OrderRead,
+                "order-write" => policies.OrderWrite,
+                "order-cancel" => policies.OrderCancel,
+                "order-delivery-token" => policies.OrderDeliveryToken,
+                "order-delivery-confirm" => policies.OrderDeliveryConfirm,
                 _ => throw new InvalidOperationException("Unknown rate limit policy.")
             };
             if (policy.Limit <= 0 || policy.WindowSeconds <= 0 || string.IsNullOrWhiteSpace(partition))

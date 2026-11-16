@@ -9,6 +9,8 @@ public interface ICatalogOrderProducts
         CancellationToken cancellationToken);
     Task<bool> ReleaseStockAsync(string productId, int quantity, string reservationId,
         CancellationToken cancellationToken);
+    Task<bool> CommitStockAsync(string productId, string reservationId,
+        CancellationToken cancellationToken);
 }
 
 public sealed record CatalogOrderProduct(string ProductId, string SellerId, string Name, decimal UnitPrice,

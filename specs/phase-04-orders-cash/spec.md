@@ -1,14 +1,27 @@
 # spec.md — Pedidos y efectivo — Backend UTTT-GO
 
 > **Fase:** 04 — Pedidos y efectivo
-> **Versión:** 0.2
-> **Estado:** **Fase 1 (API-023, API-024, API-025) aprobada por el propietario e implementada el 2026-11-16** (rama `feature/orders-phase1-p1`); API-026..029 siguen en borrador
+> **Versión:** 0.3
+> **Estado:** **Fase 1 (API-023, API-024, API-025) y Fase 2 (API-026, API-027, API-028, API-029) aprobadas por el propietario e implementadas el 2026-11-16** (ramas `feature/orders-phase1-p1` y `feature/orders-phase2-status-qr`)
 > **Fecha:** 2026-11-16
 > **Derivación:** `docs/constitution.md` §3 (BR-001, BR-002, BR-003, BR-009, BR-010), §4.5, §6.2, §11, §12, §13, §14; `docs/traceability.md` API-023..API-029.
 > **Fichas:** API-023, API-024, API-025, API-026, API-027, API-028, API-029.
 > **Gate previo:** fase-03 Sprint 2 (catálogo y contratos de stock) aprobada y verificada.
 
-## 0. Alcance de la Fase 1 (aprobado el 2026-11-16)
+## 0. Alcance de la Fase 2 (aprobado el 2026-11-16)
+
+El propietario aprobó por instrucción directa implementar la **Fase 2** (API-026..029) sobre la Fase 1 ya fusionada y desplegada. Quedan fuera de esta fase la cancelación desde `Accepted` (D-ORD-07), el filtro `role` del listado (D-ORD-05), el handler de borrado de cuenta (D-ORD-09) y las fases de Reviews, Notifications y Chat.
+
+Desviaciones respecto de v0.2, fijadas por la implementación y la instrucción del propietario:
+
+| ID | v0.2 | Fase 2 | Motivo |
+|---|---|---|---|
+| D-ORD-15 (nueva) | La cancelación y la entrega publicaban notificación vía `INotificationPublisher` y el hecho «pedido entregado» a Reviews | Esas dos publicaciones **se difieren** a sus fases (Notifications 08 y Reviews 06); la Fase 2 solo deja la traza en `orderAuditLogs` | Los módulos destino no existen todavía; no se crea una interfaz stub ni un publicador vacío (prohibido el código muerto, AGENTS §4). La traza de auditoría cubre la trazabilidad exigida en esta fase. |
+| D-ORD-16 (nueva) | «token/QR seguro para entrega» sin fijar el formato | La API entrega el **token** (`{orderId, token, expiresAt}`) y el móvil genera el QR a partir de él; el backend nunca dibuja ni almacena imágenes | El QR es una representación del token en el cliente; el servidor solo garantiza entropía, TTL y un solo uso. |
+| D-ORD-17 (nueva) | `Rejected` solo aparecía en la tabla de transiciones | `Rejected` se alcanza por API-027 (`Pending → Rejected`), libera la reserva de stock y fija `completedAt` | Es la única salida terminal disponible para el vendedor mientras `Accepted` no puede cancelarse (D-ORD-07). |
+| D-ORD-18 (nueva) | La cancelación liberaba stock como efecto posterior | Si la liberación de stock falla, la cancelación **queda registrada** y la ruta responde `503 ORDER_UNAVAILABLE`; la repetición (idempotente) completa la liberación | El estado del pedido es la fuente de verdad y la liberación es idempotente por `reservationId`; un `503` invita a reintentar sin perder información. |
+| D-ORD-19 (nueva) | El fallo del commit de stock en la entrega no estaba previsto | Si el commit de stock falla tras `Delivered`, la entrega **se confirma** y el fallo queda en el log sin datos sensibles | El pedido entregado es el hecho de negocio; la reserva en el producto es estado derivado e idempotente por `reservationId`. |
+
 
 El propietario aprobó implementar **por partes** y autorizó la Fase 1: **API-023** (creación), **API-024** (listado propio) y **API-025** (detalle). API-026..029 (cancelación, transiciones, token de entrega y confirmación) quedan para la Fase 2.
 
@@ -23,7 +36,9 @@ Desviaciones respecto de v0.1, fijadas por instrucción del propietario:
 
 Decisiones de v0.1 aplicadas en la Fase 1: **D-ORD-01** (snapshot de `unitPrice`/`total` al crear), **D-ORD-02** (reserva de stock por `reservationId` con liberación compensatoria, sin transacción cross-module), **D-ORD-04** (`Idempotency-Key` opcional con índice único parcial), **D-ORD-05** (sin filtro `role`: `/orders/mine` es solo del comprador), **D-ORD-06** (campo `version` presente; las transiciones CAS llegan en la Fase 2) y **D-ORD-08** (`completedAt` presente y `null` hasta un estado terminal).
 
-Contratos cross-module publicados para esta fase: `ICatalogOrderProducts` (Catalog: leer el producto publicable, reservar y liberar stock de forma atómica e idempotente) e `ISellerOrderProfiles` (Sellers: estado del vendedor y punto de recogida). Orders no lee las colecciones `products`, `categories` ni `sellers` (§4.4).
+Decisiones de v0.1 aplicadas en la Fase 2: **D-ORD-03** (`Delivered` solo por API-029 con token de entrega), **D-ORD-06** (CAS por `version` en cada transición, `409 ORDER_VERSION_CONFLICT`), **D-ORD-08** (`completedAt` en `Delivered`, `Rejected` y `CancelledByBuyer`) y **D-ORD-07** (se mantiene **prohibida** `Accepted → CancelledByBuyer`: responde `409 ORDER_STATE_CONFLICT` hasta que el propietario la apruebe).
+
+Contratos cross-module publicados para esta fase: `ICatalogOrderProducts` (Catalog: leer el producto publicable, reservar, liberar y confirmar stock de forma atómica e idempotente) e `ISellerOrderProfiles` (Sellers: estado del vendedor y punto de recogida). Orders no lee las colecciones `products`, `categories` ni `sellers` (§4.4).
 
 ---
 
@@ -218,19 +233,20 @@ Detalle de un pedido.
 
 Cancelación del comprador.
 
-- **Auth:** solo el comprador del pedido; vendedor u otro → `403`/`404`.
+- **Auth:** solo el comprador del pedido; el vendedor responde `403 ORDER_FORBIDDEN` y un tercero `404 ORDER_NOT_FOUND` (no se divulga la existencia).
 - **Transición:** `Pending → CancelledByBuyer` (§13). `Accepted → CancelledByBuyer` **solo si D-ORD-07 está aprobado**; por defecto `409 ORDER_STATE_CONFLICT`.
-- **Efectos:** liberar reserva de stock de forma idempotente (D-ORD-02), fijar `completedAt`, auditoría, notificación vía `INotificationPublisher`.
-- **Idempotencia:** cancelar un pedido ya cancelado responde `200` con el estado vigente (sin doble liberación).
+- **Efectos:** liberar reserva de stock de forma idempotente (D-ORD-02), fijar `completedAt`, auditoría. La notificación vía `INotificationPublisher` queda diferida a la fase 08 (D-ORD-15).
+- **Idempotencia:** cancelar un pedido ya cancelado responde `200` con el estado vigente (sin doble liberación: la reserva se libera una sola vez por `reservationId`).
+- **Fallo de la liberación:** la cancelación queda registrada y la ruta responde `503 ORDER_UNAVAILABLE`; al repetir la llamada se completa la liberación (D-ORD-18).
 - **Rate limit:** `order-cancel`, 10/60 s.
 - **Respuesta `200`:** `orderId`, `status`, `completedAt`, `version`.
-- **Errores:** `401`, `403 ORDER_FORBIDDEN`, `404 ORDER_NOT_FOUND`, `409 ORDER_STATE_CONFLICT`, `429 RATE_LIMITED`, `503 ORDER_UNAVAILABLE`.
+- **Errores:** `401`, `403 ACCOUNT_NOT_ACTIVE`, `403 ORDER_FORBIDDEN`, `404 ORDER_NOT_FOUND`, `409 ORDER_STATE_CONFLICT`, `429 RATE_LIMITED`, `503 ORDER_UNAVAILABLE`.
 
 ### 5.5 API-027 — `PATCH /api/v1/orders/{orderId}/status`
 
 Transiciones del vendedor propietario.
 
-- **Auth:** solo el vendedor del pedido (rol `Seller` o `Admin` con propietario de la tienda); comprador u otro → `403`.
+- **Auth:** solo el vendedor del pedido (verificado por `sellerId` del perfil local contra el pedido); el comprador responde `403 ORDER_FORBIDDEN` y un tercero `404 ORDER_NOT_FOUND`.
 - **Request body:**
 
 ```json
@@ -245,20 +261,20 @@ Transiciones del vendedor propietario.
 | `Accepted` | `InPreparation` |
 | `InPreparation` | `Ready` |
 
-- **Prohibido aquí:** `Delivered` (solo API-029, D-ORD-03), `CancelledByBuyer` (solo API-026).
+- **Prohibido aquí:** `Delivered` (solo API-029, D-ORD-03), `CancelledByBuyer` (solo API-026). Ambos responden `409 ORDER_STATE_CONFLICT`.
 - **Concurrencia:** CAS por `version` (D-ORD-06); conflicto → `409 ORDER_VERSION_CONFLICT`.
-- **Efectos:** auditoría, notificación vía `INotificationPublisher`; `Rejected` y `CancelledByBuyer` liberan reserva y fijan `completedAt`.
+- **Efectos:** auditoría; `Rejected` libera la reserva y fija `completedAt` (D-ORD-17). La notificación vía `INotificationPublisher` queda diferida a la fase 08 (D-ORD-15).
 - **Rate limit:** `order-write`, 30/60 s.
 - **Respuesta `200`:** `orderId`, `status`, `version`, `updatedAt`.
-- **Errores:** `400 VALIDATION_ERROR`, `401`, `403 ORDER_FORBIDDEN`, `404 ORDER_NOT_FOUND`, `409 ORDER_STATE_CONFLICT`, `409 ORDER_VERSION_CONFLICT`, `429 RATE_LIMITED`, `503 ORDER_UNAVAILABLE`.
+- **Errores:** `400 VALIDATION_ERROR`, `401`, `403 ACCOUNT_NOT_ACTIVE`, `403 ORDER_FORBIDDEN`, `404 ORDER_NOT_FOUND`, `409 ORDER_STATE_CONFLICT`, `409 ORDER_VERSION_CONFLICT`, `429 RATE_LIMITED`, `503 ORDER_UNAVAILABLE`.
 
 ### 5.6 API-028 — `POST /api/v1/orders/{orderId}/delivery-token`
 
 Generación de token de entrega (BR-003, BR-007).
 
-- **Auth:** solo el comprador del pedido.
+- **Auth:** solo el comprador del pedido; el vendedor responde `403 ORDER_FORBIDDEN` y un tercero `404 ORDER_NOT_FOUND`.
 - **Estado requerido:** `Ready`; otro estado → `409 ORDER_STATE_CONFLICT`.
-- **Diseño:** token aleatorio de alta entropía; se almacena **solo el hash SHA-256** con `expiresAt` (TTL corto, ej. 15 min, configurable). Un token nuevo invalida al anterior. Nunca se loguea el token en claro (§8).
+- **Diseño:** token aleatorio de alta entropía (32 bytes, base64url); se almacena **solo el hash SHA-256** con `expiresAt` (TTL corto, 900 s por defecto, configurable con `Orders:DeliveryTokenTtlSeconds`). Un token nuevo invalida al anterior. Nunca se loguea el token en claro (§8). El QR lo genera el móvil a partir del token (D-ORD-16).
 - **Rate limit:** `order-delivery-token`, 5/300 s.
 - **Respuesta `201`:**
 
@@ -270,25 +286,25 @@ Generación de token de entrega (BR-003, BR-007).
 }
 ```
 
-- **Errores:** `401`, `403 ORDER_FORBIDDEN`, `404 ORDER_NOT_FOUND`, `409 ORDER_STATE_CONFLICT`, `429 RATE_LIMITED`, `503 ORDER_UNAVAILABLE`.
+- **Errores:** `401`, `403 ACCOUNT_NOT_ACTIVE`, `403 ORDER_FORBIDDEN`, `404 ORDER_NOT_FOUND`, `409 ORDER_STATE_CONFLICT`, `429 RATE_LIMITED`, `503 ORDER_UNAVAILABLE`.
 
 ### 5.7 API-029 — `POST /api/v1/orders/{orderId}/delivery-confirmations`
 
 Confirmación de entrega y cobro en efectivo por el vendedor (BR-003, §13).
 
-- **Auth:** solo el vendedor del pedido.
+- **Auth:** solo el vendedor del pedido; el comprador responde `403 ORDER_FORBIDDEN` y un tercero `404 ORDER_NOT_FOUND`.
 - **Request body:**
 
 ```json
 { "token": "9f2c..." }
 ```
 
-- **Efectos al validar:** `Ready → Delivered`; fijar `deliveredAt` y `completedAt`; marcar token usado; confirmar reserva de stock (commit); auditoría; notificación vía `INotificationPublisher`; publicar hecho «pedido entregado» al contrato de Reviews.
+- **Efectos al validar:** `Ready → Delivered`; fijar `deliveredAt` y `completedAt`; marcar el token usado (single-use por CAS); confirmar la reserva de stock (commit, idempotente por `reservationId`); auditoría. La notificación vía `INotificationPublisher` y el hecho «pedido entregado» a Reviews quedan diferidos a sus fases (D-ORD-15). Si el commit de stock falla, la entrega se confirma y el fallo queda registrado en el log (D-ORD-19).
 - **Token:** ausente/no coincide → `422 DELIVERY_TOKEN_INVALID`; expirado → `422 DELIVERY_TOKEN_EXPIRED`; ya usado → `409 DELIVERY_TOKEN_ALREADY_USED`.
 - **Idempotencia:** reintentar con el mismo token tras éxito → `409 DELIVERY_TOKEN_ALREADY_USED` (sin doble commit).
 - **Rate limit:** `order-delivery-confirm`, 20/60 s.
 - **Respuesta `200`:** `orderId`, `status`, `deliveredAt`, `version`.
-- **Errores:** `400 VALIDATION_ERROR`, `401`, `403 ORDER_FORBIDDEN`, `404 ORDER_NOT_FOUND`, `409 ORDER_STATE_CONFLICT`, `409 DELIVERY_TOKEN_ALREADY_USED`, `422 DELIVERY_TOKEN_INVALID`, `422 DELIVERY_TOKEN_EXPIRED`, `429 RATE_LIMITED`, `503 ORDER_UNAVAILABLE`.
+- **Errores:** `400 VALIDATION_ERROR`, `401`, `403 ACCOUNT_NOT_ACTIVE`, `403 ORDER_FORBIDDEN`, `404 ORDER_NOT_FOUND`, `409 ORDER_STATE_CONFLICT`, `409 DELIVERY_TOKEN_ALREADY_USED`, `422 DELIVERY_TOKEN_INVALID`, `422 DELIVERY_TOKEN_EXPIRED`, `429 RATE_LIMITED`, `503 ORDER_UNAVAILABLE`.
 
 ### 5.8 Resumen de rate limits (Redis, fail-closed)
 
@@ -455,6 +471,8 @@ No existe `IOrderEventPublisher` inverso desde Orders a Notifications ni depende
 | Versión | Fecha | Cambio |
 |---|---|---|
 | 0.1 | 2026-11-11 | Borrador inicial: API-023..029, máquina §13, reserva vía Catalog, token de entrega, CAS por versión, rate limits `order-*`. |
+| 0.2 | 2026-11-16 | Fase 1 aprobada e implementada (API-023/024/025): D-ORD-11..14 y `notes` del comprador. |
+| 0.3 | 2026-11-16 | Fase 2 aprobada e implementada (API-026/027/028/029): D-ORD-15..19, CAS por `version` en cada transición, token de entrega con hash SHA-256 y TTL configurable, commit de stock en `Delivered` y el tratamiento D-ORD-18/19 de los fallos de stock. |
 
 ## 9. Rutas necesarias fuera del inventario y decisiones pendientes
 
@@ -462,19 +480,19 @@ No existe `IOrderEventPublisher` inverso desde Orders a Notifications ni depende
 
 - **Listado de pedidos del vendedor:** API-024 es `GET /orders/mine` orientado al comprador (`docs/traceability.md`: «paginación y comprador autenticado»). Para que el vendedor descubra pedidos entrantes y use API-027/API-029, se propone **extender `/orders/mine`** con el filtro `role` (D-ORD-05). Si el propietario prefiere una ruta separada (p. ej. `GET /api/v1/sellers/me/orders`), requiere ficha nueva aprobada (precedente: `GET /api/v1/sellers/me`, DEC-019.d). **No se implementa ninguna sin aprobación.**
 
-### 9.2 Decisiones pendientes de aprobación del propietario
+### 9.2 Decisiones del propietario
 
-| ID | Decisión | Recomendación | Estado |
+| ID | Decisión | Resolución | Estado |
 |---|---|---|---|
-| D-ORD-01 | Snapshot de precio (`unitPrice`/`total`) al crear el pedido vs. precio al entregar. | Snapshot al crear (claridad para comprador y vendedor). | **Pendiente** |
-| D-ORD-02 | Mecanismo de reserva de stock: contrato `ICatalogProductCommands` con `reservationId` y saga de compensación sin transacciones cross-module (Atlas Free Tier). | Reserva + liberación idempotente por `reservationId`; commit en `Delivered`. | **Pendiente** |
-| D-ORD-03 | `Delivered` solo por API-029 con token (no por API-027). | Sí: obliga a evidenciar cobro presencial (BR-003). | **Pendiente** |
-| D-ORD-04 | Header opcional `Idempotency-Key` en API-023. | Sí, opcional, con índice único parcial. | **Pendiente** |
-| D-ORD-05 | Alcance de `/orders/mine` (solo comprador vs. participante con `role`). | Participante con `role` opcional (ver 9.1). | **Pendiente** |
-| D-ORD-06 | Concurrencia por CAS `version` → `409 ORDER_VERSION_CONFLICT`. | Sí. | **Pendiente** |
-| D-ORD-07 | `Accepted → CancelledByBuyer` (constitución §13: «solo si el equipo lo aprueba»). | **No habilitar en el MVP** (fail-closed a 409). | **Pendiente** |
-| D-ORD-08 | `completedAt` en cualquier terminal como ancla de purga de chat (BR-012), coordinado con fase-07. | Fijar en `Delivered`, `Rejected`, `CancelledByBuyer`; fase-07 define la purga. | **Pendiente** |
+| D-ORD-01 | Snapshot de precio (`unitPrice`/`total`) al crear el pedido vs. precio al entregar. | Snapshot al crear. | **Aplicada (Fase 1)** |
+| D-ORD-02 | Mecanismo de reserva de stock: contrato `ICatalogProductCommands` con `reservationId` y saga de compensación sin transacciones cross-module (Atlas Free Tier). | Reserva + liberación idempotente por `reservationId`; commit en `Delivered`. | **Aplicada (Fases 1 y 2)** |
+| D-ORD-03 | `Delivered` solo por API-029 con token (no por API-027). | Sí: obliga a evidenciar cobro presencial (BR-003). | **Aplicada (Fase 2)** |
+| D-ORD-04 | Header opcional `Idempotency-Key` en API-023. | Sí, opcional, con índice único parcial. | **Aplicada (Fase 1)** |
+| D-ORD-05 | Alcance de `/orders/mine` (solo comprador vs. participante con `role`). | Participante con `role` opcional (ver 9.1). | **Pendiente** (el listado del vendedor sigue sin ruta) |
+| D-ORD-06 | Concurrencia por CAS `version` → `409 ORDER_VERSION_CONFLICT`. | Sí. | **Aplicada (Fase 2)** |
+| D-ORD-07 | `Accepted → CancelledByBuyer` (constitución §13: «solo si el equipo lo aprueba»). | **No habilitar en el MVP** (fail-closed a `409 ORDER_STATE_CONFLICT`). | **Aplicada (Fase 2): permanece prohibida** |
+| D-ORD-08 | `completedAt` en cualquier terminal como ancla de purga de chat (BR-012), coordinado con fase-07. | Fijar en `Delivered`, `Rejected`, `CancelledByBuyer`; fase-07 define la purga. | **Aplicada (Fase 2)** |
 | D-ORD-09 | Borrado de cuenta (BR-011/DEC-003): handler de evento desde Identity para `orders`/`orderAuditLogs` compartidos. | Interfaz prevista, **bloqueada** hasta que DEC-003 defina el diseño. | **Bloqueada** |
 | D-ORD-10 | Contrato de error: `ApiError` real tiene 4 campos sin `details` (§14). | Alinear `spec.md` §14 con el código en una revisión transversal; este spec usa solo los 4 campos. | **Pendiente (transversal)** |
 
-> **Estado:** borrador v0.1. Ninguna decisión de la tabla 9.2 está aprobada; la implementación queda bloqueada hasta la aprobación del propietario y el gate de la fase-03 Sprint 2.
+> **Estado:** Fase 1 y Fase 2 aprobadas por el propietario e implementadas (2026-11-16). Siguen pendientes D-ORD-05 (listado del vendedor), D-ORD-09 (borrado de cuenta, bloqueada por DEC-003) y D-ORD-10 (alineación transversal de `ApiError`).

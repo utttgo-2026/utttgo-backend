@@ -80,9 +80,46 @@ public sealed class MongoOrderRepository(MongoStore store) : IOrderRepository
         return new(documents.Select(ToRecord).ToList(), total);
     }
 
+    public async Task<OrderRecord?> ApplyAsync(string orderId, string expectedStatus, long expectedVersion,
+        string? expectedDeliveryTokenHash, OrderMutation mutation, CancellationToken cancellationToken)
+    {
+        if (!ObjectId.TryParse(orderId, out var id)) return null;
+
+        var filter = Builders<OrderDocument>.Filter.Eq(item => item.Id, id) &
+            Builders<OrderDocument>.Filter.Eq(item => item.Status, expectedStatus) &
+            Builders<OrderDocument>.Filter.Eq(item => item.Version, expectedVersion);
+        if (expectedDeliveryTokenHash is not null)
+            filter &= Builders<OrderDocument>.Filter.Eq(item => item.DeliveryTokenHash,
+                expectedDeliveryTokenHash);
+
+        var update = Builders<OrderDocument>.Update
+            .Set(item => item.UpdatedAt, DateTime.UtcNow)
+            .Inc(item => item.Version, 1);
+        if (mutation.NewStatus is not null)
+            update = update.Set(item => item.Status, mutation.NewStatus);
+        if (mutation.DeliveredAt is not null)
+            update = update.Set(item => item.DeliveredAt, mutation.DeliveredAt);
+        if (mutation.CompletedAt is not null)
+            update = update.Set(item => item.CompletedAt, mutation.CompletedAt);
+        if (mutation.DeliveryTokenHash is not null)
+            update = update.Set(item => item.DeliveryTokenHash, mutation.DeliveryTokenHash);
+        if (mutation.DeliveryTokenExpiresAt is not null)
+            update = update.Set(item => item.DeliveryTokenExpiresAt, mutation.DeliveryTokenExpiresAt);
+        if (mutation.DeliveryTokenUsedAt is not null)
+            update = update.Set(item => item.DeliveryTokenUsedAt, mutation.DeliveryTokenUsedAt);
+        if (mutation.ClearDeliveryTokenUsedAt)
+            update = update.Unset(item => item.DeliveryTokenUsedAt);
+
+        var updated = await Orders.FindOneAndUpdateAsync(filter, update,
+            new FindOneAndUpdateOptions<OrderDocument> { ReturnDocument = ReturnDocument.After },
+            cancellationToken);
+        return updated is null ? null : ToRecord(updated);
+    }
+
     private static OrderRecord ToRecord(OrderDocument order) =>
         new(order.Id.ToString(), order.BuyerUserId, order.SellerId, order.ProductId, order.ProductName,
             order.Quantity, order.UnitPrice, order.Total, order.Currency, order.PaymentMethod, order.Status,
             order.ReservationId, order.PickupPoint, order.DeliveredAt, order.CompletedAt, order.Version,
-            order.IdempotencyKey, order.CreatedAt, order.UpdatedAt, order.Notes);
+            order.IdempotencyKey, order.CreatedAt, order.UpdatedAt, order.Notes, order.DeliveryTokenHash,
+            order.DeliveryTokenExpiresAt, order.DeliveryTokenUsedAt);
 }

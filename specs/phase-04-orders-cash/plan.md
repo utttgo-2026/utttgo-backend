@@ -1,6 +1,6 @@
 # plan.md — Pedidos y efectivo · Backend UTTT-GO
-> Fase `phase-04-orders-cash` · Versión 0.2 · **Fase 1 (API-023..025) aprobada e implementada el 2026-11-16** · 2026-11-16.
-> Deriva de `spec.md` v0.2 y `docs/constitution.md` v2.6 (BR-001, BR-002, BR-003, BR-009, BR-010, §13, §14). Las decisiones D-ORD-01..13 quedan registradas en `spec.md` §0 y §9.2.
+> Fase `phase-04-orders-cash` · Versión 0.3 · **Fase 1 (API-023..025) y Fase 2 (API-026..029) aprobadas e implementadas el 2026-11-16** · 2026-11-16.
+> Deriva de `spec.md` v0.3 y `docs/constitution.md` v2.6 (BR-001, BR-002, BR-003, BR-009, BR-010, §13, §14). Las decisiones D-ORD-01..19 quedan registradas en `spec.md` §0 y §9.2.
 
 ## 1. Alcance y fronteras
 
@@ -24,6 +24,8 @@
 | `IOrderReader` (participantes, estado, `completedAt`, métricas agregadas) | Chat (fase-07), Admin (fase-10) |
 
 **Fronteras innegociables:** Orders escribe únicamente `orders` y `orderAuditLogs`; nunca lee ni escribe `products`, `categories`, `mediaAssets`, `sellers`, `users`, `reviews`, `notifications`, `chats`, `favorites` ni colecciones de Admin. No existe dependencia inversa desde Notifications, Reviews, Chat o Admin hacia Orders ni `IOrderEventPublisher` inverso (evita ciclos §4.4). No hay carrito, líneas de pedido, menús ni pasarela (BR-001..004). El precio, el vendedor, el total, el estado y el método de pago se derivan server-side (BR-009/BR-010); ninguna ruta acepta esos campos del cliente como autoridad.
+
+**Fase 2 (implementada):** toda mutación del pedido pasa por **un único CAS** en MongoDB (`ApplyAsync`): el filtro exige `_id`, `status` esperado, `version` esperado y, en la entrega, el hash del token; el update incrementa `version` y fija `updatedAt`. Si el CAS no aplica, el servicio relee el pedido y distingue `409 ORDER_VERSION_CONFLICT` (cambió la versión) de `409 ORDER_STATE_CONFLICT` (cambió el estado). El token de entrega se genera con 32 bytes aleatorios (base64url), se guarda **solo** su hash SHA-256 con `expiresAt` (TTL configurable en `Orders:DeliveryTokenTtlSeconds`, 900 s por defecto) y se marca usado en el mismo documento (single-use). `Ready → Delivered` es la **única** vía para el estado terminal de pago (D-ORD-03) y el QR lo dibuja el móvil a partir del token (D-ORD-16). La notificación push y el hecho de Reviews quedan diferidos a sus fases (D-ORD-15).
 
 **Gate previo:** fase-03 Sprint 2 (catálogo, `ICatalogProductReader/Commands`) aprobada y verificada. Fases 06 (notificaciones FCM) y 07 (chat) solo consumen hechos; no bloquean este plan.
 
@@ -99,13 +101,15 @@ Detalle de cuerpos, validaciones y ejemplos JSON en `spec.md` §5. Contrato de e
 
 ## 7. Dependencias y gates
 
-1. **Gate documental:** `spec.md` v0.1, este `plan.md` v0.1 y `task.md` v0.1 alineados + aprobación explícita del propietario sobre D-ORD-01..10 → **pendiente**.
-2. **Gate técnico:** fase-03 Sprint 2 aprobada/implementada (contratos de catálogo y stock) → **pendiente**.
-3. **Fuera de este plan:** implementación en `src/` antes de la aprobación; rutas nuevas fuera de API-023..029; `Accepted → CancelledByBuyer` sin D-ORD-07; handler de borrado de cuenta (D-ORD-09, bloqueado por DEC-003).
-4. **Evidencia:** la disponibilidad productiva solo se afirma tras merge + CD-1; hasta entonces el estado es «spec/plan/task v0.1 redactados, pendientes de aprobación».
+1. **Gate documental:** `spec.md` v0.3, este `plan.md` v0.3 y `task.md` v0.3 alineados → **cumplido** (Fase 1 y Fase 2 aprobadas por el propietario el 2026-11-16).
+2. **Gate técnico:** fase-03 Sprint 2 aprobada/implementada (contratos de catálogo y stock) → **cumplido**; la Fase 2 amplía `ICatalogOrderProducts` con `CommitStockAsync` (commit idempotente por `reservationId`).
+3. **Fuera de este plan:** implementación en `src/` antes de la aprobación; rutas nuevas fuera de API-023..029; `Accepted → CancelledByBuyer` sin D-ORD-07; handler de borrado de cuenta (D-ORD-09, bloqueado por DEC-003); publicación de notificaciones o hechos de Reviews antes de sus fases (D-ORD-15).
+4. **Evidencia:** la disponibilidad productiva solo se afirma tras merge + CD-1; hasta entonces el estado es «Fase 2 implementada en rama, pendiente de PR».
 
 ## 8. Historial
 
 | Versión | Fecha | Cambio |
 |---|---|---|
 | 0.1 | 2026-11-11 | Borrador inicial: fronteras del módulo Orders, modelo `orders`/`orderAuditLogs`, contratos API-023..029, rate limits `order-*`, verificación y gates. |
+| 0.2 | 2026-11-16 | Fase 1 (API-023/024/025) implementada: reserva/liberación de stock vía Catalog, `Idempotency-Key`, auditoría `Created`. |
+| 0.3 | 2026-11-16 | Fase 2 (API-026/027/028/029) implementada: CAS por `version` en cada transición, token de entrega con hash SHA-256 y TTL configurable, commit de stock en `Delivered`, rate limits `order-write`/`order-cancel`/`order-delivery-token`/`order-delivery-confirm`. |

@@ -16,4 +16,28 @@ public sealed class RedisOrdersRateLimitGate(RedisRateLimiter limiter) : IOrders
         cancellationToken.ThrowIfCancellationRequested();
         return limiter.IsAllowedAsync(("order-read", userId));
     }
+
+    public Task<bool> IsAllowedForWriteAsync(string userId, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return limiter.IsAllowedAsync(("order-write", userId));
+    }
+
+    public Task<bool> IsAllowedForCancelAsync(string userId, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return limiter.IsAllowedAsync(("order-cancel", userId));
+    }
+
+    public Task<bool> IsAllowedForDeliveryTokenAsync(string userId, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return limiter.IsAllowedAsync(("order-delivery-token", userId));
+    }
+
+    public Task<bool> IsAllowedForDeliveryConfirmAsync(string userId, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return limiter.IsAllowedAsync(("order-delivery-confirm", userId));
+    }
 }

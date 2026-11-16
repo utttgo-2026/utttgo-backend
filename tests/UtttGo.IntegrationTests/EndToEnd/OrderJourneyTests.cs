@@ -216,6 +216,156 @@ public sealed class OrderJourneyTests : IAsyncLifetime
         orders.Should().HaveCount(1);
     }
 
+    [Fact]
+    public async Task TheOrderWalksTheWholeLifecycleUntilTheDeliveryIsConfirmed()
+    {
+        var (sellerToken, categoryId) = await CreateSellerProductAsync();
+        var buyerToken = await RegisterAndLoginAsync("comprador.ciclo@uttt.edu.mx");
+
+        var product = await GetProductAsync(sellerToken, categoryId);
+        var productId = product.GetProperty("id").GetString()!;
+        var stock = product.GetProperty("stock").GetInt32();
+
+        using var buyerClient = host.CreateClient();
+        buyerClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", buyerToken);
+        using var created = await buyerClient.PostAsJsonAsync("/api/v1/orders",
+            new { productId, quantity = 2 });
+        created.StatusCode.Should().Be(HttpStatusCode.Created);
+        using var createdDocument = JsonDocument.Parse(await created.Content.ReadAsStringAsync());
+        var orderId = createdDocument.RootElement.GetProperty("orderId").GetString()!;
+
+        using var sellerClient = host.CreateClient();
+        sellerClient.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", sellerToken);
+
+        foreach (var (status, version) in new[]
+                 {
+                     ("Accepted", 0L), ("InPreparation", 1L), ("Ready", 2L)
+                 })
+        {
+            using var transition = await sellerClient.PatchAsJsonAsync(
+                $"/api/v1/orders/{orderId}/status", new { status, version });
+            transition.StatusCode.Should().Be(HttpStatusCode.OK);
+            using var transitionDocument = JsonDocument.Parse(await transition.Content.ReadAsStringAsync());
+            transitionDocument.RootElement.GetProperty("status").GetString().Should().Be(status);
+            transitionDocument.RootElement.GetProperty("version").GetInt64().Should().Be(version + 1);
+        }
+
+        using var tokenResponse = await buyerClient.PostAsync(
+            $"/api/v1/orders/{orderId}/delivery-token", null);
+        tokenResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+        using var tokenDocument = JsonDocument.Parse(await tokenResponse.Content.ReadAsStringAsync());
+        var deliveryToken = tokenDocument.RootElement.GetProperty("token").GetString()!;
+
+        var storedAfterToken = await host.Database.GetCollection<BsonDocument>("orders")
+            .Find(Builders<BsonDocument>.Filter.Eq("_id", ObjectId.Parse(orderId))).FirstAsync();
+        storedAfterToken["deliveryTokenHash"].AsString.Should().NotBe(deliveryToken);
+        storedAfterToken["deliveryTokenExpiresAt"].Should().NotBeNull();
+
+        using var confirmation = await sellerClient.PostAsJsonAsync(
+            $"/api/v1/orders/{orderId}/delivery-confirmations", new { token = deliveryToken });
+        confirmation.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var confirmationDocument = JsonDocument.Parse(await confirmation.Content.ReadAsStringAsync());
+        confirmationDocument.RootElement.GetProperty("status").GetString().Should().Be("Delivered");
+        confirmationDocument.RootElement.GetProperty("deliveredAt").ValueKind.Should().Be(JsonValueKind.String);
+
+        var stored = await host.Database.GetCollection<BsonDocument>("orders")
+            .Find(Builders<BsonDocument>.Filter.Eq("_id", ObjectId.Parse(orderId))).FirstAsync();
+        stored["status"].AsString.Should().Be("Delivered");
+        stored["deliveredAt"].Should().NotBeNull();
+        stored["completedAt"].Should().NotBeNull();
+        stored["deliveryTokenUsedAt"].Should().NotBeNull();
+        stored["version"].AsInt64.Should().Be(5);
+
+        var storedProduct = await host.Database.GetCollection<BsonDocument>("products")
+            .Find(Builders<BsonDocument>.Filter.Eq("_id", ObjectId.Parse(productId))).FirstAsync();
+        storedProduct["stock"].AsInt32.Should().Be(stock - 2);
+        storedProduct["stockReservations"].AsBsonArray.Should().BeEmpty();
+
+        var audits = await host.Database.GetCollection<BsonDocument>("orderAuditLogs")
+            .Find(Builders<BsonDocument>.Filter.Eq("orderId", orderId)).ToListAsync();
+        audits.Should().HaveCount(6);
+        audits.Select(audit => audit["action"].AsString).Should().BeEquivalentTo(
+            ["Created", "StatusChanged", "StatusChanged", "StatusChanged", "DeliveryTokenIssued",
+                "DeliveryConfirmed"]);
+    }
+
+    [Fact]
+    public async Task TheBuyerCancelsTheOrderAndTheStockGoesBackToTheProduct()
+    {
+        var (sellerToken, categoryId) = await CreateSellerProductAsync();
+        var buyerToken = await RegisterAndLoginAsync("comprador.cancela@uttt.edu.mx");
+
+        var product = await GetProductAsync(sellerToken, categoryId);
+        var productId = product.GetProperty("id").GetString()!;
+        var stock = product.GetProperty("stock").GetInt32();
+
+        using var buyerClient = host.CreateClient();
+        buyerClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", buyerToken);
+        using var created = await buyerClient.PostAsJsonAsync("/api/v1/orders",
+            new { productId, quantity = 2 });
+        using var createdDocument = JsonDocument.Parse(await created.Content.ReadAsStringAsync());
+        var orderId = createdDocument.RootElement.GetProperty("orderId").GetString()!;
+
+        using var cancellation = await buyerClient.PostAsync($"/api/v1/orders/{orderId}/cancel", null);
+
+        cancellation.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var cancellationDocument = JsonDocument.Parse(await cancellation.Content.ReadAsStringAsync());
+        cancellationDocument.RootElement.GetProperty("status").GetString().Should().Be("CancelledByBuyer");
+        cancellationDocument.RootElement.GetProperty("completedAt").ValueKind.Should().Be(JsonValueKind.String);
+
+        var stored = await host.Database.GetCollection<BsonDocument>("orders")
+            .Find(Builders<BsonDocument>.Filter.Eq("_id", ObjectId.Parse(orderId))).FirstAsync();
+        stored["status"].AsString.Should().Be("CancelledByBuyer");
+        stored["completedAt"].Should().NotBeNull();
+
+        var storedProduct = await host.Database.GetCollection<BsonDocument>("products")
+            .Find(Builders<BsonDocument>.Filter.Eq("_id", ObjectId.Parse(productId))).FirstAsync();
+        storedProduct["stock"].AsInt32.Should().Be(stock);
+        storedProduct["stockReservations"].AsBsonArray.Should().BeEmpty();
+
+        var audits = await host.Database.GetCollection<BsonDocument>("orderAuditLogs")
+            .Find(Builders<BsonDocument>.Filter.Eq("orderId", orderId)).ToListAsync();
+        audits.Should().HaveCount(2);
+        audits.Select(audit => audit["action"].AsString).Should().BeEquivalentTo(["Created", "Cancelled"]);
+    }
+
+    [Fact]
+    public async Task ConcurrentStatusChangesWithTheSameVersionApplyOnlyOnce()
+    {
+        var (sellerToken, categoryId) = await CreateSellerProductAsync();
+        var buyerToken = await RegisterAndLoginAsync("comprador.carrera.estado@uttt.edu.mx");
+
+        var product = await GetProductAsync(sellerToken, categoryId);
+        var productId = product.GetProperty("id").GetString()!;
+
+        using var buyerClient = host.CreateClient();
+        buyerClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", buyerToken);
+        using var created = await buyerClient.PostAsJsonAsync("/api/v1/orders",
+            new { productId, quantity = 1 });
+        using var createdDocument = JsonDocument.Parse(await created.Content.ReadAsStringAsync());
+        var orderId = createdDocument.RootElement.GetProperty("orderId").GetString()!;
+
+        using var firstClient = host.CreateClient();
+        using var secondClient = host.CreateClient();
+        firstClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", sellerToken);
+        secondClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", sellerToken);
+
+        var responses = await Task.WhenAll(
+            PatchStatusAsync(firstClient, orderId, "Accepted", 0),
+            PatchStatusAsync(secondClient, orderId, "Accepted", 0));
+
+        responses.Select(response => response.Status).Should()
+            .BeEquivalentTo([HttpStatusCode.OK, HttpStatusCode.Conflict]);
+        responses.Single(response => response.Status == HttpStatusCode.Conflict).Body
+            .Should().Contain("ORDER_VERSION_CONFLICT");
+
+        var stored = await host.Database.GetCollection<BsonDocument>("orders")
+            .Find(Builders<BsonDocument>.Filter.Eq("_id", ObjectId.Parse(orderId))).FirstAsync();
+        stored["status"].AsString.Should().Be("Accepted");
+        stored["version"].AsInt64.Should().Be(1);
+    }
+
     private async Task<(string Token, string CategoryId)> CreateSellerProductAsync(int stock = 5)
     {
         var sellerToken = await RegisterAndLoginAsync("vendedor.pedidos@uttt.edu.mx");
@@ -267,6 +417,18 @@ public sealed class OrderJourneyTests : IAsyncLifetime
             Content = JsonContent.Create(new { productId, quantity })
         };
         if (idempotencyKey is not null) request.Headers.Add("Idempotency-Key", idempotencyKey);
+
+        using var response = await client.SendAsync(request);
+        return (response.StatusCode, await response.Content.ReadAsStringAsync());
+    }
+
+    private static async Task<(HttpStatusCode Status, string Body)> PatchStatusAsync(HttpClient client,
+        string orderId, string status, long version)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Patch, $"/api/v1/orders/{orderId}/status")
+        {
+            Content = JsonContent.Create(new { status, version })
+        };
 
         using var response = await client.SendAsync(request);
         return (response.StatusCode, await response.Content.ReadAsStringAsync());

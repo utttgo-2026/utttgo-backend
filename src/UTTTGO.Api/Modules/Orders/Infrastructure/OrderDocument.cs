@@ -64,6 +64,17 @@ public sealed class OrderDocument
     [BsonElement("notes")]
     public string? Notes { get; set; }
 
+    [BsonElement("deliveryTokenHash")]
+    public string? DeliveryTokenHash { get; set; }
+
+    [BsonElement("deliveryTokenExpiresAt")]
+    [BsonDateTimeOptions(Kind = DateTimeKind.Utc)]
+    public DateTime? DeliveryTokenExpiresAt { get; set; }
+
+    [BsonElement("deliveryTokenUsedAt")]
+    [BsonDateTimeOptions(Kind = DateTimeKind.Utc)]
+    public DateTime? DeliveryTokenUsedAt { get; set; }
+
     [BsonElement("createdAt")]
     [BsonDateTimeOptions(Kind = DateTimeKind.Utc)]
     public DateTime CreatedAt { get; set; }
