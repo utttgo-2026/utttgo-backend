@@ -193,3 +193,9 @@ desktop.ini
 *.suo
 *.sln.docstates
 *.user
+
+# Salidas generadas por las herramientas del pipeline (nunca versionadas).
+__pycache__/
+*.pyc
+StrykerOutput/
+ci-evidence/
