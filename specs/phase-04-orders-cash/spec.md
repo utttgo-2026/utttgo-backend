@@ -1,12 +1,28 @@
 # spec.md — Pedidos y efectivo — Backend UTTT-GO
 
 > **Fase:** 04 — Pedidos y efectivo
-> **Versión:** 0.1
-> **Estado:** Borrador para aprobación del propietario
-> **Fecha:** 2026-11-11
+> **Versión:** 0.2
+> **Estado:** **Fase 1 (API-023, API-024, API-025) aprobada por el propietario e implementada el 2026-11-16** (rama `feature/orders-phase1-p1`); API-026..029 siguen en borrador
+> **Fecha:** 2026-11-16
 > **Derivación:** `docs/constitution.md` §3 (BR-001, BR-002, BR-003, BR-009, BR-010), §4.5, §6.2, §11, §12, §13, §14; `docs/traceability.md` API-023..API-029.
 > **Fichas:** API-023, API-024, API-025, API-026, API-027, API-028, API-029.
 > **Gate previo:** fase-03 Sprint 2 (catálogo y contratos de stock) aprobada y verificada.
+
+## 0. Alcance de la Fase 1 (aprobado el 2026-11-16)
+
+El propietario aprobó implementar **por partes** y autorizó la Fase 1: **API-023** (creación), **API-024** (listado propio) y **API-025** (detalle). API-026..029 (cancelación, transiciones, token de entrega y confirmación) quedan para la Fase 2.
+
+Desviaciones respecto de v0.1, fijadas por instrucción del propietario:
+
+| ID | v0.1 | Fase 1 | Motivo |
+|---|---|---|---|
+| D-ORD-11 (nueva) | Stock insuficiente → `409 INSUFFICIENT_STOCK` | **`400 INSUFFICIENT_STOCK`** | Instrucción explícita del propietario (2026-11-16) para el consumo desde el móvil; el código de error conserva el significado semántico. |
+| D-ORD-12 (nueva) | `Published` como estado del producto | El producto publicable es el que está `Active` con categoría activa (contrato ya implementado por Catalog en el Sprint 2) | El vocabulario `Published` no existe en el catálogo vigente; no se introduce un estado nuevo. |
+| D-ORD-13 (nueva) | Replay de `Idempotency-Key` sin código definido | El replay devuelve **`200`** con el pedido ya creado (mismo `orderId`), sin reservar stock otra vez | Reproducir `201` ocultaría que el recurso ya existía. |
+
+Decisiones de v0.1 aplicadas en la Fase 1: **D-ORD-01** (snapshot de `unitPrice`/`total` al crear), **D-ORD-02** (reserva de stock por `reservationId` con liberación compensatoria, sin transacción cross-module), **D-ORD-04** (`Idempotency-Key` opcional con índice único parcial), **D-ORD-05** (sin filtro `role`: `/orders/mine` es solo del comprador), **D-ORD-06** (campo `version` presente; las transiciones CAS llegan en la Fase 2) y **D-ORD-08** (`completedAt` presente y `null` hasta un estado terminal).
+
+Contratos cross-module publicados para esta fase: `ICatalogOrderProducts` (Catalog: leer el producto publicable, reservar y liberar stock de forma atómica e idempotente) e `ISellerOrderProfiles` (Sellers: estado del vendedor y punto de recogida). Orders no lee las colecciones `products`, `categories` ni `sellers` (§4.4).
 
 ---
 
@@ -76,7 +92,7 @@
 | RF-ORD-10 | **WHEN** un usuario autenticado con cuenta `Active` envía `POST /api/v1/orders` con `productId` de un producto `Published` de un vendedor activo y una cantidad válida, **THEN** el sistema creará el pedido en `Pending` con precio unitario y total derivados del producto vigente, y reservará el stock correspondiente. | BR-009, BR-010 |
 | RF-ORD-11 | **WHILE** el precio o el stock del producto cambian después de creado el pedido, **THEN** el `unitPrice` y el `total` del pedido existente permanecen inalterados (snapshot en el momento de la compra). | BR-010 (D-ORD-01) |
 | RF-ORD-12 | **WHEN** el producto no está `Published`, la categoría está inactiva o el vendedor no está `Active`, **THEN** el sistema rechazará la creación con `422` y no creará el pedido ni reservará stock. | BR-006 |
-| RF-ORD-13 | **WHEN** el stock disponible del producto es menor que la cantidad solicitada, **THEN** el sistema rechazará con `409` e `INSUFFICIENT_STOCK`, sin crear el pedido ni reservar parcialmente. | BR-010 |
+| RF-ORD-13 | **WHEN** el stock disponible del producto es menor que la cantidad solicitada, **THEN** el sistema rechazará con `400` e `INSUFFICIENT_STOCK`, sin crear el pedido ni reservar parcialmente. | BR-010, D-ORD-11 |
 | RF-ORD-14 | **WHEN** el cliente envía campos `price`, `total`, `sellerId`, `status`, `paymentMethod` o `currency` en la creación, **THEN** el sistema los ignorará y usará los valores derivados del producto, o rechazará con `400` si son inválidos en forma. | BR-009 |
 | RF-ORD-15 | **WHEN** un usuario que no es participante (ni comprador ni vendedor) intenta leer o actuar sobre un pedido, **THEN** el sistema responderá `404` con `ORDER_NOT_FOUND` sin revelar existencia. | §14, autorización por recurso |
 | RF-ORD-16 | **WHEN** un participante con rol equivocado intenta una acción (ej. comprador envía `PATCH /status`), **THEN** el sistema responderá `403` con `ORDER_FORBIDDEN`. | §13 |
@@ -138,7 +154,7 @@ Crea un pedido directo (BR-001/BR-002).
 }
 ```
 
-- **Errores:** `400 VALIDATION_ERROR` (forma/cantidad), `401 UNAUTHORIZED`, `403 ACCOUNT_NOT_ACTIVE`, `404 PRODUCT_NOT_FOUND`, `409 INSUFFICIENT_STOCK`, `409 ORDER_VERSION_CONFLICT`, `422 PRODUCT_NOT_AVAILABLE` (no publicado / categoría inactiva / vendedor no activo), `429 RATE_LIMITED`, `503 ORDER_UNAVAILABLE`.
+- **Errores:** `400 VALIDATION_ERROR` (forma/cantidad) y `400 INSUFFICIENT_STOCK` (D-ORD-11), `401 UNAUTHORIZED`, `403 ACCOUNT_NOT_ACTIVE`, `404 PRODUCT_NOT_FOUND`, `409 ORDER_VERSION_CONFLICT`, `422 PRODUCT_NOT_AVAILABLE` (no publicado / categoría inactiva / vendedor no activo), `429 RATE_LIMITED`, `503 ORDER_UNAVAILABLE`. Un replay del mismo `Idempotency-Key` devuelve `200` con el pedido ya creado (D-ORD-13).
 
 ### 5.2 API-024 — `GET /api/v1/orders/mine`
 
