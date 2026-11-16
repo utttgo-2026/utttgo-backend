@@ -45,7 +45,8 @@ public sealed class GetOrderService(IAuthenticatedLocalProfileReader profiles, I
             return new(GetOrderOutcome.Found, new OrderResponse(order.OrderId, order.ProductId,
                 order.ProductName, order.SellerId, order.BuyerUserId, order.Quantity, order.UnitPrice,
                 order.Total, order.Currency, order.PaymentMethod, order.Status, order.PickupPoint,
-                order.DeliveredAt, order.CompletedAt, order.CreatedAt, order.UpdatedAt, order.Version));
+                order.DeliveredAt, order.CompletedAt, order.CreatedAt, order.UpdatedAt, order.Version,
+                order.Notes));
         }
         catch (Exception) when (!cancellationToken.IsCancellationRequested)
         {

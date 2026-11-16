@@ -18,6 +18,7 @@ public sealed class CreateProductRequestValidator : AbstractValidator<CreateProd
             value.Length == 24 && value.All(Uri.IsHexDigit));
         RuleFor(request => request.Price).Must(value => value is not null && value > 0m && value <= 1_000_000m);
         RuleFor(request => request.Stock).Must(value => value is not null && value >= 0 && value <= 1_000_000);
+        RuleFor(request => request.ImageUrl).Must(value => value is null || value.Trim().Length <= 2048);
         RuleFor(request => request.UnknownFields).Must(fields => fields is null || fields.Count == 0)
             .WithMessage("Campos no permitidos.");
     }

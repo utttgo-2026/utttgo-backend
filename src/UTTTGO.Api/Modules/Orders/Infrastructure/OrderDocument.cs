@@ -61,6 +61,9 @@ public sealed class OrderDocument
     [BsonElement("idempotencyKey")]
     public string? IdempotencyKey { get; set; }
 
+    [BsonElement("notes")]
+    public string? Notes { get; set; }
+
     [BsonElement("createdAt")]
     [BsonDateTimeOptions(Kind = DateTimeKind.Utc)]
     public DateTime CreatedAt { get; set; }

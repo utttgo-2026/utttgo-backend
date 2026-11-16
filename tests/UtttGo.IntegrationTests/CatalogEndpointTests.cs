@@ -119,6 +119,49 @@ public sealed class CatalogEndpointTests
     }
 
     [Fact]
+    public async Task PublishingWithAnImageUrlIsRejectedBecauseMediaDoesNotExistYet()
+    {
+        var products = new CatalogProductRepository();
+        using var factory = Factory(products: products);
+        using var client = factory.CreateClient();
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/products")
+        {
+            Content = JsonContent("""
+                {"name":"Tacos de pastor","description":"Tacos con piña","ingredients":["Piña"],
+                 "categoryId":"507f1f77bcf86cd799439031","price":55.50,"stock":10,
+                 "imageUrl":"https://example.test/photo.jpg"}
+                """)
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", Token);
+
+        using var response = await client.SendAsync(request);
+
+        response.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+        (await response.Content.ReadAsStringAsync()).Should().Contain("IMAGE_NOT_AVAILABLE");
+        products.CreateCalls.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task TheAvailabilityRouteUsesTheStatusProperty()
+    {
+        var products = new CatalogProductRepository();
+        using var factory = Factory(products: products);
+        using var client = factory.CreateClient();
+        using var request = new HttpRequestMessage(HttpMethod.Patch,
+            $"/api/v1/products/{CatalogFixtures.ProductId}/availability")
+        {
+            Content = JsonContent("{\"availability\":\"Paused\"}")
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", Token);
+
+        using var response = await client.SendAsync(request);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await response.Content.ReadAsStringAsync()).Should().Contain("VALIDATION_ERROR");
+        products.UpdateCalls.Should().Be(0);
+    }
+
+    [Fact]
     public async Task PublishingWithoutSessionIsUnauthorized()
     {
         var products = new CatalogProductRepository();
@@ -171,7 +214,7 @@ public sealed class CatalogEndpointTests
         using var availability = new HttpRequestMessage(HttpMethod.Patch,
             $"/api/v1/products/{CatalogFixtures.ProductId}/availability")
         {
-            Content = JsonContent("{\"availability\":\"Paused\"}")
+            Content = JsonContent("{\"status\":\"Paused\"}")
         };
         availability.Headers.Authorization = new AuthenticationHeaderValue("Bearer", Token);
         using var paused = await client.SendAsync(availability);

@@ -71,6 +71,21 @@ public sealed class OpenApiContractTests
         ResponseSchema(document, "/api/v1/orders/{orderId}", "get", 404, "ApiError");
     }
 
+    [Fact]
+    public async Task MobileRequestSchemasExposeStatusImageUrlAndNotes()
+    {
+        var document = await LoadDocumentAsync();
+
+        var availability = RequestSchemaProperties(document, "/api/v1/products/{productId}/availability",
+            "patch");
+        availability.Should().Contain("status");
+        availability.Should().NotContain("availability");
+
+        RequestSchemaProperties(document, "/api/v1/products", "post").Should().Contain("imageUrl");
+        RequestSchemaProperties(document, "/api/v1/orders", "post").Should().Contain("notes");
+        ComponentProperties(document, "OrderResponse").Should().Contain("notes");
+    }
+
     private static async Task<JsonDocument> LoadDocumentAsync()
     {
         using var factory = new WebApplicationFactory<Program>();
@@ -78,6 +93,32 @@ public sealed class OpenApiContractTests
         using var response = await client.GetAsync("/openapi/v1.json");
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         return JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+    }
+
+    private static IReadOnlyList<string> RequestSchemaProperties(JsonDocument document, string path,
+        string method)
+    {
+        var schema = document.RootElement.GetProperty("paths").GetProperty(path).GetProperty(method)
+            .GetProperty("requestBody").GetProperty("content").GetProperty("application/json")
+            .GetProperty("schema");
+        return SchemaProperties(document, schema);
+    }
+
+    private static IReadOnlyList<string> ComponentProperties(JsonDocument document, string schemaName)
+    {
+        var schema = document.RootElement.GetProperty("components").GetProperty("schemas").GetProperty(schemaName);
+        return SchemaProperties(document, schema);
+    }
+
+    private static IReadOnlyList<string> SchemaProperties(JsonDocument document, JsonElement schema)
+    {
+        if (schema.TryGetProperty("$ref", out var reference))
+        {
+            var schemaName = reference.GetString()!.Split('/')[^1];
+            schema = document.RootElement.GetProperty("components").GetProperty("schemas").GetProperty(schemaName);
+        }
+
+        return schema.GetProperty("properties").EnumerateObject().Select(property => property.Name).ToList();
     }
 
     private static void ResponseSchema(JsonDocument document, string path, string method, int status,

@@ -14,7 +14,7 @@ public interface IOrderRepository
 public sealed record OrderRecord(string OrderId, string BuyerUserId, string SellerId, string ProductId,
     string ProductName, int Quantity, decimal UnitPrice, decimal Total, string Currency, string PaymentMethod,
     string Status, string ReservationId, string PickupPoint, DateTime? DeliveredAt, DateTime? CompletedAt,
-    long Version, string? IdempotencyKey, DateTime CreatedAt, DateTime UpdatedAt);
+    long Version, string? IdempotencyKey, DateTime CreatedAt, DateTime UpdatedAt, string? Notes = null);
 
 public sealed record OrderPage(IReadOnlyList<OrderRecord> Items, long Total);
 

@@ -55,7 +55,7 @@ public sealed class UpdateProductAvailabilityService(IAuthenticatedLocalProfileR
                 current.Status == ProductAvailability.Deleted)
                 return new(UpdateProductAvailabilityOutcome.NotFound);
 
-            var status = request.Availability!;
+            var status = request.Status!;
             var result = await products.UpdateAvailabilityAsync(profile.SellerId, productId,
                 current.Version, status, cancellationToken);
             if (result.Outcome == ProductUpdateOutcome.Missing)

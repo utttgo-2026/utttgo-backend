@@ -34,7 +34,7 @@ public sealed class OrdersEndpointTests
         body.RootElement.EnumerateObject().Select(property => property.Name).Should().BeEquivalentTo(
             ["orderId", "productId", "productName", "sellerId", "buyerUserId", "quantity", "unitPrice",
                 "total", "currency", "paymentMethod", "status", "pickupPoint", "deliveredAt", "completedAt",
-                "createdAt", "updatedAt", "version"]);
+                "createdAt", "updatedAt", "version", "notes"]);
         body.RootElement.GetProperty("unitPrice").GetDecimal().Should().Be(85.50m);
         body.RootElement.GetProperty("total").GetDecimal().Should().Be(171.00m);
         body.RootElement.GetProperty("quantity").GetInt32().Should().Be(2);
@@ -44,6 +44,35 @@ public sealed class OrdersEndpointTests
         body.RootElement.GetProperty("sellerId").GetString().Should().Be(OrderFixtures.SellerId);
         body.RootElement.GetProperty("buyerUserId").GetString().Should().Be(SellerFixtures.UserId);
         body.RootElement.GetProperty("deliveredAt").ValueKind.Should().Be(JsonValueKind.Null);
+    }
+
+    [Fact]
+    public async Task AnOrderCanCarryAnOptionalNoteForTheSeller()
+    {
+        using var factory = Factory();
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", Token);
+
+        using var response = await client.PostAsJsonAsync("/api/v1/orders",
+            new { productId = OrderFixtures.ProductId, quantity = 1, notes = "Sin cebolla, por favor" });
+
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        body.RootElement.GetProperty("notes").GetString().Should().Be("Sin cebolla, por favor");
+    }
+
+    [Fact]
+    public async Task ANoteLongerThan250CharactersIsRejected()
+    {
+        using var factory = Factory();
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", Token);
+
+        using var response = await client.PostAsJsonAsync("/api/v1/orders",
+            new { productId = OrderFixtures.ProductId, quantity = 1, notes = new string('a', 251) });
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await response.Content.ReadAsStringAsync()).Should().Contain("VALIDATION_ERROR");
     }
 
     [Fact]

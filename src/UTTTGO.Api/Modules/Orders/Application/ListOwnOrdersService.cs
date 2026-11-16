@@ -37,7 +37,8 @@ public sealed class ListOwnOrdersService(IAuthenticatedLocalProfileReader profil
                 cancellationToken);
             var items = page.Items
                 .Select(order => new OrderSummaryResponse(order.OrderId, order.ProductId, order.ProductName,
-                    order.Quantity, order.Total, order.Currency, order.Status, "buyer", order.CreatedAt))
+                    order.Quantity, order.Total, order.Currency, order.Status, "buyer", order.CreatedAt,
+                    order.Notes))
                 .ToList();
             return new(ListOwnOrdersOutcome.Success,
                 new OrderListResponse(items, query.Page, query.PageSize, page.Total));
