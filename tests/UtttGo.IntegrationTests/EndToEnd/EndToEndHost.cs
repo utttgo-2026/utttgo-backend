@@ -51,6 +51,9 @@ internal sealed class EndToEndHost : IAsyncDisposable
 
     public HttpClient Client { get; }
 
+    // A fresh client per identity: the Authorization header is never shared.
+    public HttpClient CreateClient() => factory.CreateClient();
+
     public IServiceProvider Services { get; }
 
     public IMongoDatabase Database { get; }

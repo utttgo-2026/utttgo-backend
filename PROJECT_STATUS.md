@@ -1,6 +1,6 @@
 # Estado real del backend UTTT-GO
 
-> Corte: 2026-11-11. El backend está **desplegado y operativo en Amazon AWS** (EC2 `3.129.142.54`, 2 réplicas Docker Compose detrás de Nginx, Redis contenedor, MongoDB Atlas y Supabase Auth configurados por variables de entorno en la instancia). El **cierre de infraestructura** (DEC‑020/021) está aplicado y verificado en vivo: puerto 22 cerrado, despliegue CD‑1 por AWS Systems Manager, Budget con alerta institucional, CORS de S3 estricto y logs de contenedores en CloudWatch Logs. Este documento separa lo **verificado externamente** (sondas HTTP contra la instancia, despliegue por SSM y logs publicados) de lo **verificado con dobles** (suites locales). Un `200` con dobles no prueba una integración externa.
+> Corte: 2026-11-16. El backend está **desplegado y operativo en Amazon AWS** (EC2 `3.129.142.54`, 2 réplicas Docker Compose detrás de Nginx, Redis contenedor, MongoDB Atlas y Supabase Auth configurados por variables de entorno en la instancia). El **cierre de infraestructura** (DEC‑020/021) está aplicado y verificado en vivo: puerto 22 cerrado, despliegue CD‑1 por AWS Systems Manager, Budget con alerta institucional, CORS de S3 estricto y logs de contenedores en CloudWatch Logs. Este documento separa lo **verificado externamente** (sondas HTTP contra la instancia, despliegue por SSM y logs publicados) de lo **verificado con dobles** (suites locales) y de lo **verificado contra dependencias reales** (la suite E2E con MongoDB 7 y Redis 7 en Testcontainers). Un `200` con dobles no prueba una integración externa.
 
 ## 1. Stack, estructura y despliegue
 
@@ -8,7 +8,7 @@
 |---|---|
 | Runtime | .NET 10 con SDK **10.0.400 (estable, no preview)**, C# 14, ASP.NET Core 10, monolito modular en un único proyecto API. |
 | Paquetes de la API | `FluentValidation 12.0.0`, `MongoDB.Driver 3.11.0`, `StackExchange.Redis 2.7.27`, `System.IdentityModel.Tokens.Jwt 8.3.1`, `Microsoft.AspNetCore.OpenApi 10.0.9`, `Microsoft.OpenApi 2.7.5`. **Sin SDK de AWS** (S3 presigned), sin cliente de Content Safety, sin FCM y sin SignalR. |
-| Pruebas | `xUnit 2.9.3`, `FluentAssertions 6.12.2`, `Microsoft.AspNetCore.Mvc.Testing 10.0.9`. **Sin Testcontainers**: las suites usan dobles; no hay pruebas contra Atlas/Redis reales. |
+| Pruebas | `xUnit 2.9.3`, `FluentAssertions 6.12.2`, `Microsoft.AspNetCore.Mvc.Testing 10.0.9`, `Testcontainers 4.16.0` (`Testcontainers.MongoDb`/`Testcontainers.Redis`). La suite E2E (`tests/UtttGo.IntegrationTests/EndToEnd`) levanta **MongoDB 7 y Redis 7 reales** en contenedores y dobla solo las fronteras externas de autenticación (Supabase/JWT/blacklist). |
 | Nube | AWS `us-east-2`: 1 × EC2 t3.micro (Ubuntu 24.04) + EIP `3.129.142.54`, Security Group **solo 80/443** (22 cerrado), S3 privado con CORS estricto (sin reglas por defecto), IAM Instance Profile, CloudWatch Logs, Systems Manager, Budget con alerta institucional. Terraform **aplicado por el propietario** (DEC‑018/020/021). |
 | Contenedores | `docker-compose.yml`: `api` con `deploy.replicas: 2`, `redis:7-alpine` sin puertos publicados en red interna (`noeviction` + AOF), `nginx:alpine` con 80/443, `mongo:7` solo en perfil `local`. `docker-compose.prod.yml` (solo EC2) añade el driver `awslogs` para publicar los logs en `/utttgo/api/dev`. |
 | Estado en la instancia | **En ejecución y verificado**: `GET /health` → `200` con MongoDB y Redis en `Healthy`; CD‑1 ejecutó un run **verde** el 2026-11-08 con evidencia `ci-evidence/cd-deploy.txt` y el **2026-11-11** desplegó por SSM el SHA `355db03` (2/2 réplicas sanas, `/health` 200). La instancia sirve todavía solo HTTP: el TLS con `3.129.142.54.nip.io` (Let's Encrypt) está implementado en código y se emitirá en el próximo despliegue tras el `terraform apply` del documento SSM. |
@@ -62,8 +62,17 @@ Las rutas se derivan de los atributos de los controladores y de `Program.cs`. La
 | PATCH | `/api/v1/sellers/me` | Bearer | `200`; `400`/`401`/`404`/`409`/`429`/`503` | Edición del propio perfil con control de concurrencia por `version`. |
 | GET | `/openapi/v1.json` | Público | `200` documento OpenAPI (todos los entornos, antes solo Development) | Sin servicios externos. No es ficha funcional. |
 | GET | `/openapi` | Público | `200` HTML con Swagger UI de solo lectura (`tryItOut` deshabilitado) | CDN de Swagger UI; documentación para el equipo móvil (`docs/mobile-integration.md`). |
+| GET | `/api/v1/categories` | Público | `200` (`items`, `page`, `pageSize`, `total`); `400`/`429`/`503` | Atlas (`categories`, dueño Catalog) + rate limit en Redis. Catálogo sembrado solo con `CATALOG_SEED_ENABLED=true`. |
+| GET | `/api/v1/products` | Público | `200` (`items`, `page`, `pageSize`, `total`); `400`/`429`/`503` | Atlas (`products`, dueño Catalog) + filtros `search`/`categoryId`/`minPrice`/`maxPrice`/`rating` + rate limit en Redis. |
+| GET | `/api/v1/products/{productId}` | Público | `200`; `400`/`404`/`429`/`503` | Atlas (`products`); solo productos del vendedor en estado `Active` con categoría activa. |
+| POST | `/api/v1/products` | Bearer + rol `Seller` | `201`; `400`/`401`/`403`/`404`/`409`/`429`/`503` | Atlas (`products` + `categories`) + rate limit en Redis. El precio y el stock los fija el vendedor; el cliente no puede elegir vendedor ni estado. |
+| PATCH | `/api/v1/products/{productId}` | Bearer + dueño | `200`; `400`/`401`/`403`/`404`/`409`/`429`/`503` | Atlas (`products`) con CAS por `version`; solo su propio producto. |
+| PATCH | `/api/v1/products/{productId}/availability` | Bearer + dueño | `200`; `400`/`401`/`403`/`404`/`409`/`429`/`503` | Atlas (`products`) con CAS por `version`; pausa/reanudación del producto. |
+| POST | `/api/v1/orders` | Bearer + cuenta `Active` | `201`; `200` (replay de `Idempotency-Key`); `400` `VALIDATION_ERROR`/`INSUFFICIENT_STOCK`; `401`/`403` `ACCOUNT_NOT_ACTIVE`/`404` `PRODUCT_NOT_FOUND`/`422` `PRODUCT_NOT_AVAILABLE`/`429`/`503` `ORDER_UNAVAILABLE` | **Fase 1 (API-023)**: Atlas (`orders`, dueño Orders) + reserva atómica de stock en `products` vía el contrato publicado por Catalog + `pickupPoint` de `sellers` + rate limit en Redis. Total server-side (`unitPrice` × `quantity`). |
+| GET | `/api/v1/orders/mine` | Bearer | `200` (`items`, `page`, `pageSize`, `total`); `400`/`401`/`429`/`503` | **Fase 1 (API-024)**: Atlas (`orders`) filtrado por el comprador autenticado; filtro opcional `status`. |
+| GET | `/api/v1/orders/{orderId}` | Bearer + participante | `200`; `401`/`404` `ORDER_NOT_FOUND`/`429`/`503` | **Fase 1 (API-025)**: Atlas (`orders`); solo el comprador o el vendedor del pedido (un tercero recibe `404`). |
 
-No existen todavía: productos, categorías, media/imágenes, pedidos, reseñas, favoritos, notificaciones push, chat, recuperación de contraseña, logout y refresh token.
+No existen todavía: media/imágenes, reseñas, favoritos, notificaciones push, chat, recuperación de contraseña, logout y refresh token. La Fase 2 de pedidos (cancelación, transiciones, token y confirmación de entrega: API‑026..029) sigue pendiente.
 
 ## 3. Servicios externos y configuración
 
@@ -98,9 +107,11 @@ Estas sondas prueban **disponibilidad, enrutamiento y operación de la infraestr
 
 ### 4.2 Suites locales
 
-`dotnet build -c Release` sin errores (0 advertencias) · `dotnet format --verify-no-changes` sin diferencias · **187 unitarias + 185 de integración + 93 de seguridad en verde** (465 pruebas; el Sprint 1 de vendedor añadió 103). **Los tests usan dobles**: no prueban Atlas, Redis ni Supabase reales; para eso hacen falta contenedores de prueba (Testcontainers) o un entorno no productivo. El histórico por endpoint está en `docs/qa-api-*.md`.
+`dotnet build -c Release` sin errores (0 advertencias) · `dotnet format --verify-no-changes` sin diferencias · **289 unitarias + 231 de integración + 128 de seguridad en verde** (648 pruebas; el Sprint 2 del catálogo y la Fase 1 de pedidos añadieron 183). **Las suites de endpoint usan dobles**; la suite E2E (`tests/UtttGo.IntegrationTests/EndToEnd`) sí usa **MongoDB 7 y Redis 7 reales en Testcontainers** y dobla solo la autenticación externa. El histórico por endpoint está en `docs/qa-api-*.md`.
 
 Además, contra **MongoDB 7 real** (contenedor local) se validó el diseño del Sprint 1: el índice único **parcial** `ownerUserId_unique` convive con documentos heredados sin `ownerUserId`, rechaza el duplicado con error `11000` y la activación por `version` se aplica de forma condicional. Smoke con el stack local completo (2 réplicas + Nginx + Redis + Mongo): `/health` → `200` con `mongodb` y `redis` en `Healthy`; las tres rutas de vendedor responden `401` sin token válido.
+
+Evidencia de la Fase 1 de pedidos (2026-11-16, rama `feature/orders-phase1-p1`): compra completa con Mongo real (alta de vendedor, producto, compra, reserva de stock, `/orders/mine`, detalle del comprador y del vendedor, `404` para un tercero y auditoría `Created`), **carrera de `Idempotency-Key`** (dos compras simultáneas con la misma clave → un `201`, un `200`, un solo pedido y el stock reservado una vez) y **carrera de stock** (dos compradores simultáneos sobre una unidad → un `201` y un `400 INSUFFICIENT_STOCK`, stock final `0`, sin sobreventa).
 
 ## 5. Documentación SDD presente
 
@@ -114,7 +125,8 @@ Además, contra **MongoDB 7 real** (contenedor local) se validó el diseño del 
 | `docs/qa-api-*.md` | Evidencia de QA local con dobles de API‑001/002/004/006/007/008/039. |
 | `docs/mobile-integration.md` | Guía para el equipo móvil: base HTTPS (`3.129.142.54.nip.io`), OpenAPI/Swagger, JSON real de login y flujo de 3 pasos de verificación de correo antes del login. |
 | `specs/phase-02-auth-users/*` | Identidad, usuarios y vendedores: contratos y tareas con gates documentales abiertos (TASK‑AUTH‑002/003/007/008). |
-| `specs/phase-03-catalog-offers/*` | **v2.1 aprobada para el Sprint 1 (vendedor)** por DEC‑019; el Sprint 2 (catálogo y categorías) sigue bloqueado hasta su propia aprobación. |
+| `specs/phase-03-catalog-offers/*` | **v2.1 aprobada para el Sprint 1 (vendedor)** por DEC‑019; el Sprint 2 (catálogo y categorías) está implementado (API‑011..015/019) y sus fichas atómicas siguen PENDIENTE de conciliación. |
+| `specs/phase-04-orders-cash/*` | **v0.2**: Fase 1 (API‑023/024/025) aprobada por el propietario e implementada el 2026-11-16; API‑026..029 (cancelación, transiciones, token y confirmación de entrega) siguen en borrador para la Fase 2. |
 | `specs/cross-cutting/api-health-probe/*` | v1.1: ficha de `GET /health` (HP‑01..HP‑11) con el fix del registro de la sonda en CD‑1. |
 | `specs/cross-cutting/ci-cd-devsecops/*` | Requisitos, secuencia y tareas de CI‑1/CD‑1 con la evidencia del run verde y el nuevo camino de despliegue por SSM. |
 | `specs/cross-cutting/infra-aws-free-tier/*` | INFRA‑01..15: IaC aplicada y cierre verificado (SG sin 22, Budget con alerta, CORS estricto, logs en CloudWatch Logs); pendientes el `description` del SG, el backend remoto de estado y el build de la imagen en CI. |
@@ -124,12 +136,13 @@ Además, contra **MongoDB 7 real** (contenedor local) se validó el diseño del 
 
 - **TLS y dominio:** implementado en código con el hostname gratuito `3.129.142.54.nip.io` (nip.io resuelve a la EIP sin registro DNS; Let's Encrypt por `webroot` con `scripts/tls/provision-tls.sh`, integrado en `setup.sh` y en CD-1, con renovación automática). La instancia **aún sirve solo HTTP**: falta fusionar el PR, ejecutar `terraform apply` (el script va incrustado en el documento SSM `utttgo-dev-deploy`) y desplegar para emitir el primer certificado. El aviso `Failed to determine the https port for redirect` persiste hasta entonces (ruido de `HttpsRedirectionMiddleware`, sin impacto funcional; el TLS termina en Nginx).
 - **Media e imágenes (fase 05):** no hay `AWSSDK.S3` ni cliente de Content Safety; `avatarUrl` es siempre `null` y no se puede publicar ninguna imagen (BR‑007).
-- **Catálogo (Sprint 2 de la fase 03):** no existen `products` ni `categories`; API‑011..015 y API‑019..022 necesitan `spec/plan/task` v2.2 y aprobación propia antes de código.
+- **Catálogo (Sprint 2 de la fase 03):** `products` y `categories` **ya existen** (API‑011..015/019: búsqueda, filtros, publicación y disponibilidad del vendedor); sus fichas atómicas siguen PENDIENTE de conciliación y no hay filtro público `sellerId` ni “mis productos” (decisión registrada para la iteración siguiente).
+- **Pedidos (Fase 1 de la fase 04):** API‑023/024/025 implementadas con `orders` y `orderAuditLogs`; falta la Fase 2 (API‑026..029) y no hay token de entrega ni notificaciones FCM.
 - **Sesiones:** no hay `POST /api/v1/auth/logout` (API‑003) ni refresh token; el access token expira (3600 s) y la app móvil debe volver a autenticarse. TASK‑AUTH‑003 abierto.
 - **OTP y correo:** el backend no envía ni verifica OTP; el móvil usa operaciones Supabase (`verifyOtp`/`resend`). SMTP institucional y costo cero siguen pendientes (TASK‑AUTH‑002).
 - **Middleware de autenticación y CORS:** no hay `AddAuthentication()`/`UseAuthentication()`; la validación del JWT se hace por servicio con gate de Redis. No hay política CORS (irrelevante para móvil nativo; necesaria si hay cliente web).
 - **Auditoría administrativa:** `UnconfiguredAdminUsersAudit` no persiste eventos (AC‑005 abierto por API‑040).
-- **Pruebas contra dependencias reales:** no hay Testcontainers ni entorno no productivo; las suites prueban lógica con dobles.
+- **Pruebas contra dependencias reales:** la suite E2E ya usa **Testcontainers** (MongoDB 7 y Redis 7) para catálogo y pedidos; falta el entorno no productivo contra Atlas, Supabase real, S3/Content Safety y FCM.
 - **Secretos de CI en AWS:** CD‑1 usa el usuario IAM `utttgo-dev-github-actions-deploy` (OIDC está bloqueado por el SCP de la organización). Falta que el propietario cree su clave (`iam:create-access-key`) y la guarde en los secretos del repositorio; hasta entonces CD‑1 automático fallará (el despliegue manual por `aws ssm send-command` sí funciona).
 - **Tiempo de despliegue:** el build de la imagen ocurre en la t3.micro con los CPU credits agotados (balance ≈ 282/3000) y la publicación de .NET tardó **≈ 29 min**. CD‑2 pendiente: construir y publicar la imagen en CI (ECR) para que la instancia solo descargue, o activar T3 Unlimited en una ventana de mantenimiento (con costo potencial frente al objetivo $0).
 - **`description` del Security Group:** conserva el texto histórico porque es `ForceNew`; el estado real está en la etiqueta `Ingress`. Se corrige en el próximo reemplazo consciente de la instancia (junto con el rollover de AMI).

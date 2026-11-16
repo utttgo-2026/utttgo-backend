@@ -1,6 +1,6 @@
 # plan.md — Pedidos y efectivo · Backend UTTT-GO
-> Fase `phase-04-orders-cash` · Versión 0.1 · **Borrador para aprobación del propietario** · 2026-11-11.
-> Deriva de `spec.md` v0.1 y `docs/constitution.md` v2.6 (BR-001, BR-002, BR-003, BR-009, BR-010, §13, §14). Ninguna decisión D-ORD-01..10 está aprobada y ninguna tarea autoriza código hasta la aprobación del propietario y el gate de fase-03 Sprint 2.
+> Fase `phase-04-orders-cash` · Versión 0.2 · **Fase 1 (API-023..025) aprobada e implementada el 2026-11-16** · 2026-11-16.
+> Deriva de `spec.md` v0.2 y `docs/constitution.md` v2.6 (BR-001, BR-002, BR-003, BR-009, BR-010, §13, §14). Las decisiones D-ORD-01..13 quedan registradas en `spec.md` §0 y §9.2.
 
 ## 1. Alcance y fronteras
 
@@ -48,7 +48,7 @@
 
 | Ficha | Método y ruta | Acceso | Códigos |
 |---|---|---|---|
-| API-023 | `POST /api/v1/orders` | Bearer + cuenta `Active` | `201` · `400` `VALIDATION_ERROR` · `401` · `403` `ACCOUNT_NOT_ACTIVE` · `404` `PRODUCT_NOT_FOUND` · `409` `INSUFFICIENT_STOCK` / `ORDER_VERSION_CONFLICT` · `422` `PRODUCT_NOT_AVAILABLE` · `429` `RATE_LIMITED` · `503` `ORDER_UNAVAILABLE` |
+| API-023 | `POST /api/v1/orders` | Bearer + cuenta `Active` | `201` · `200` (replay de `Idempotency-Key`, D-ORD-13) · `400` `VALIDATION_ERROR` / `INSUFFICIENT_STOCK` (D-ORD-11) · `401` · `403` `ACCOUNT_NOT_ACTIVE` · `404` `PRODUCT_NOT_FOUND` · `409` `ORDER_VERSION_CONFLICT` · `422` `PRODUCT_NOT_AVAILABLE` · `429` `RATE_LIMITED` · `503` `ORDER_UNAVAILABLE` |
 | API-024 | `GET /api/v1/orders/mine` | Bearer | `200` (paginado `{items,page,pageSize,total}`) · `400` · `401` · `429` · `503` |
 | API-025 | `GET /api/v1/orders/{orderId}` | Bearer + participante | `200` · `401` · `404` `ORDER_NOT_FOUND` · `429` · `503` |
 | API-026 | `POST /api/v1/orders/{orderId}/cancel` | Bearer + comprador | `200` · `401` · `403` `ORDER_FORBIDDEN` · `404` · `409` `ORDER_STATE_CONFLICT` · `429` · `503` |
