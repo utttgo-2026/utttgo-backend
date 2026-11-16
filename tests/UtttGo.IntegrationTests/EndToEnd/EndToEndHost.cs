@@ -107,6 +107,13 @@ internal sealed class EndToEndHost : IAsyncDisposable
 
     private static IConnectionMultiplexer CreateMultiplexer(string host, int port)
     {
+        var configuration = CreateRedisConfiguration(host, port);
+        return ConnectionMultiplexer.Connect(configuration);
+    }
+
+    // abortConnect=false: the multiplexer must not throw while the container is still starting.
+    private static ConfigurationOptions CreateRedisConfiguration(string host, int port)
+    {
         var configuration = new ConfigurationOptions
         {
             AbortOnConnectFail = false,
@@ -114,7 +121,7 @@ internal sealed class EndToEndHost : IAsyncDisposable
             SyncTimeout = 5000
         };
         configuration.EndPoints.Add(host, port);
-        return ConnectionMultiplexer.Connect(configuration);
+        return configuration;
     }
 
     private static async Task WaitForMongoAsync(string uri)
@@ -141,13 +148,7 @@ internal sealed class EndToEndHost : IAsyncDisposable
 
     private static async Task WaitForRedisAsync(string host, int port)
     {
-        var configuration = new ConfigurationOptions
-        {
-            AbortOnConnectFail = false,
-            ConnectTimeout = 2000,
-            SyncTimeout = 5000
-        };
-        configuration.EndPoints.Add(host, port);
+        var configuration = CreateRedisConfiguration(host, port);
         await using var multiplexer = await ConnectionMultiplexer.ConnectAsync(configuration);
         var deadline = DateTime.UtcNow.AddSeconds(90);
         while (DateTime.UtcNow < deadline)
@@ -163,6 +164,7 @@ internal sealed class EndToEndHost : IAsyncDisposable
             }
         }
 
-        throw new InvalidOperationException("Redis container did not answer the ping command.");
+        throw new InvalidOperationException(
+            $"Redis container did not answer the ping command on {host}:{port}.");
     }
 }
