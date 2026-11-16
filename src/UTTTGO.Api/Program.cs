@@ -15,6 +15,10 @@ using UTTTGO.Api.Modules.Identity.Application;
 using UTTTGO.Api.Modules.Identity.Contracts;
 using UTTTGO.Api.Modules.Identity.Infrastructure;
 using UTTTGO.Api.Modules.Identity.Validators;
+using UTTTGO.Api.Modules.Orders.Application;
+using UTTTGO.Api.Modules.Orders.Contracts;
+using UTTTGO.Api.Modules.Orders.Infrastructure;
+using UTTTGO.Api.Modules.Orders.Validators;
 using UTTTGO.Api.Modules.Sellers.Application;
 using UTTTGO.Api.Modules.Sellers.Contracts;
 using UTTTGO.Api.Modules.Sellers.Infrastructure;
@@ -162,6 +166,18 @@ builder.Services.AddScoped<IUpdateProductAvailabilityService, UpdateProductAvail
 builder.Services.AddHostedService<CatalogMongoIndexes>();
 builder.Services.AddSingleton<ICatalogSeeder, MongoCatalogSeeder>();
 builder.Services.AddHostedService<CatalogSeedHostedService>();
+builder.Services.AddSingleton<ICatalogOrderProducts, MongoOrderProductRepository>();
+builder.Services.AddSingleton<ISellerOrderProfiles, MongoSellerOrderProfiles>();
+builder.Services.Configure<OrderLimitsOptions>(builder.Configuration.GetSection("Orders"));
+builder.Services.AddScoped<IValidator<CreateOrderRequest>, CreateOrderRequestValidator>();
+builder.Services.AddScoped<IValidator<OrderListQuery>, OrderListQueryValidator>();
+builder.Services.AddSingleton<IOrderRepository, MongoOrderRepository>();
+builder.Services.AddSingleton<IOrderAuditWriter, MongoOrderAuditWriter>();
+builder.Services.AddScoped<IOrdersRateLimitGate, RedisOrdersRateLimitGate>();
+builder.Services.AddScoped<ICreateOrderService, CreateOrderService>();
+builder.Services.AddScoped<IListOwnOrdersService, ListOwnOrdersService>();
+builder.Services.AddScoped<IGetOrderService, GetOrderService>();
+builder.Services.AddHostedService<OrdersMongoIndexes>();
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
 

@@ -35,6 +35,9 @@ public sealed class ProductDocument
     [BsonElement("stock")]
     public int Stock { get; set; }
 
+    [BsonElement("stockReservations")]
+    public IReadOnlyList<StockReservation> StockReservations { get; set; } = [];
+
     [BsonElement("status")]
     public string Status { get; set; } = string.Empty;
 
