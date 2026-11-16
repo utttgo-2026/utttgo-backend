@@ -123,7 +123,11 @@ def cmd_mutation(args):
         # the whole project mixes untouched code and is not comparable between runs.
         score = metrics["covered_score"]
         project_score = metrics["score"]
-        over = score < threshold
+        covered = metrics["killed"] + metrics["survived"] + metrics["timeout"]
+        # A diff without mutable code (only documentation or CI changes) has no score to
+        # judge: it is reported as informative instead of failing the gate.
+        no_diff = covered == 0
+        over = score < threshold and not no_diff
     else:
         metrics = {
             "total_mutants": 0,
@@ -138,6 +142,8 @@ def cmd_mutation(args):
         }
         score = 0
         project_score = 0
+        covered = 0
+        no_diff = True
         over = False
 
     out = {
@@ -153,6 +159,7 @@ def cmd_mutation(args):
         "covered_score": metrics["covered_score"],
         "threshold": threshold,
         "over_threshold": over,
+        "no_diff": no_diff,
         "available": bool(report),
     }
     out_path = Path("ci-evidence/mutation-summary.json")
@@ -249,9 +256,13 @@ def cmd_report(args):
             project_score = data.get("project_score", 0)
             threshold = data.get("threshold", 50)
             available = data.get("available", True)
+            no_diff = data.get("no_diff", False)
             if not available:
                 status = "sin datos (informativo)"
                 summary_parts.append("Stryker: sin reporte disponible → informativo")
+            elif no_diff:
+                status = "sin mutantes en el diff (informativo)"
+                summary_parts.append("Stryker: el diff no contiene código mutable → informativo")
             else:
                 over = score < threshold
                 status = "bloqueante" if over else "informativo"
