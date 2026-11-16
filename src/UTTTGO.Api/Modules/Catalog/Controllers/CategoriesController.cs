@@ -12,6 +12,10 @@ namespace UTTTGO.Api.Modules.Catalog.Controllers;
 public sealed class CategoriesController(IListCategoriesService categories) : ControllerBase
 {
     [HttpGet]
+    [ProducesResponseType(typeof(CategoryListResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status429TooManyRequests)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> List([FromQuery] string? page, [FromQuery] string? pageSize,
         CancellationToken cancellationToken)
     {

@@ -17,6 +17,10 @@ public sealed class ProductsController(IListProductsService list, IGetProductSer
     IValidator<UpdateProductAvailabilityRequest> availabilityValidator) : ControllerBase
 {
     [HttpGet]
+    [ProducesResponseType(typeof(ProductListResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status429TooManyRequests)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> List([FromQuery] string? search, [FromQuery] string? categoryId,
         [FromQuery] string? minPrice, [FromQuery] string? maxPrice, [FromQuery] string? page,
         [FromQuery] string? pageSize, [FromQuery] string? sortBy, CancellationToken cancellationToken)
@@ -41,6 +45,11 @@ public sealed class ProductsController(IListProductsService list, IGetProductSer
     }
 
     [HttpGet("{productId}")]
+    [ProducesResponseType(typeof(ProductResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status429TooManyRequests)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> Detail(string productId, CancellationToken cancellationToken)
     {
         if (!IsProductId(productId))
@@ -60,6 +69,13 @@ public sealed class ProductsController(IListProductsService list, IGetProductSer
     }
 
     [HttpPost]
+    [ProducesResponseType(typeof(ProductResponse), StatusCodes.Status201Created)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status429TooManyRequests)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> Create([FromBody] CreateProductRequest request,
         CancellationToken cancellationToken)
     {
@@ -90,6 +106,14 @@ public sealed class ProductsController(IListProductsService list, IGetProductSer
     }
 
     [HttpPatch("{productId}")]
+    [ProducesResponseType(typeof(ProductResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status429TooManyRequests)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> Update(string productId, [FromBody] System.Text.Json.JsonElement json,
         CancellationToken cancellationToken)
     {
@@ -126,6 +150,14 @@ public sealed class ProductsController(IListProductsService list, IGetProductSer
     }
 
     [HttpPatch("{productId}/availability")]
+    [ProducesResponseType(typeof(ProductResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status429TooManyRequests)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> UpdateAvailability(string productId,
         [FromBody] UpdateProductAvailabilityRequest request, CancellationToken cancellationToken)
     {

@@ -15,6 +15,15 @@ public sealed class OrdersController(ICreateOrderService create, IListOwnOrdersS
     IValidator<OrderListQuery> listValidator) : ControllerBase
 {
     [HttpPost]
+    [ProducesResponseType(typeof(OrderResponse), StatusCodes.Status201Created)]
+    [ProducesResponseType(typeof(OrderResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status422UnprocessableEntity)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status429TooManyRequests)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> Create([FromBody] CreateOrderRequest request,
         CancellationToken cancellationToken)
     {
@@ -50,6 +59,11 @@ public sealed class OrdersController(ICreateOrderService create, IListOwnOrdersS
     }
 
     [HttpGet("mine")]
+    [ProducesResponseType(typeof(OrderListResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status429TooManyRequests)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> Mine([FromQuery] string? page, [FromQuery] string? pageSize,
         [FromQuery] string? status, CancellationToken cancellationToken)
     {
@@ -76,6 +90,11 @@ public sealed class OrdersController(ICreateOrderService create, IListOwnOrdersS
     }
 
     [HttpGet("{orderId}")]
+    [ProducesResponseType(typeof(OrderResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status429TooManyRequests)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> Detail(string orderId, CancellationToken cancellationToken)
     {
         var token = BearerTokenReader.Read(Request);

@@ -29,6 +29,7 @@ services:
       SUPABASE_JWT_AUDIENCE: ${SUPABASE_JWT_AUDIENCE:-}
       S3_BUCKET_IMAGES: ${S3_BUCKET_IMAGES:-}
       AWS_REGION: ${AWS_REGION:-us-east-2}
+      CATALOG_SEED_ENABLED: ${CATALOG_SEED_ENABLED:-false}
     expose:
       - "8080"
     healthcheck:

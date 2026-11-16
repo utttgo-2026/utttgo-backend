@@ -179,7 +179,7 @@ builder.Services.AddScoped<IListOwnOrdersService, ListOwnOrdersService>();
 builder.Services.AddScoped<IGetOrderService, GetOrderService>();
 builder.Services.AddHostedService<OrdersMongoIndexes>();
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
-builder.Services.AddOpenApi();
+builder.Services.AddOpenApi(options => options.AddDocumentTransformer<PublicApiServerTransformer>());
 
 var app = builder.Build();
 

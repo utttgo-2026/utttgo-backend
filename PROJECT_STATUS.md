@@ -62,7 +62,7 @@ Las rutas se derivan de los atributos de los controladores y de `Program.cs`. La
 | PATCH | `/api/v1/sellers/me` | Bearer | `200`; `400`/`401`/`404`/`409`/`429`/`503` | Edición del propio perfil con control de concurrencia por `version`. |
 | GET | `/openapi/v1.json` | Público | `200` documento OpenAPI (todos los entornos, antes solo Development) | Sin servicios externos. No es ficha funcional. |
 | GET | `/openapi` | Público | `200` HTML con Swagger UI de solo lectura (`tryItOut` deshabilitado) | CDN de Swagger UI; documentación para el equipo móvil (`docs/mobile-integration.md`). |
-| GET | `/api/v1/categories` | Público | `200` (`items`, `page`, `pageSize`, `total`); `400`/`429`/`503` | Atlas (`categories`, dueño Catalog) + rate limit en Redis. Catálogo sembrado solo con `CATALOG_SEED_ENABLED=true`. |
+| GET | `/api/v1/categories` | Público | `200` (`items`, `page`, `pageSize`, `total`); `400`/`429`/`503` | Atlas (`categories`, dueño Catalog) + rate limit en Redis. **Sembradas en la instancia el 2026-11-16** (`CATALOG_SEED_ENABLED=true`, upsert idempotente por `normalizedName`): `Comida Preparada`, `Bebidas`, `Snacks`. |
 | GET | `/api/v1/products` | Público | `200` (`items`, `page`, `pageSize`, `total`); `400`/`429`/`503` | Atlas (`products`, dueño Catalog) + filtros `search`/`categoryId`/`minPrice`/`maxPrice`/`rating` + rate limit en Redis. |
 | GET | `/api/v1/products/{productId}` | Público | `200`; `400`/`404`/`429`/`503` | Atlas (`products`); solo productos del vendedor en estado `Active` con categoría activa. |
 | POST | `/api/v1/products` | Bearer + rol `Seller` | `201`; `400`/`401`/`403`/`404`/`409`/`429`/`503` | Atlas (`products` + `categories`) + rate limit en Redis. El precio y el stock los fija el vendedor; el cliente no puede elegir vendedor ni estado. |
@@ -120,10 +120,11 @@ Evidencia de la Fase 1 de pedidos (2026-11-16, rama `feature/orders-phase1-p1`):
 | `docs/constitution.md` | **v2.6**: nube AWS (DEC‑018), DEC‑019 (retirada de API‑016, identidad del vendedor, ficha `GET /api/v1/sellers/me`, alcance del Sprint 1) y DEC‑020/021 (cierre de exposición de la EC2, CD por SSM, Budget con alerta, CORS estricto y logs en CloudWatch Logs). |
 | `AGENTS.md` | Manual operativo SDD **v2.6**, alineado con la constitución y con la sonda `/health`. |
 | `memoria.md` | Registro vivo de decisiones, dependencias, mapa de colecciones y estado de fases. |
-| `docs/traceability.md` | Matriz de las 42 fichas + fichas nuevas, con el estado real de cada ruta y la evidencia de despliegue. |
+| `docs/traceability.md` | Matriz de las 42 fichas + fichas nuevas, con el estado real de cada ruta y la evidencia de despliegue. Incluye el bloque «Contrato publicado para el equipo móvil» (guía, OpenAPI con `servers` HTTPS y esquemas explícitos, seeding de categorías en la EC2). |
 | `docs/academic-requirements-phase-02.md`, `docs/decisiones-pendientes-fase-02.md` | Matriz académica y decisiones técnicas pendientes de la fase 02 (OTP, refresh, SemVer). |
 | `docs/qa-api-*.md` | Evidencia de QA local con dobles de API‑001/002/004/006/007/008/039. |
 | `docs/mobile-integration.md` | Guía para el equipo móvil: base HTTPS (`3.129.142.54.nip.io`), OpenAPI/Swagger, JSON real de login y flujo de 3 pasos de verificación de correo antes del login. |
+| `docs/guia-integracion-movil.md` | **Contrato único para el equipo móvil (2026-11-16)**: JSON reales de autenticación, vendedores, catálogo (API-011..015/019) y pedidos (API-023..025), contrato de error, rate limits por ruta, flujo mínimo de integración y límites conocidos (sin imágenes, sin logout/refresh, ratings `null`, sin filtro `sellerId`, sin DELETE). |
 | `specs/phase-02-auth-users/*` | Identidad, usuarios y vendedores: contratos y tareas con gates documentales abiertos (TASK‑AUTH‑002/003/007/008). |
 | `specs/phase-03-catalog-offers/*` | **v2.1 aprobada para el Sprint 1 (vendedor)** por DEC‑019; el Sprint 2 (catálogo y categorías) está implementado (API‑011..015/019) y sus fichas atómicas siguen PENDIENTE de conciliación. |
 | `specs/phase-04-orders-cash/*` | **v0.2**: Fase 1 (API‑023/024/025) aprobada por el propietario e implementada el 2026-11-16; API‑026..029 (cancelación, transiciones, token y confirmación de entrega) siguen en borrador para la Fase 2. |
