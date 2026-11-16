@@ -162,17 +162,31 @@ jobs:
           echo "$HOME/.dotnet/tools" >> $GITHUB_PATH
       - name: Run Stryker mutation testing
         working-directory: src/UTTTGO.Api
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
         run: |
           set -euo pipefail
-          # Only the code changed against the base is mutated; on a push to main the
-          # base is the previous commit of main so the diff is never empty.
-          if [ "$GITHUB_REF" = "refs/heads/main" ]; then
-            base="origin/main~1"
-          else
-            base="origin/main"
+          # Stryker only accepts a plain branch, tag or commit as diff target, so the
+          # base is resolved with git and always passed as a commit sha.
+          git fetch --no-tags --quiet --prune origin '+refs/heads/*:refs/remotes/origin/*' || true
+          base=""
+          for candidate in "$PR_BASE_SHA" "$PUSH_BEFORE_SHA" "HEAD^" "origin/main"; do
+            [ -n "$candidate" ] || continue
+            resolved=$(git rev-parse --verify --quiet "$candidate" 2>/dev/null || true)
+            if [ -n "$resolved" ] && git cat-file -e "${resolved}^{commit}" 2>/dev/null; then
+              base="$resolved"
+              break
+            fi
+          done
+          if [ -z "$base" ]; then
+            base=$(git merge-base origin/main HEAD || true)
           fi
-          git fetch --no-tags --quiet origin main || true
-          git rev-parse --verify "$base"
+          if [ -z "$base" ]; then
+            echo "::error::No se pudo resolver la base de comparacion para la mutacion." >&2
+            exit 1
+          fi
+          echo "Base de mutacion: $base"
           dotnet stryker -p UTTTGO.Api.csproj --since:"$base" --concurrency 4 \
             --mutation-level Standard --test-case-filter "Category!=E2E" \
             -f ../../stryker-config.json --output ../../StrykerOutput
