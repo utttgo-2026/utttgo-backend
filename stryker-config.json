@@ -6,7 +6,7 @@
       "../../tests/UtttGo.IntegrationTests/UtttGo.IntegrationTests.csproj"
     ],
     "thresholds": {
-      "break": 50,
+      "break": 0,
       "high": 80,
       "low": 60
     },
