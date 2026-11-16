@@ -63,7 +63,7 @@ pull_request → main  |  push → feature/**, main
 |---|---|---|---|---|
 | `backend` | .NET SDK 10 + Gitleaks 8.30.1 (ya pineado) | 45 min | Sí (ya) | `ci-evidence/*` (existente) |
 | `sast` | `semgrep/semgrep:1.183.0@sha256:2e45517a…` (ya usado en repo) + `.semgrep/ci-1.yaml` + `p/csharp` | 15 min | Sí (Fase A) | `semgrep-summary.json`, conteo de hallazgos ERROR nuevos |
-| `mutation` | `dotnet-stryker` (versión a verificar con .NET 10, § 10) | 60 min | Sí (Fase A/B, § 5.3) | `mutation-summary.json` con score |
+| `mutation` | `dotnet-stryker` 5.1.0 (verificada con .NET 10, § 10) | 20 min | Sí (Fase A/B, § 5.3) | `mutation-summary.json` con score |
 | `container` | `docker build` + `goodwithtech/dockle:<ver>@sha256:<digest>` | 30 min | Sí (nivel error) | `dockle-report.json` + imagen `utttgo/api:ci-<sha>` |
 | `dast` | `ghcr.io/zaproxy/zaproxy:<ver>@sha256:<digest>` | 30 min | Sí (WARN+ y salud) | reporte ZAP (JSON/HTML) + logs acotados |
 | `fuzz` | `microsoft/restler:<ver>@sha256:<digest>` | 30 min | Sí (buckets 5xx y ejecución) | `stats.json` + `bug_buckets` |
@@ -83,9 +83,10 @@ Todos los jobs: `runs-on: ubuntu-24.04`, sin secretos de nube, `permissions` her
 
 ### 5.1 `mutation` — Stryker.NET
 
-- **Objetivo:** medir qué proporción de mutantes sobreviven a `tests/UtttGo.UnitTests` (las suites de integración/seguridad quedan fuera de mutación en esta fase).
+- **Objetivo:** medir qué proporción de mutantes sobreviven a las pruebas unitarias y de integración; las pruebas E2E con contenedores quedan fuera de la mutación (`--test-case-filter "Category!=E2E"`) porque requieren Docker y multiplican el tiempo por mutante.
 - **Paralelismo:** job propio con checkout + `setup-dotnet` + restore propio; **no** depende de `backend` (pedido explícito: correr en paralelo al build normal).
-- **Configuración en repo:** `stryker.json` a definir en `plan.md` (proyecto de tests, mutadores estándar, `concurrency` según cores del runner, reporte JSON).
+- **Configuración en repo:** `stryker-config.json` (nombre y objeto raíz `stryker-config` que exige Stryker 5.x; las rutas son relativas al directorio del proyecto mutado). El job corre en `src/UTTTGO.Api` para evitar el modo solución, que no admite `test-projects`.
+- **Alcance de la mutación:** solo el código cambiado contra la base (`--since:origin/main` en PR y ramas; `origin/main~1` en pushes a `main`), con `--concurrency 4` (cores del runner), `--mutation-level Standard` y umbral `break: 50`. Mutar todo el proyecto (2.504 mutantes, 549 tests) superaba la hora; mutar el diff con 439 tests baja a ~1.044 mutantes y ~12,5 min.
 - **Política de fallo por fases:**
   - **Fase A (primeros runs tras implementar):** el job es obligatorio; **bloquea** si la herramienta falla o si `score < 50%` (piso provisional de supervivencia; el número concreto es decisión abierta § 11). El score real se publica en el Hardening Report.
   - **Fase B (ratchet):** tras el propietario revisa los primeros scores, fija umbral = floor más alto que sostengan los runs verdes (reducción de mutantes sobrevivientes tolerados). Cambio de umbral = edición de este spec.
@@ -159,7 +160,7 @@ Todos los jobs: `runs-on: ubuntu-24.04`, sin secretos de nube, `permissions` her
 ## 9. Activación, enmiendas y conciliación (al aprobar)
 
 1. Aprobación de este spec por el propietario ⇒ ratificación formal de SAST bloqueante (DV-R02) y de Stryker/fuzzing (DV-R04).
-2. Crear `plan.md` y `task.md` de esta carpeta y solo entonces modificar `.github/workflows/ci-1.yml`, añadir `.semgrep` ampliado, `stryker.json`, `docker-compose.ci.yml` y scripts de resumen.
+2. Crear `plan.md` y `task.md` de esta carpeta y solo entonces modificar `.github/workflows/ci-1.yml`, añadir `.semgrep` ampliado, `stryker-config.json`, `docker-compose.ci.yml` y scripts de resumen.
 3. **Enmienda de `AGENTS.md`** (en el PR de implementación): § 1.4 orden nuevo del pipeline (`… secret scan → SAST → mutation → container → dast → fuzz → quality gate → terraform (si aplica)`) y § 10.5 quitando Stryker/fuzzing de la lista de descartados (añadiendo el resto de descartes confirmados: Pact, NBomber, ChaosTest, SonarCloud, Trivy por ahora).
 4. **Branch protection:** añadir `quality-gate` como required check (conservar `backend`); acción manual del propietario en GitHub.
 5. **Conciliar `specs/cross-cutting/ci-cd-devsecops/spec.md`**: marcar como superados sus párrafos de «SAST piloto informativo» y «Stryker fuera de alcance», sin tocar sus requisitos de CI-1/CI-2/CD-1 no relacionados.

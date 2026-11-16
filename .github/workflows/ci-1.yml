@@ -146,22 +146,36 @@ jobs:
 
   mutation:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          fetch-depth: 0
           persist-credentials: false
       - name: Set up .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
           dotnet-version: '10.0.x'
-          # TambiÃ©n instalaremos el runtime .NET 8.0 para Stryker si es necesario
       - name: Install Stryker globally
         run: |
           dotnet tool install --global dotnet-stryker --version 5.1.0
           echo "$HOME/.dotnet/tools" >> $GITHUB_PATH
       - name: Run Stryker mutation testing
-        run: dotnet stryker
+        working-directory: src/UTTTGO.Api
+        run: |
+          set -euo pipefail
+          # Only the code changed against the base is mutated; on a push to main the
+          # base is the previous commit of main so the diff is never empty.
+          if [ "$GITHUB_REF" = "refs/heads/main" ]; then
+            base="origin/main~1"
+          else
+            base="origin/main"
+          fi
+          git fetch --no-tags --quiet origin main || true
+          git rev-parse --verify "$base"
+          dotnet stryker -p UTTTGO.Api.csproj --since:"$base" --concurrency 4 \
+            --mutation-level Standard --test-case-filter "Category!=E2E" \
+            -f ../../stryker-config.json --output ../../StrykerOutput
       - name: Publish mutation summary
         if: always()
         run: python3 scripts/ci/devsecops.py mutation --threshold 50

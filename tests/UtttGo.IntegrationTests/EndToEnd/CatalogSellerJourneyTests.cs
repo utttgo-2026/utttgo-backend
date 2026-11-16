@@ -11,6 +11,7 @@ using Xunit;
 
 namespace UtttGo.IntegrationTests.EndToEnd;
 
+[Trait("Category", "E2E")]
 public sealed class CatalogSellerJourneyTests : IAsyncLifetime
 {
     private const string Password = "E2E-only-password";
