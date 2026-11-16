@@ -17,6 +17,7 @@ public enum CreateProductOutcome
     AccountNotActive,
     NotSeller,
     CategoryNotFound,
+    ImageNotAvailable,
     RateLimited,
     Unavailable
 }
@@ -48,6 +49,11 @@ public sealed class CreateProductService(IAuthenticatedLocalProfileReader profil
 
             if (!await rateLimit.IsAllowedForWriteAsync(profile.SellerId, cancellationToken))
                 return new(CreateProductOutcome.RateLimited);
+
+            // Fail-closed on images: Media does not exist yet, so no URL can be presigned by the
+            // backend nor moderated by Azure AI Content Safety (BR-007, DEC-019.f, RF-V11).
+            if (!string.IsNullOrWhiteSpace(request.ImageUrl))
+                return new(CreateProductOutcome.ImageNotAvailable);
 
             var category = await categories.FindByIdAsync(request.CategoryId!, cancellationToken);
             if (category is null || !category.IsActive)

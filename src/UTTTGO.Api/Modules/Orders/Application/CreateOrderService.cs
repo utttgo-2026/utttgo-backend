@@ -74,10 +74,11 @@ public sealed class CreateOrderService(IAuthenticatedLocalProfileReader profiles
                 return new(CreateOrderOutcome.ProductNotAvailable);
 
             var now = DateTime.UtcNow;
+            var notes = string.IsNullOrWhiteSpace(request.Notes) ? null : request.Notes.Trim();
             var record = new OrderRecord(string.Empty, profile.Id, product.SellerId, product.ProductId,
                 product.Name, quantity, product.UnitPrice, product.UnitPrice * quantity, OrderStatus.CurrencyMxn,
                 OrderStatus.PaymentMethodCash, OrderStatus.Pending, reservationId, seller.PickupPoint,
-                null, null, 0, key, now, now);
+                null, null, 0, key, now, now, notes);
 
             OrderRecord created;
             try
@@ -122,5 +123,5 @@ public sealed class CreateOrderService(IAuthenticatedLocalProfileReader profiles
         new(order.OrderId, order.ProductId, order.ProductName, order.SellerId, order.BuyerUserId,
             order.Quantity, order.UnitPrice, order.Total, order.Currency, order.PaymentMethod, order.Status,
             order.PickupPoint, order.DeliveredAt, order.CompletedAt, order.CreatedAt, order.UpdatedAt,
-            order.Version);
+            order.Version, order.Notes);
 }

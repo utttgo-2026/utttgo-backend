@@ -181,7 +181,7 @@ public sealed class CatalogSellerJourneyTests : IAsyncLifetime
 
         using var availability = await host.Client.PatchAsync(
             $"/api/v1/products/{productId}/availability",
-            JsonContent.Create(new { availability = "Paused" }));
+            JsonContent.Create(new { status = "Paused" }));
 
         availability.StatusCode.Should().Be(HttpStatusCode.OK);
         using var availabilityDocument = JsonDocument.Parse(await availability.Content.ReadAsStringAsync());

@@ -35,6 +35,28 @@ public sealed class CatalogWriteServiceTests
     }
 
     [Fact]
+    public async Task AProductWithAnImageUrlIsRejectedBecauseMediaDoesNotExistYet()
+    {
+        var products = new CatalogProductRepository();
+        var request = new CreateProductRequest
+        {
+            Name = ValidRequest.Name,
+            Description = ValidRequest.Description,
+            Ingredients = ValidRequest.Ingredients,
+            CategoryId = ValidRequest.CategoryId,
+            Price = ValidRequest.Price,
+            Stock = ValidRequest.Stock,
+            ImageUrl = "https://example.test/photo.jpg"
+        };
+
+        var result = await CreateService(SellerProfile(), products, ActiveCategories())
+            .CreateAsync("token", request, default);
+
+        result.Outcome.Should().Be(CreateProductOutcome.ImageNotAvailable);
+        products.CreateCalls.Should().Be(0);
+    }
+
+    [Fact]
     public async Task BuyerCannotPublishProducts()
     {
         var profiles = new AuthenticatedProfileDouble { Profile = SellerFixtures.Buyer("Active") };
@@ -159,7 +181,7 @@ public sealed class CatalogWriteServiceTests
     {
         var products = new CatalogProductRepository();
         products.Products[CatalogFixtures.ProductId] = CatalogFixtures.Product();
-        var request = new UpdateProductAvailabilityRequest { Availability = "Paused" };
+        var request = new UpdateProductAvailabilityRequest { Status = "Paused" };
 
         var result = await AvailabilityService(SellerProfile(), products, ActiveCategories())
             .UpdateAsync("token", CatalogFixtures.ProductId, request, default);
@@ -175,7 +197,7 @@ public sealed class CatalogWriteServiceTests
     {
         var products = new CatalogProductRepository { ForceTampered = true };
         products.Products[CatalogFixtures.ProductId] = CatalogFixtures.Product();
-        var request = new UpdateProductAvailabilityRequest { Availability = "Paused" };
+        var request = new UpdateProductAvailabilityRequest { Status = "Paused" };
 
         var result = await AvailabilityService(SellerProfile(), products, ActiveCategories())
             .UpdateAsync("token", CatalogFixtures.ProductId, request, default);
@@ -187,7 +209,7 @@ public sealed class CatalogWriteServiceTests
     public async Task BuyerCannotChangeAvailability()
     {
         var profiles = new AuthenticatedProfileDouble { Profile = SellerFixtures.Buyer("Active") };
-        var request = new UpdateProductAvailabilityRequest { Availability = "Paused" };
+        var request = new UpdateProductAvailabilityRequest { Status = "Paused" };
 
         var result = await AvailabilityService(profiles, new CatalogProductRepository(), ActiveCategories())
             .UpdateAsync("token", CatalogFixtures.ProductId, request, default);

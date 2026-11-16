@@ -11,6 +11,9 @@ public sealed class CreateOrderRequest
 
     public int? Quantity { get; init; }
 
+    // Optional note from the buyer for the seller (maximum 250 characters).
+    public string? Notes { get; init; }
+
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? UnknownFields { get; init; }
 }

@@ -1,6 +1,6 @@
 # Guía de integración móvil · UTTT-GO Backend
 
-> Versión 1.0 · 2026-11-16 · Contrato vigente de la API pública desplegada.
+> Versión 1.1 · 2026-11-16 · Contrato vigente de la API pública desplegada.
 > Fuente canónica: `docs/constitution.md` y `docs/traceability.md`; el documento OpenAPI vivo es `GET /openapi/v1.json` y la consola de lectura es `GET /openapi`.
 
 ## 1. Entorno y transporte
@@ -207,11 +207,14 @@ Mismo objeto `ProductResponse`. `404 PRODUCT_NOT_FOUND` si el producto no existe
   "ingredients": ["Piña", "Cilantro"],
   "categoryId": "6afb4bf7b74aeb07483052d1",
   "price": 55.50,
-  "stock": 10
+  "stock": 10,
+  "imageUrl": null
 }
 ```
 
-El cliente **no** envía `sellerId`, `status`, `version` ni `categoryName`: el backend los deduce (el vendedor del token, la categoría enviada). Errores: `400 VALIDATION_ERROR`, `401`, `403 SELLER_ROLE_REQUIRED` / `SELLER_ACCOUNT_NOT_ACTIVE`, `404 CATEGORY_NOT_FOUND`, `429`, `503`.
+El cliente **no** envía `sellerId`, `status`, `version` ni `categoryName`: el backend los deduce (el vendedor del token, la categoría enviada). Errores: `400 VALIDATION_ERROR`, `401`, `403 SELLER_ROLE_REQUIRED` / `SELLER_ACCOUNT_NOT_ACTIVE`, `404 CATEGORY_NOT_FOUND`, `422 IMAGE_NOT_AVAILABLE`, `429`, `503`.
+
+`imageUrl` es **opcional** y puede omitirse o enviarse en `null`. Mientras no exista el módulo Media (S3 presigned + moderación con Azure AI Content Safety, fase 05), el backend **no almacena** ninguna imagen: si llega con valor no vacío responde `422 IMAGE_NOT_AVAILABLE` y el producto se publica sin foto. La app móvil debe enviarlo en `null` u omitirlo.
 
 ### 4.5 `PATCH /api/v1/products/{productId}` → `200` (Bearer, dueño)
 
@@ -236,8 +239,10 @@ Compra directa e individual: **no hay carrito** y **no hay pasarela de pago**. E
 ### 5.1 `POST /api/v1/orders` → `201` (Bearer, cuenta `Active`)
 
 ```json
-{ "productId": "6afb4c1a8b3f2a0012ab34d0", "quantity": 2 }
+{ "productId": "6afb4c1a8b3f2a0012ab34d0", "quantity": 2, "notes": "Sin cebolla, por favor" }
 ```
+
+`notes` es **opcional**: una nota del comprador para el vendedor, máximo **250 caracteres** (se recorta al trimear; vacía o ausente se guarda como `null`).
 
 Cabecera opcional de idempotencia (recomendada para reintentos de red): un UUID v4 **único por intento de compra**, que el móvil genera y conserva entre reintentos de la misma operación.
 
@@ -263,13 +268,14 @@ Idempotency-Key: <uuid-v4-unico-por-intento>
   "completedAt": null,
   "createdAt": "2026-11-16T18:00:00Z",
   "updatedAt": "2026-11-16T18:00:00Z",
-  "version": 0
+  "version": 0,
+  "notes": "Sin cebolla, por favor"
 }
 ```
 
 Reglas que la app móvil debe respetar:
 
-- El cuerpo acepta **solo** `productId` y `quantity`. Enviar `price`, `total`, `sellerId`, `buyerUserId`, `status`, `paymentMethod`, `currency`, `version` o `roles` → `400 VALIDATION_ERROR`.
+- El cuerpo acepta **solo** `productId`, `quantity` y `notes`. Enviar `price`, `total`, `sellerId`, `buyerUserId`, `status`, `paymentMethod`, `currency`, `version` o `roles` → `400 VALIDATION_ERROR`.
 - El **total lo calcula el servidor** (`unitPrice` vigente × `quantity`); el cliente nunca decide el precio.
 - La compra **reserva stock** de forma atómica: si no hay existencias suficientes → `400 INSUFFICIENT_STOCK` y no se crea el pedido.
 - `quantity` entre 1 y 50; `productId` con 24 hex.
@@ -294,7 +300,8 @@ Parámetros: `page` (≥1), `pageSize` (1..50), `status` (opcional).
       "currency": "MXN",
       "status": "Pending",
       "role": "buyer",
-      "createdAt": "2026-11-16T18:00:00Z"
+      "createdAt": "2026-11-16T18:00:00Z",
+      "notes": "Sin cebolla, por favor"
     }
   ],
   "page": 1,
@@ -320,7 +327,7 @@ Devuelve el mismo objeto de `POST /orders`. Solo lo leen el comprador o el vende
 }
 ```
 
-Códigos en uso: `VALIDATION_ERROR`, `UNAUTHORIZED`, `INVALID_CREDENTIALS`, `INSTITUTIONAL_EMAIL_REQUIRED`, `PROFILE_NOT_FOUND`, `ACCOUNT_NOT_ACTIVE`, `SELLER_ROLE_REQUIRED`, `SELLER_ACCOUNT_NOT_ACTIVE`, `SELLER_CONFLICT`, `SELLER_PROFILE_NOT_FOUND`, `PRODUCT_NOT_FOUND`, `CATEGORY_NOT_FOUND`, `INVALID_PRODUCT_ID`, `PRODUCT_CONFLICT`, `ORDER_NOT_FOUND`, `INSUFFICIENT_STOCK`, `PRODUCT_NOT_AVAILABLE`, `RATE_LIMITED`, `AUTH_UNAVAILABLE`, `CATALOG_UNAVAILABLE`, `ORDER_UNAVAILABLE`, `SELLER_UNAVAILABLE`.
+Códigos en uso: `VALIDATION_ERROR`, `UNAUTHORIZED`, `INVALID_CREDENTIALS`, `INSTITUTIONAL_EMAIL_REQUIRED`, `PROFILE_NOT_FOUND`, `ACCOUNT_NOT_ACTIVE`, `SELLER_ROLE_REQUIRED`, `SELLER_ACCOUNT_NOT_ACTIVE`, `SELLER_CONFLICT`, `SELLER_PROFILE_NOT_FOUND`, `PRODUCT_NOT_FOUND`, `CATEGORY_NOT_FOUND`, `INVALID_PRODUCT_ID`, `PRODUCT_CONFLICT`, `ORDER_NOT_FOUND`, `INSUFFICIENT_STOCK`, `PRODUCT_NOT_AVAILABLE`, `IMAGE_NOT_AVAILABLE`, `RATE_LIMITED`, `AUTH_UNAVAILABLE`, `CATALOG_UNAVAILABLE`, `ORDER_UNAVAILABLE`, `SELLER_UNAVAILABLE`.
 
 ## 7. Flujo mínimo de integración
 
@@ -332,7 +339,7 @@ Códigos en uso: `VALIDATION_ERROR`, `UNAUTHORIZED`, `INVALID_CREDENTIALS`, `INS
 
 ## 8. Límites conocidos (no confundir con fallos)
 
-- **Sin imágenes**: no existe Media/S3 presigned; `avatarUrl` es `null` y los productos no tienen imágenes.
+- **Sin imágenes**: no existe Media/S3 presigned; `avatarUrl` es `null`, los productos no tienen imágenes y `POST /products` con `imageUrl` con valor responde `422 IMAGE_NOT_AVAILABLE`.
 - **Sin logout ni refresh token**: el access token expira a la hora; hay que volver a iniciar sesión.
 - **Sin reseñas**: `ratingAverage` y `ratingCount` son `null` en productos y vendedores.
 - **Sin "mis productos" ni filtro `sellerId`**: el catálogo no permite filtrar por vendedor; está decidido para la siguiente iteración (el índice `sellerId_status` ya existe).

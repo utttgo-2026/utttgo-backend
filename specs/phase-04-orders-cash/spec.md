@@ -19,6 +19,7 @@ Desviaciones respecto de v0.1, fijadas por instrucción del propietario:
 | D-ORD-11 (nueva) | Stock insuficiente → `409 INSUFFICIENT_STOCK` | **`400 INSUFFICIENT_STOCK`** | Instrucción explícita del propietario (2026-11-16) para el consumo desde el móvil; el código de error conserva el significado semántico. |
 | D-ORD-12 (nueva) | `Published` como estado del producto | El producto publicable es el que está `Active` con categoría activa (contrato ya implementado por Catalog en el Sprint 2) | El vocabulario `Published` no existe en el catálogo vigente; no se introduce un estado nuevo. |
 | D-ORD-13 (nueva) | Replay de `Idempotency-Key` sin código definido | El replay devuelve **`200`** con el pedido ya creado (mismo `orderId`), sin reservar stock otra vez | Reproducir `201` ocultaría que el recurso ya existía. |
+| D-ORD-14 (nueva) | `CreateOrderRequest` sin nota del comprador | `POST /api/v1/orders` acepta **`notes` opcional** (string, máximo 250 caracteres tras recortar); se persiste en `orders.notes` y se devuelve en `OrderResponse` y `OrderSummaryResponse` (`null` si no se envió) | Solicitud explícita del propietario (2026-11-16) para el consumo desde el móvil: la nota viaja en el cuerpo de la orden y no en un canal aparte (BR-009: el cliente no decide precio, total ni estado). |
 
 Decisiones de v0.1 aplicadas en la Fase 1: **D-ORD-01** (snapshot de `unitPrice`/`total` al crear), **D-ORD-02** (reserva de stock por `reservationId` con liberación compensatoria, sin transacción cross-module), **D-ORD-04** (`Idempotency-Key` opcional con índice único parcial), **D-ORD-05** (sin filtro `role`: `/orders/mine` es solo del comprador), **D-ORD-06** (campo `version` presente; las transiciones CAS llegan en la Fase 2) y **D-ORD-08** (`completedAt` presente y `null` hasta un estado terminal).
 
@@ -127,9 +128,12 @@ Crea un pedido directo (BR-001/BR-002).
 ```json
 {
   "productId": "665f1c2e8b3f2a0012ab34cd",
-  "quantity": 2
+  "quantity": 2,
+  "notes": "Sin cebolla, por favor"
 }
 ```
+
+- **`notes` (opcional):** nota del comprador para el vendedor, máximo 250 caracteres tras recortar (D-ORD-14). Vacía o ausente se persiste como `null`. Más de 250 caracteres → `400 VALIDATION_ERROR`.
 
 - **Header opcional:** `Idempotency-Key: <uuid>` (D-ORD-04).
 - **Campos prohibidos (ignorados o `400`):** `price`, `unitPrice`, `total`, `sellerId`, `status`, `paymentMethod`, `currency`.
@@ -150,7 +154,8 @@ Crea un pedido directo (BR-001/BR-002).
   "currency": "MXN",
   "paymentMethod": "Cash",
   "status": "Pending",
-  "createdAt": "2026-11-11T18:00:00Z"
+  "createdAt": "2026-11-11T18:00:00Z",
+  "notes": "Sin cebolla, por favor"
 }
 ```
 
@@ -334,6 +339,7 @@ Propiedad de colecciones (matriz en `memoria.md`): `orders`, `orderAuditLogs` pe
 | `deliveredAt` | `DateTime?` UTC | en `Delivered` |
 | `completedAt` | `DateTime?` UTC | en estados terminales (D-ORD-08) |
 | `version` | `long` | CAS (D-ORD-06) |
+| `notes` | `string?` | nota del comprador para el vendedor, ≤250 caracteres (D-ORD-14) |
 | `createdAt` / `updatedAt` | `DateTime` UTC | |
 
 **Índices:**

@@ -133,10 +133,10 @@ public sealed class CatalogValidatorTests
     public void AvailabilityAcceptsOnlyPublicationStates()
     {
         var validator = new UpdateProductAvailabilityRequestValidator();
-        validator.Validate(new UpdateProductAvailabilityRequest { Availability = "Paused" }).IsValid.Should().BeTrue();
-        validator.Validate(new UpdateProductAvailabilityRequest { Availability = "Active" }).IsValid.Should().BeTrue();
-        validator.Validate(new UpdateProductAvailabilityRequest { Availability = "SoldOut" }).IsValid.Should().BeFalse();
-        validator.Validate(new UpdateProductAvailabilityRequest { Availability = null }).IsValid.Should().BeFalse();
+        validator.Validate(new UpdateProductAvailabilityRequest { Status = "Paused" }).IsValid.Should().BeTrue();
+        validator.Validate(new UpdateProductAvailabilityRequest { Status = "Active" }).IsValid.Should().BeTrue();
+        validator.Validate(new UpdateProductAvailabilityRequest { Status = "SoldOut" }).IsValid.Should().BeFalse();
+        validator.Validate(new UpdateProductAvailabilityRequest { Status = null }).IsValid.Should().BeFalse();
     }
 
     [Theory]

@@ -31,6 +31,7 @@ public sealed class MongoOrderRepository(MongoStore store) : IOrderRepository
             CompletedAt = order.CompletedAt,
             Version = order.Version,
             IdempotencyKey = order.IdempotencyKey,
+            Notes = order.Notes,
             CreatedAt = order.CreatedAt,
             UpdatedAt = order.UpdatedAt
         };
@@ -83,5 +84,5 @@ public sealed class MongoOrderRepository(MongoStore store) : IOrderRepository
         new(order.Id.ToString(), order.BuyerUserId, order.SellerId, order.ProductId, order.ProductName,
             order.Quantity, order.UnitPrice, order.Total, order.Currency, order.PaymentMethod, order.Status,
             order.ReservationId, order.PickupPoint, order.DeliveredAt, order.CompletedAt, order.Version,
-            order.IdempotencyKey, order.CreatedAt, order.UpdatedAt);
+            order.IdempotencyKey, order.CreatedAt, order.UpdatedAt, order.Notes);
 }
