@@ -128,7 +128,7 @@ public sealed class OrderQueryServiceTests
             new AuthenticatedProfileDouble { Profile = SellerFixtures.Buyer() },
             new OrdersRateLimitGate(), new OrdersRepository());
 
-        var result = await service.GetAsync("token", "665f1d408b3f2a0012ab34ce", CancellationToken.None);
+        var result = await service.GetAsync("token", OrderFixtures.UnknownOrderId, CancellationToken.None);
 
         result.Outcome.Should().Be(GetOrderOutcome.NotFound);
     }

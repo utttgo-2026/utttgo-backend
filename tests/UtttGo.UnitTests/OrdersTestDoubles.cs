@@ -140,6 +140,7 @@ internal static class OrderFixtures
     public const string SellerId = "665f1a108b3f2a0012ab34c1";
     public const string BuyerUserId = SellerFixtures.UserId;
     public const string OrderId = "665f1d408b3f2a0012ab34ce";
+    public const string UnknownOrderId = "665f1d408b3f2a0012ab34cf";
 
     public static CatalogOrderProduct Product(bool published = true, decimal price = 85.50m, int stock = 5) =>
         new(ProductId, SellerId, "Quesadillas de huitlacoche (6 pza)", price, stock, published);
