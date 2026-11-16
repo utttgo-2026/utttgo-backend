@@ -70,24 +70,100 @@ def cmd_semgrep(args):
     print(json.dumps(out, indent=2))
 
 
-def cmd_mutation(args):
-    evidence = _read_evidence("mutation")
-    score = evidence.get("score", 0)
-    total = evidence.get("total_mutants", 0)
-    killed = evidence.get("killed", 0)
-    threshold = getattr(args, "threshold", 50)
-    over = score < threshold
-    out = {
-        "score": score,
+def _latest_stryker_report() -> dict:
+    """Locate the JSON report produced by the Stryker JSON reporter."""
+    candidates = list(Path(".").glob("StrykerOutput/**/mutation-report.json"))
+    candidates += list(Path(".").glob("**/mutation-report.json"))
+    if not candidates:
+        return {}
+    newest = max(candidates, key=lambda path: path.stat().st_mtime)
+    try:
+        return json.loads(newest.read_text(encoding="utf-8"))
+    except Exception as e:
+        print(f"ERROR reading {newest}: {e}", file=sys.stderr)
+        return {}
+
+
+def _stryker_metrics(report: dict) -> dict:
+    """Compute the same score that Stryker prints: killed over the non skipped mutants."""
+    counts = {}
+    for info in report.get("files", {}).values():
+        for mutant in info.get("mutants", []):
+            status = mutant.get("status", "Unknown")
+            counts[status] = counts.get(status, 0) + 1
+
+    total = sum(counts.values())
+    killed = counts.get("Killed", 0)
+    survived = counts.get("Survived", 0)
+    timeout = counts.get("Timeout", 0)
+    ignored = counts.get("Ignored", 0)
+    compile_error = counts.get("CompileError", 0)
+    no_coverage = counts.get("NoCoverage", 0)
+    denominator = total - ignored - compile_error
+    covered = killed + survived + timeout
+    return {
         "total_mutants": total,
         "killed": killed,
+        "survived": survived,
+        "timeout": timeout,
+        "ignored": ignored,
+        "compile_errors": compile_error,
+        "no_coverage": no_coverage,
+        "score": round(killed / denominator * 100, 2) if denominator > 0 else 0.0,
+        "covered_score": round(killed / covered * 100, 2) if covered > 0 else 0.0,
+    }
+
+
+def cmd_mutation(args):
+    report = _latest_stryker_report()
+    threshold = getattr(args, "threshold", 50)
+    if report:
+        metrics = _stryker_metrics(report)
+        # In diff mode the gate applies to the score of the mutated code: the score of
+        # the whole project mixes untouched code and is not comparable between runs.
+        score = metrics["covered_score"]
+        project_score = metrics["score"]
+        over = score < threshold
+    else:
+        metrics = {
+            "total_mutants": 0,
+            "killed": 0,
+            "survived": 0,
+            "timeout": 0,
+            "ignored": 0,
+            "compile_errors": 0,
+            "no_coverage": 0,
+            "score": 0,
+            "covered_score": 0,
+        }
+        score = 0
+        project_score = 0
+        over = False
+
+    out = {
+        "score": score,
+        "project_score": project_score,
+        "total_mutants": metrics["total_mutants"],
+        "killed": metrics["killed"],
+        "survived": metrics["survived"],
+        "timeout": metrics["timeout"],
+        "ignored": metrics["ignored"],
+        "compile_errors": metrics["compile_errors"],
+        "no_coverage": metrics["no_coverage"],
+        "covered_score": metrics["covered_score"],
         "threshold": threshold,
         "over_threshold": over,
+        "available": bool(report),
     }
     out_path = Path("ci-evidence/mutation-summary.json")
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(out, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(out, indent=2))
+    if over:
+        print(f"ERROR: mutation score of the changed code {score} is below {threshold}.",
+              file=sys.stderr)
+        return 1
+    return 0
 
 
 def cmd_dockle(args):
@@ -170,11 +246,18 @@ def cmd_report(args):
             rows.append(f"| {job} | Semgrep | {total} | {result} | ERROR nuevos={new_errors} | umbral: 0 nuevos ERROR | ci-evidence/semgrep-summary.json |")
         elif job == "mutation":
             score = data.get("score", 0)
+            project_score = data.get("project_score", 0)
             threshold = data.get("threshold", 50)
-            over = score < threshold
-            status = "bloqueante" if over else "informativo"
-            summary_parts.append(f"Stryker: score {score} (umbral {threshold}) → {status}")
-            rows.append(f"| {job} | Stryker | {score} | {result} | score={score} umbral={threshold} | umbral bloqueante={threshold} | ci-evidence/mutation-summary.json |")
+            available = data.get("available", True)
+            if not available:
+                status = "sin datos (informativo)"
+                summary_parts.append("Stryker: sin reporte disponible → informativo")
+            else:
+                over = score < threshold
+                status = "bloqueante" if over else "informativo"
+                summary_parts.append(
+                    f"Stryker: score del código mutado {score} (umbral {threshold}) → {status}")
+            rows.append(f"| {job} | Stryker | {score} | {result} | score código mutado={score} score proyecto={project_score} umbral={threshold} | umbral bloqueante={threshold} | ci-evidence/mutation-summary.json |")
         elif job == "container":
             errors = data.get("errors", 0)
             warns = data.get("warns", 0)
@@ -244,7 +327,9 @@ def main():
     p_report.set_defaults(func=cmd_report)
 
     args = parser.parse_args()
-    args.func(args)
+    result = args.func(args)
+    if isinstance(result, int) and result != 0:
+        raise SystemExit(result)
 
 
 if __name__ == "__main__":
