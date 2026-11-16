@@ -88,4 +88,75 @@ public sealed class OrderValidatorTests
         (await new OrderListQueryValidator().ValidateAsync(new OrderListQuery(1, 20, "Inventado")))
             .IsValid.Should().BeFalse();
     }
+
+    [Theory]
+    [InlineData(OrderStatus.Accepted)]
+    [InlineData(OrderStatus.InPreparation)]
+    [InlineData(OrderStatus.Ready)]
+    [InlineData(OrderStatus.Rejected)]
+    [InlineData(OrderStatus.Delivered)]
+    public async Task KnownStatusIsAcceptedInTheStatusRequest(string status)
+    {
+        (await new UpdateOrderStatusRequestValidator().ValidateAsync(new UpdateOrderStatusRequest
+        {
+            Status = status,
+            Version = 0
+        })).IsValid.Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("Inventado")]
+    public async Task UnknownStatusIsRejectedInTheStatusRequest(string? status)
+    {
+        (await new UpdateOrderStatusRequestValidator().ValidateAsync(new UpdateOrderStatusRequest
+        {
+            Status = status,
+            Version = 0
+        })).IsValid.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task TheStatusRequestNeedsAVersion()
+    {
+        (await new UpdateOrderStatusRequestValidator().ValidateAsync(new UpdateOrderStatusRequest
+        {
+            Status = OrderStatus.Accepted
+        })).IsValid.Should().BeFalse();
+        (await new UpdateOrderStatusRequestValidator().ValidateAsync(new UpdateOrderStatusRequest
+        {
+            Status = OrderStatus.Accepted,
+            Version = -1
+        })).IsValid.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task PrivilegedFieldsAreRejectedInTheStatusRequest()
+    {
+        var json = $$"""
+            { "status": "Accepted", "version": 0, "total": 10, "paymentMethod": "Card" }
+            """;
+        var request = System.Text.Json.JsonSerializer.Deserialize<UpdateOrderStatusRequest>(json,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web));
+
+        (await new UpdateOrderStatusRequestValidator().ValidateAsync(request!)).IsValid.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task TheDeliveryConfirmationAcceptsAMissingTokenAndRejectsUnknownFields()
+    {
+        (await new DeliveryConfirmationRequestValidator().ValidateAsync(new DeliveryConfirmationRequest()))
+            .IsValid.Should().BeTrue();
+        (await new DeliveryConfirmationRequestValidator().ValidateAsync(new DeliveryConfirmationRequest
+        {
+            Token = new string('a', 201)
+        })).IsValid.Should().BeFalse();
+
+        var json = """
+            { "token": "abc", "status": "Delivered" }
+            """;
+        var request = System.Text.Json.JsonSerializer.Deserialize<DeliveryConfirmationRequest>(json,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        (await new DeliveryConfirmationRequestValidator().ValidateAsync(request!)).IsValid.Should().BeFalse();
+    }
 }

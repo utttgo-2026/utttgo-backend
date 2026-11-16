@@ -9,12 +9,23 @@ public interface IOrderRepository
         CancellationToken cancellationToken);
     Task<OrderPage> ListForBuyerAsync(string buyerUserId, string? status, int page, int pageSize,
         CancellationToken cancellationToken);
+    Task<OrderRecord?> ApplyAsync(string orderId, string expectedStatus, long expectedVersion,
+        string? expectedDeliveryTokenHash, OrderMutation mutation, CancellationToken cancellationToken);
 }
+
+// Every write to an order goes through one compare-and-set: the stored status and the
+// stored version must match the ones the caller read, otherwise nothing is changed.
+public sealed record OrderMutation(string? NewStatus = null, DateTime? DeliveredAt = null,
+    DateTime? CompletedAt = null, string? DeliveryTokenHash = null,
+    DateTime? DeliveryTokenExpiresAt = null, DateTime? DeliveryTokenUsedAt = null,
+    bool ClearDeliveryTokenUsedAt = false);
 
 public sealed record OrderRecord(string OrderId, string BuyerUserId, string SellerId, string ProductId,
     string ProductName, int Quantity, decimal UnitPrice, decimal Total, string Currency, string PaymentMethod,
     string Status, string ReservationId, string PickupPoint, DateTime? DeliveredAt, DateTime? CompletedAt,
-    long Version, string? IdempotencyKey, DateTime CreatedAt, DateTime UpdatedAt, string? Notes = null);
+    long Version, string? IdempotencyKey, DateTime CreatedAt, DateTime UpdatedAt, string? Notes = null,
+    string? DeliveryTokenHash = null, DateTime? DeliveryTokenExpiresAt = null,
+    DateTime? DeliveryTokenUsedAt = null);
 
 public sealed record OrderPage(IReadOnlyList<OrderRecord> Items, long Total);
 
@@ -38,4 +49,8 @@ public interface IOrdersRateLimitGate
 {
     Task<bool> IsAllowedForCreateAsync(string userId, CancellationToken cancellationToken);
     Task<bool> IsAllowedForReadAsync(string userId, CancellationToken cancellationToken);
+    Task<bool> IsAllowedForWriteAsync(string userId, CancellationToken cancellationToken);
+    Task<bool> IsAllowedForCancelAsync(string userId, CancellationToken cancellationToken);
+    Task<bool> IsAllowedForDeliveryTokenAsync(string userId, CancellationToken cancellationToken);
+    Task<bool> IsAllowedForDeliveryConfirmAsync(string userId, CancellationToken cancellationToken);
 }

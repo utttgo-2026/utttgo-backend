@@ -11,8 +11,11 @@ namespace UTTTGO.Api.Modules.Orders.Controllers;
 [ApiController]
 [Route("api/v1/orders")]
 public sealed class OrdersController(ICreateOrderService create, IListOwnOrdersService list,
-    IGetOrderService get, IValidator<CreateOrderRequest> createValidator,
-    IValidator<OrderListQuery> listValidator) : ControllerBase
+    IGetOrderService get, ICancelOrderService cancel, IUpdateOrderStatusService updateStatus,
+    ICreateDeliveryTokenService deliveryToken, IConfirmDeliveryService confirmDelivery,
+    IValidator<CreateOrderRequest> createValidator, IValidator<OrderListQuery> listValidator,
+    IValidator<UpdateOrderStatusRequest> statusValidator,
+    IValidator<DeliveryConfirmationRequest> deliveryValidator) : ControllerBase
 {
     [HttpPost]
     [ProducesResponseType(typeof(OrderResponse), StatusCodes.Status201Created)]
@@ -110,6 +113,169 @@ public sealed class OrdersController(ICreateOrderService create, IListOwnOrdersS
             GetOrderOutcome.NotFound => NotFound(ApiError.Create(HttpContext, 404,
                 "ORDER_NOT_FOUND", "Pedido no disponible.")),
             GetOrderOutcome.RateLimited => StatusCode(429,
+                ApiError.Create(HttpContext, 429, "RATE_LIMITED", "Intenta de nuevo más tarde.")),
+            _ => StatusCode(503,
+                ApiError.Create(HttpContext, 503, "ORDER_UNAVAILABLE", "Servicio temporalmente no disponible."))
+        };
+    }
+
+    [HttpPost("{orderId}/cancel")]
+    [ProducesResponseType(typeof(OrderCancellationResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status429TooManyRequests)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status503ServiceUnavailable)]
+    public async Task<IActionResult> Cancel(string orderId, CancellationToken cancellationToken)
+    {
+        var token = BearerTokenReader.Read(Request);
+        if (token is null)
+            return Unauthorized(ApiError.Create(HttpContext, 401, "UNAUTHORIZED", "Sesión no autorizada."));
+
+        var result = await cancel.CancelAsync(token, orderId, HttpContext.TraceIdentifier,
+            cancellationToken);
+        return result.Outcome switch
+        {
+            CancelOrderOutcome.Cancelled or CancelOrderOutcome.AlreadyCancelled => Ok(result.Response),
+            CancelOrderOutcome.Unauthorized => Unauthorized(ApiError.Create(HttpContext, 401,
+                "UNAUTHORIZED", "Sesión no autorizada.")),
+            CancelOrderOutcome.AccountNotActive => StatusCode(403, ApiError.Create(HttpContext, 403,
+                "ACCOUNT_NOT_ACTIVE", "Cuenta no activa.")),
+            CancelOrderOutcome.Forbidden => StatusCode(403, ApiError.Create(HttpContext, 403,
+                "ORDER_FORBIDDEN", "El pedido no pertenece al comprador.")),
+            CancelOrderOutcome.NotFound => NotFound(ApiError.Create(HttpContext, 404,
+                "ORDER_NOT_FOUND", "Pedido no disponible.")),
+            CancelOrderOutcome.StateConflict => StatusCode(409, ApiError.Create(HttpContext, 409,
+                "ORDER_STATE_CONFLICT", "El pedido no se puede cancelar en su estado actual.")),
+            CancelOrderOutcome.RateLimited => StatusCode(429,
+                ApiError.Create(HttpContext, 429, "RATE_LIMITED", "Intenta de nuevo más tarde.")),
+            _ => StatusCode(503,
+                ApiError.Create(HttpContext, 503, "ORDER_UNAVAILABLE", "Servicio temporalmente no disponible."))
+        };
+    }
+
+    [HttpPatch("{orderId}/status")]
+    [ProducesResponseType(typeof(OrderStatusUpdateResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status429TooManyRequests)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status503ServiceUnavailable)]
+    public async Task<IActionResult> UpdateStatus(string orderId, [FromBody] UpdateOrderStatusRequest request,
+        CancellationToken cancellationToken)
+    {
+        var token = BearerTokenReader.Read(Request);
+        if (token is null)
+            return Unauthorized(ApiError.Create(HttpContext, 401, "UNAUTHORIZED", "Sesión no autorizada."));
+
+        if (!(await statusValidator.ValidateAsync(request, cancellationToken)).IsValid)
+            return BadRequest(ApiError.Create(HttpContext, 400, "VALIDATION_ERROR", "Solicitud inválida."));
+
+        var result = await updateStatus.UpdateAsync(token, orderId, request, HttpContext.TraceIdentifier,
+            cancellationToken);
+        return result.Outcome switch
+        {
+            UpdateOrderStatusOutcome.Updated => Ok(result.Response),
+            UpdateOrderStatusOutcome.Unauthorized => Unauthorized(ApiError.Create(HttpContext, 401,
+                "UNAUTHORIZED", "Sesión no autorizada.")),
+            UpdateOrderStatusOutcome.AccountNotActive => StatusCode(403, ApiError.Create(HttpContext, 403,
+                "ACCOUNT_NOT_ACTIVE", "Cuenta no activa.")),
+            UpdateOrderStatusOutcome.Forbidden => StatusCode(403, ApiError.Create(HttpContext, 403,
+                "ORDER_FORBIDDEN", "El pedido no pertenece al vendedor.")),
+            UpdateOrderStatusOutcome.NotFound => NotFound(ApiError.Create(HttpContext, 404,
+                "ORDER_NOT_FOUND", "Pedido no disponible.")),
+            UpdateOrderStatusOutcome.StateConflict => StatusCode(409, ApiError.Create(HttpContext, 409,
+                "ORDER_STATE_CONFLICT", "Transición de estado no permitida.")),
+            UpdateOrderStatusOutcome.VersionConflict => StatusCode(409, ApiError.Create(HttpContext, 409,
+                "ORDER_VERSION_CONFLICT", "El pedido cambió; vuelve a leerlo.")),
+            UpdateOrderStatusOutcome.RateLimited => StatusCode(429,
+                ApiError.Create(HttpContext, 429, "RATE_LIMITED", "Intenta de nuevo más tarde.")),
+            _ => StatusCode(503,
+                ApiError.Create(HttpContext, 503, "ORDER_UNAVAILABLE", "Servicio temporalmente no disponible."))
+        };
+    }
+
+    [HttpPost("{orderId}/delivery-token")]
+    [ProducesResponseType(typeof(DeliveryTokenResponse), StatusCodes.Status201Created)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status429TooManyRequests)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status503ServiceUnavailable)]
+    public async Task<IActionResult> DeliveryToken(string orderId, CancellationToken cancellationToken)
+    {
+        var token = BearerTokenReader.Read(Request);
+        if (token is null)
+            return Unauthorized(ApiError.Create(HttpContext, 401, "UNAUTHORIZED", "Sesión no autorizada."));
+
+        var result = await deliveryToken.CreateAsync(token, orderId, HttpContext.TraceIdentifier,
+            cancellationToken);
+        return result.Outcome switch
+        {
+            CreateDeliveryTokenOutcome.Created => StatusCode(201, result.Response),
+            CreateDeliveryTokenOutcome.Unauthorized => Unauthorized(ApiError.Create(HttpContext, 401,
+                "UNAUTHORIZED", "Sesión no autorizada.")),
+            CreateDeliveryTokenOutcome.AccountNotActive => StatusCode(403, ApiError.Create(HttpContext, 403,
+                "ACCOUNT_NOT_ACTIVE", "Cuenta no activa.")),
+            CreateDeliveryTokenOutcome.Forbidden => StatusCode(403, ApiError.Create(HttpContext, 403,
+                "ORDER_FORBIDDEN", "El pedido no pertenece al comprador.")),
+            CreateDeliveryTokenOutcome.NotFound => NotFound(ApiError.Create(HttpContext, 404,
+                "ORDER_NOT_FOUND", "Pedido no disponible.")),
+            CreateDeliveryTokenOutcome.StateConflict => StatusCode(409, ApiError.Create(HttpContext, 409,
+                "ORDER_STATE_CONFLICT", "El token solo se genera cuando el pedido está listo.")),
+            CreateDeliveryTokenOutcome.RateLimited => StatusCode(429,
+                ApiError.Create(HttpContext, 429, "RATE_LIMITED", "Intenta de nuevo más tarde.")),
+            _ => StatusCode(503,
+                ApiError.Create(HttpContext, 503, "ORDER_UNAVAILABLE", "Servicio temporalmente no disponible."))
+        };
+    }
+
+    [HttpPost("{orderId}/delivery-confirmations")]
+    [ProducesResponseType(typeof(DeliveryConfirmationResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status422UnprocessableEntity)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status429TooManyRequests)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status503ServiceUnavailable)]
+    public async Task<IActionResult> ConfirmDelivery(string orderId,
+        [FromBody] DeliveryConfirmationRequest request, CancellationToken cancellationToken)
+    {
+        var token = BearerTokenReader.Read(Request);
+        if (token is null)
+            return Unauthorized(ApiError.Create(HttpContext, 401, "UNAUTHORIZED", "Sesión no autorizada."));
+
+        if (!(await deliveryValidator.ValidateAsync(request, cancellationToken)).IsValid)
+            return BadRequest(ApiError.Create(HttpContext, 400, "VALIDATION_ERROR", "Solicitud inválida."));
+
+        var result = await confirmDelivery.ConfirmAsync(token, orderId, request, HttpContext.TraceIdentifier,
+            cancellationToken);
+        return result.Outcome switch
+        {
+            ConfirmDeliveryOutcome.Delivered => Ok(result.Response),
+            ConfirmDeliveryOutcome.Unauthorized => Unauthorized(ApiError.Create(HttpContext, 401,
+                "UNAUTHORIZED", "Sesión no autorizada.")),
+            ConfirmDeliveryOutcome.AccountNotActive => StatusCode(403, ApiError.Create(HttpContext, 403,
+                "ACCOUNT_NOT_ACTIVE", "Cuenta no activa.")),
+            ConfirmDeliveryOutcome.Forbidden => StatusCode(403, ApiError.Create(HttpContext, 403,
+                "ORDER_FORBIDDEN", "El pedido no pertenece al vendedor.")),
+            ConfirmDeliveryOutcome.NotFound => NotFound(ApiError.Create(HttpContext, 404,
+                "ORDER_NOT_FOUND", "Pedido no disponible.")),
+            ConfirmDeliveryOutcome.StateConflict => StatusCode(409, ApiError.Create(HttpContext, 409,
+                "ORDER_STATE_CONFLICT", "El pedido no está listo para entregarse.")),
+            ConfirmDeliveryOutcome.TokenAlreadyUsed => StatusCode(409, ApiError.Create(HttpContext, 409,
+                "DELIVERY_TOKEN_ALREADY_USED", "El token de entrega ya fue utilizado.")),
+            ConfirmDeliveryOutcome.TokenInvalid => StatusCode(422, ApiError.Create(HttpContext, 422,
+                "DELIVERY_TOKEN_INVALID", "Token de entrega inválido.")),
+            ConfirmDeliveryOutcome.TokenExpired => StatusCode(422, ApiError.Create(HttpContext, 422,
+                "DELIVERY_TOKEN_EXPIRED", "El token de entrega expiró.")),
+            ConfirmDeliveryOutcome.RateLimited => StatusCode(429,
                 ApiError.Create(HttpContext, 429, "RATE_LIMITED", "Intenta de nuevo más tarde.")),
             _ => StatusCode(503,
                 ApiError.Create(HttpContext, 503, "ORDER_UNAVAILABLE", "Servicio temporalmente no disponible."))

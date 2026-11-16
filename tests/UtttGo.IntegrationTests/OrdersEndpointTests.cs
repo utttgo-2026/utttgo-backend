@@ -283,6 +283,298 @@ public sealed class OrdersEndpointTests
         body.RootElement.GetProperty("code").GetString().Should().Be("UNAUTHORIZED");
     }
 
+    [Fact]
+    public async Task TheBuyerCancelsItsPendingOrder()
+    {
+        var orders = new OrdersRepositoryDouble();
+        orders.Orders[OrderFixtures.OrderId] = OrderFixtures.Order();
+        using var factory = Factory(orders: orders);
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", Token);
+
+        using var response = await client.PostAsync($"/api/v1/orders/{OrderFixtures.OrderId}/cancel",
+            null);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        body.RootElement.EnumerateObject().Select(property => property.Name).Should()
+            .BeEquivalentTo(["orderId", "status", "completedAt", "version"]);
+        body.RootElement.GetProperty("status").GetString().Should().Be("CancelledByBuyer");
+        body.RootElement.GetProperty("version").GetInt64().Should().Be(1);
+        body.RootElement.GetProperty("completedAt").ValueKind.Should().Be(JsonValueKind.String);
+    }
+
+    [Fact]
+    public async Task RepeatingTheCancellationIsIdempotent()
+    {
+        var orders = new OrdersRepositoryDouble();
+        orders.Orders[OrderFixtures.OrderId] = OrderFixtures.Order();
+        using var factory = Factory(orders: orders);
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", Token);
+
+        using var first = await client.PostAsync($"/api/v1/orders/{OrderFixtures.OrderId}/cancel", null);
+        using var second = await client.PostAsync($"/api/v1/orders/{OrderFixtures.OrderId}/cancel", null);
+
+        first.StatusCode.Should().Be(HttpStatusCode.OK);
+        second.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var body = JsonDocument.Parse(await second.Content.ReadAsStringAsync());
+        body.RootElement.GetProperty("status").GetString().Should().Be("CancelledByBuyer");
+        body.RootElement.GetProperty("version").GetInt64().Should().Be(1);
+    }
+
+    [Fact]
+    public async Task CancellingAnAcceptedOrderIsAConflict()
+    {
+        var orders = new OrdersRepositoryDouble();
+        orders.Orders[OrderFixtures.OrderId] = OrderFixtures.Order(status: "Accepted");
+        using var factory = Factory(orders: orders);
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", Token);
+
+        using var response = await client.PostAsync($"/api/v1/orders/{OrderFixtures.OrderId}/cancel",
+            null);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await response.Content.ReadAsStringAsync()).Should().Contain("ORDER_STATE_CONFLICT");
+    }
+
+    [Fact]
+    public async Task TheSellerCannotCancelTheOrder()
+    {
+        var orders = new OrdersRepositoryDouble();
+        orders.Orders[OrderFixtures.OrderId] = OrderFixtures.Order();
+        using var factory = Factory(orders: orders, profile: new AuthenticatedProfileDouble
+        {
+            Profile = OrderFixtures.SellerActor()
+        });
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", Token);
+
+        using var response = await client.PostAsync($"/api/v1/orders/{OrderFixtures.OrderId}/cancel",
+            null);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await response.Content.ReadAsStringAsync()).Should().Contain("ORDER_FORBIDDEN");
+    }
+
+    [Fact]
+    public async Task TheSellerMovesTheOrderToAccepted()
+    {
+        var orders = new OrdersRepositoryDouble();
+        orders.Orders[OrderFixtures.OrderId] = OrderFixtures.Order();
+        using var factory = Factory(orders: orders, profile: new AuthenticatedProfileDouble
+        {
+            Profile = OrderFixtures.SellerActor()
+        });
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", Token);
+
+        using var response = await client.PatchAsJsonAsync($"/api/v1/orders/{OrderFixtures.OrderId}/status",
+            new { status = "Accepted", version = 0 });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        body.RootElement.EnumerateObject().Select(property => property.Name).Should()
+            .BeEquivalentTo(["orderId", "status", "version", "updatedAt"]);
+        body.RootElement.GetProperty("status").GetString().Should().Be("Accepted");
+        body.RootElement.GetProperty("version").GetInt64().Should().Be(1);
+    }
+
+    [Fact]
+    public async Task TheBuyerCannotChangeTheStatus()
+    {
+        var orders = new OrdersRepositoryDouble();
+        orders.Orders[OrderFixtures.OrderId] = OrderFixtures.Order();
+        using var factory = Factory(orders: orders);
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", Token);
+
+        using var response = await client.PatchAsJsonAsync($"/api/v1/orders/{OrderFixtures.OrderId}/status",
+            new { status = "Accepted", version = 0 });
+
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await response.Content.ReadAsStringAsync()).Should().Contain("ORDER_FORBIDDEN");
+    }
+
+    [Fact]
+    public async Task DeliveredIsRejectedInTheStatusRoute()
+    {
+        var orders = new OrdersRepositoryDouble();
+        orders.Orders[OrderFixtures.OrderId] = OrderFixtures.Order(status: "Ready");
+        using var factory = Factory(orders: orders, profile: new AuthenticatedProfileDouble
+        {
+            Profile = OrderFixtures.SellerActor()
+        });
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", Token);
+
+        using var response = await client.PatchAsJsonAsync($"/api/v1/orders/{OrderFixtures.OrderId}/status",
+            new { status = "Delivered", version = 0 });
+
+        response.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await response.Content.ReadAsStringAsync()).Should().Contain("ORDER_STATE_CONFLICT");
+    }
+
+    [Fact]
+    public async Task AStaleVersionIsAVersionConflict()
+    {
+        var orders = new OrdersRepositoryDouble();
+        orders.Orders[OrderFixtures.OrderId] = OrderFixtures.Order(version: 2);
+        using var factory = Factory(orders: orders, profile: new AuthenticatedProfileDouble
+        {
+            Profile = OrderFixtures.SellerActor()
+        });
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", Token);
+
+        using var response = await client.PatchAsJsonAsync($"/api/v1/orders/{OrderFixtures.OrderId}/status",
+            new { status = "Accepted", version = 0 });
+
+        response.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await response.Content.ReadAsStringAsync()).Should().Contain("ORDER_VERSION_CONFLICT");
+    }
+
+    [Fact]
+    public async Task TheStatusRequestRejectsPrivilegedFields()
+    {
+        using var factory = Factory();
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", Token);
+
+        using var response = await client.PatchAsJsonAsync($"/api/v1/orders/{OrderFixtures.OrderId}/status",
+            new { status = "Accepted", version = 0, total = 10, paymentMethod = "Card" });
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await response.Content.ReadAsStringAsync()).Should().Contain("VALIDATION_ERROR");
+    }
+
+    [Fact]
+    public async Task TheBuyerGetsADeliveryTokenWhenTheOrderIsReady()
+    {
+        var orders = new OrdersRepositoryDouble();
+        orders.Orders[OrderFixtures.OrderId] = OrderFixtures.Order(status: "Ready");
+        using var factory = Factory(orders: orders);
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", Token);
+
+        using var response = await client.PostAsync($"/api/v1/orders/{OrderFixtures.OrderId}/delivery-token",
+            null);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        body.RootElement.EnumerateObject().Select(property => property.Name).Should()
+            .BeEquivalentTo(["orderId", "token", "expiresAt"]);
+        body.RootElement.GetProperty("token").GetString().Should().NotBeNullOrWhiteSpace();
+        body.RootElement.GetProperty("expiresAt").ValueKind.Should().Be(JsonValueKind.String);
+    }
+
+    [Fact]
+    public async Task TheTokenIsNotIssuedWhenTheOrderIsNotReady()
+    {
+        var orders = new OrdersRepositoryDouble();
+        orders.Orders[OrderFixtures.OrderId] = OrderFixtures.Order(status: "InPreparation");
+        using var factory = Factory(orders: orders);
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", Token);
+
+        using var response = await client.PostAsync($"/api/v1/orders/{OrderFixtures.OrderId}/delivery-token",
+            null);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await response.Content.ReadAsStringAsync()).Should().Contain("ORDER_STATE_CONFLICT");
+    }
+
+    [Fact]
+    public async Task TheSellerConfirmsTheDeliveryWithTheToken()
+    {
+        var orders = new OrdersRepositoryDouble();
+        orders.Orders[OrderFixtures.OrderId] = OrderFixtures.Order(status: "Ready");
+        using var factory = Factory(orders: orders);
+        using var buyerClient = factory.CreateClient();
+        buyerClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", Token);
+        using var tokenResponse = await buyerClient.PostAsync(
+            $"/api/v1/orders/{OrderFixtures.OrderId}/delivery-token", null);
+        using var tokenBody = JsonDocument.Parse(await tokenResponse.Content.ReadAsStringAsync());
+        var token = tokenBody.RootElement.GetProperty("token").GetString()!;
+
+        using var sellerFactory = Factory(orders: orders, profile: new AuthenticatedProfileDouble
+        {
+            Profile = OrderFixtures.SellerActor()
+        });
+        using var seller = sellerFactory.CreateClient();
+        seller.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", Token);
+
+        using var response = await seller.PostAsJsonAsync(
+            $"/api/v1/orders/{OrderFixtures.OrderId}/delivery-confirmations", new { token });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        body.RootElement.EnumerateObject().Select(property => property.Name).Should()
+            .BeEquivalentTo(["orderId", "status", "deliveredAt", "version"]);
+        body.RootElement.GetProperty("status").GetString().Should().Be("Delivered");
+        body.RootElement.GetProperty("deliveredAt").ValueKind.Should().Be(JsonValueKind.String);
+    }
+
+    [Fact]
+    public async Task AnInvalidDeliveryTokenIsRejected()
+    {
+        var orders = new OrdersRepositoryDouble();
+        orders.Orders[OrderFixtures.OrderId] = OrderFixtures.Order(status: "Ready");
+        using var factory = Factory(orders: orders, profile: new AuthenticatedProfileDouble
+        {
+            Profile = OrderFixtures.SellerActor()
+        });
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", Token);
+
+        using var response = await client.PostAsJsonAsync(
+            $"/api/v1/orders/{OrderFixtures.OrderId}/delivery-confirmations", new { token = "not-the-token" });
+
+        response.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+        (await response.Content.ReadAsStringAsync()).Should().Contain("DELIVERY_TOKEN_INVALID");
+    }
+
+    [Fact]
+    public async Task TheOrderDetailNeverExposesTheDeliveryToken()
+    {
+        var orders = new OrdersRepositoryDouble();
+        orders.Orders[OrderFixtures.OrderId] = OrderFixtures.Order(status: "Ready");
+        using var factory = Factory(orders: orders);
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", Token);
+        using var tokenResponse = await client.PostAsync(
+            $"/api/v1/orders/{OrderFixtures.OrderId}/delivery-token", null);
+
+        using var response = await client.GetAsync($"/api/v1/orders/{OrderFixtures.OrderId}");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var payload = await response.Content.ReadAsStringAsync();
+        payload.Should().NotContain("deliveryToken");
+        payload.Should().NotContain("token");
+    }
+
+    [Theory]
+    [InlineData("POST", "cancel")]
+    [InlineData("PATCH", "status")]
+    [InlineData("POST", "delivery-token")]
+    [InlineData("POST", "delivery-confirmations")]
+    public async Task WithoutSessionTheOrderActionsAreUnauthorized(string method, string action)
+    {
+        using var factory = Factory();
+        using var client = factory.CreateClient();
+
+        using var request = new HttpRequestMessage(new HttpMethod(method),
+            $"/api/v1/orders/{OrderFixtures.OrderId}/{action}")
+        {
+            Content = JsonContent.Create(new { })
+        };
+        using var response = await client.SendAsync(request);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        (await response.Content.ReadAsStringAsync()).Should().Contain("UNAUTHORIZED");
+    }
+
     private static WebApplicationFactory<Program> Factory(OrdersRepositoryDouble? orders = null,
         CatalogOrderProductsDouble? catalog = null, SellerOrderProfilesDouble? sellers = null,
         OrdersRateLimitDouble? gate = null, AuthenticatedProfileDouble? profile = null) =>

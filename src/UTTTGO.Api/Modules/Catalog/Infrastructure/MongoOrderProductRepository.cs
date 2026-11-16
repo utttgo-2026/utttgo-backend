@@ -58,6 +58,23 @@ public sealed class MongoOrderProductRepository(MongoStore store) : ICatalogOrde
         return CatalogStockOutcome.InsufficientStock;
     }
 
+    public async Task<bool> CommitStockAsync(string productId, string reservationId,
+        CancellationToken cancellationToken)
+    {
+        if (!ObjectId.TryParse(productId, out var id)) return false;
+
+        var filter = Builders<ProductDocument>.Filter.Eq(item => item.Id, id) &
+            Builders<ProductDocument>.Filter.Eq("stockReservations.id", reservationId);
+        var update = Builders<ProductDocument>.Update
+            .Inc(item => item.Version, 1)
+            .PullFilter(item => item.StockReservations, reservation =>
+                reservation.Id == reservationId);
+        var committed = await Products.FindOneAndUpdateAsync(filter, update,
+            new FindOneAndUpdateOptions<ProductDocument> { ReturnDocument = ReturnDocument.After },
+            cancellationToken);
+        return committed is not null;
+    }
+
     public async Task<bool> ReleaseStockAsync(string productId, int quantity, string reservationId,
         CancellationToken cancellationToken)
     {

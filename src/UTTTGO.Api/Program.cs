@@ -171,12 +171,18 @@ builder.Services.AddSingleton<ISellerOrderProfiles, MongoSellerOrderProfiles>();
 builder.Services.Configure<OrderLimitsOptions>(builder.Configuration.GetSection("Orders"));
 builder.Services.AddScoped<IValidator<CreateOrderRequest>, CreateOrderRequestValidator>();
 builder.Services.AddScoped<IValidator<OrderListQuery>, OrderListQueryValidator>();
+builder.Services.AddScoped<IValidator<UpdateOrderStatusRequest>, UpdateOrderStatusRequestValidator>();
+builder.Services.AddScoped<IValidator<DeliveryConfirmationRequest>, DeliveryConfirmationRequestValidator>();
 builder.Services.AddSingleton<IOrderRepository, MongoOrderRepository>();
 builder.Services.AddSingleton<IOrderAuditWriter, MongoOrderAuditWriter>();
 builder.Services.AddScoped<IOrdersRateLimitGate, RedisOrdersRateLimitGate>();
 builder.Services.AddScoped<ICreateOrderService, CreateOrderService>();
 builder.Services.AddScoped<IListOwnOrdersService, ListOwnOrdersService>();
 builder.Services.AddScoped<IGetOrderService, GetOrderService>();
+builder.Services.AddScoped<ICancelOrderService, CancelOrderService>();
+builder.Services.AddScoped<IUpdateOrderStatusService, UpdateOrderStatusService>();
+builder.Services.AddScoped<ICreateDeliveryTokenService, CreateDeliveryTokenService>();
+builder.Services.AddScoped<IConfirmDeliveryService, ConfirmDeliveryService>();
 builder.Services.AddHostedService<OrdersMongoIndexes>();
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi(options => options.AddDocumentTransformer<PublicApiServerTransformer>());
