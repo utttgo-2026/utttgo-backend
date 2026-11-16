@@ -239,10 +239,10 @@ Compra directa e individual: **no hay carrito** y **no hay pasarela de pago**. E
 { "productId": "6afb4c1a8b3f2a0012ab34d0", "quantity": 2 }
 ```
 
-Cabecera opcional de idempotencia (recomendada para reintentos de red):
+Cabecera opcional de idempotencia (recomendada para reintentos de red): un UUID v4 **único por intento de compra**, que el móvil genera y conserva entre reintentos de la misma operación.
 
 ```
-Idempotency-Key: 8f14e45f-ceea-467a-9b1a-1c2d3e4f5a6b
+Idempotency-Key: <uuid-v4-unico-por-intento>
 ```
 
 ```json
