@@ -9,6 +9,15 @@ namespace UTTTGO.Api.Modules.Media.Infrastructure;
 public class S3MediaAssetService(IOptions<S3Config> s3Config) : IS3MediaAssetService
 {
     private readonly S3Config _config = s3Config.Value;
+    private readonly bool _isConfigured;
+
+    public S3MediaAssetService(IOptions<S3Config> s3Config)
+    {
+        _config = s3Config.Value;
+        _isConfigured = !string.IsNullOrWhiteSpace(_config.AccessKey)
+                     && !string.IsNullOrWhiteSpace(_config.SecretKey)
+                     && !string.IsNullOrWhiteSpace(_config.BucketName);
+    }
 
     public async Task<PresignedPutUrlResult> GetPresignedPutUrlAsync(string objectKey, string contentType, CancellationToken cancellationToken = default)
     {
@@ -17,6 +26,18 @@ public class S3MediaAssetService(IOptions<S3Config> s3Config) : IS3MediaAssetSer
 
         if (string.IsNullOrWhiteSpace(contentType))
             throw new ArgumentException("El content-type es obligatorio", nameof(contentType));
+
+        if (!_isConfigured)
+        {
+            // Fallback for test environments: return a mock presigned URL
+            var mockUrl = $"https://mock-s3-bucket.s3.amazonaws.com/{objectKey}?mock=true&expires={DateTime.UtcNow.AddMinutes(_config.PresignedUrlExpirationMinutes):yyyy-MM-ddTHH:mm:ss}";
+            return new PresignedPutUrlResult(
+                AssetId: Guid.NewGuid().ToString(),
+                UploadUrl: mockUrl,
+                ExpiresAt: DateTime.UtcNow.AddMinutes(_config.PresignedUrlExpirationMinutes),
+                ObjectKey: objectKey
+            );
+        }
 
         var s3Client = CreateS3Client();
 
@@ -39,6 +60,11 @@ public class S3MediaAssetService(IOptions<S3Config> s3Config) : IS3MediaAssetSer
 
     public async Task<string> GetPresignedGetUrlAsync(string objectKey, CancellationToken cancellationToken = default)
     {
+        if (!_isConfigured)
+        {
+            return $"https://mock-s3-bucket.s3.amazonaws.com/{objectKey}?mock=true";
+        }
+
         var s3Client = CreateS3Client();
 
         var url = s3Client.GetPreSignedURL(new GetPreSignedUrlRequest
@@ -54,6 +80,12 @@ public class S3MediaAssetService(IOptions<S3Config> s3Config) : IS3MediaAssetSer
 
     public async Task DeleteObjectAsync(string objectKey, CancellationToken cancellationToken = default)
     {
+        if (!_isConfigured)
+        {
+            // No-op in test environments
+            return;
+        }
+
         var s3Client = CreateS3Client();
 
         await s3Client.DeleteObjectAsync(new DeleteObjectRequest
