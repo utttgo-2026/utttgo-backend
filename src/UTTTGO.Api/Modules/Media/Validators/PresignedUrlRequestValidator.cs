@@ -23,9 +23,12 @@ public class PresignedUrlRequestValidator : AbstractValidator<PresignedUrlReques
 
 public static class MimeTypeValidatorExtensions
 {
-    public static bool MustBeValidImageMime(this string mimeType)
+    public static IRuleBuilderOptions<T, string> MustBeValidImageMime<T>(this IRuleBuilderOptions<T, string> ruleBuilder)
     {
-        var allowed = new[] { "image/jpeg", "image/png", "image/webp" };
-        return allowed.Contains(mimeType, StringComparer.OrdinalIgnoreCase);
+        return ruleBuilder.Must(mimeType =>
+        {
+            var allowed = new[] { "image/jpeg", "image/png", "image/webp" };
+            return allowed.Contains(mimeType, StringComparer.OrdinalIgnoreCase);
+        });
     }
 }

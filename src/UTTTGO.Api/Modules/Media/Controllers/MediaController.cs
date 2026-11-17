@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using UTTTGO.Api.Modules.Media.Application;
 using UTTTGO.Api.Modules.Media.Contracts;
+using UTTTGO.Api.Shared.Contracts;
 
 namespace UTTTGO.Api.Modules.Media.Controllers;
 

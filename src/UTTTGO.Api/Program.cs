@@ -26,7 +26,10 @@ using UTTTGO.Api.Modules.Sellers.Validators;
 using UTTTGO.Api.Shared.Contracts;
 using UTTTGO.Api.Shared.Health;
 using UTTTGO.Api.Shared.Infrastructure;
-using UTTTGO.Api.Shared.Infrastructure.S3;
+using UTTTGO.Api.Modules.Media.Application;
+using UTTTGO.Api.Modules.Media.Contracts;
+using UTTTGO.Api.Modules.Media.Infrastructure;
+using UTTTGO.Api.Modules.Media.Validators;
 using UTTTGO.Api.Shared.OpenApi;
 
 var builder = WebApplication.CreateBuilder(args);

@@ -1,4 +1,4 @@
-using FluentValidator;
+using FluentValidation;
 using UTTTGO.Api.Modules.Media.Contracts;
 
 namespace UTTTGO.Api.Modules.Media.Validators;
@@ -15,9 +15,11 @@ public class ConfirmRequestValidator : AbstractValidator<ConfirmRequest>
 
 public static class ConfirmRequestExtensions
 {
-    public static bool MustBeValidAssetId(this string assetId)
+    public static IRuleBuilderOptions<T, string> MustBeValidAssetId<T>(this IRuleBuilderOptions<T, string> ruleBuilder)
     {
-        // Validación básica: debe ser un GUID o tener un formato válido
-        return !string.IsNullOrWhiteSpace(assetId) && assetId.Length >= 24;
+        return ruleBuilder.Must(assetId =>
+        {
+            return !string.IsNullOrWhiteSpace(assetId) && assetId.Length >= 24;
+        });
     }
 }

@@ -1,4 +1,5 @@
 using UTTTGO.Api.Modules.Media.Contracts;
+using UTTTGO.Api.Modules.Media.Infrastructure;
 using Microsoft.Extensions.Options;
 using UTTTGO.Api.Shared.Contracts;
 
@@ -79,7 +80,7 @@ public class MediaAssetService(IMediaAssetRepository repo, IOptions<S3Config> s3
         await _repository.UpdateAsync(asset, cancellationToken);
 
         // Generar URL pública
-        var publicUrl = _s3Config.PublicBaseUrl
+        var publicUrl = !string.IsNullOrWhiteSpace(_s3Config.PublicBaseUrl)
             ? $"{_s3Config.PublicBaseUrl}/{asset.ObjectKey}"
             : $"https://{_s3Config.BucketName}.s3.amazonaws.com/{asset.ObjectKey}";
 
