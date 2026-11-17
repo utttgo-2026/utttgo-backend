@@ -48,17 +48,17 @@ public sealed class SellerActivationService(IAuthenticatedLocalProfileReader pro
             if (!await rateLimit.IsAllowedForActivationAsync(profile.Id, cancellationToken))
                 return new(SellerActivationOutcome.RateLimited);
 
-            var businessName = request.BusinessName!.Trim();
+            var storeName = request.StoreName!.Trim();
             var description = request.Description!.Trim();
-            var pickupPoint = request.PickupPoint!.Trim();
+            var phone = request.Phone!.Trim();
 
             var existing = await sellers.FindByOwnerAsync(profile.Id, cancellationToken);
             if (existing is not null && existing.Status is "Suspended" or "Deleted" or "Inactive")
                 return new(SellerActivationOutcome.Conflict);
 
             var created = existing is null;
-            var seller = existing ?? await sellers.CreatePendingAsync(profile.Id, businessName,
-                description, pickupPoint, cancellationToken);
+            var seller = existing ?? await sellers.CreatePendingAsync(profile.Id, storeName,
+                description, phone, cancellationToken);
 
             // The role is promoted only when it is missing; the promotion itself is idempotent.
             if (!profile.Roles.Contains("Seller", StringComparer.Ordinal) ||

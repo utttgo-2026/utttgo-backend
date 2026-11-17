@@ -17,7 +17,7 @@ public sealed class OwnSellerProfileServiceTests
 
         result.Outcome.Should().Be(OwnSellerProfileOutcome.Found);
         result.Response!.SellerId.Should().Be(SellerFixtures.SellerId);
-        result.Response.BusinessName.Should().Be("Campus Snacks");
+        result.Response.StoreName.Should().Be("Campus Snacks");
         result.Response.IsActive.Should().BeTrue();
         result.Response.Roles.Should().Contain("Seller");
     }

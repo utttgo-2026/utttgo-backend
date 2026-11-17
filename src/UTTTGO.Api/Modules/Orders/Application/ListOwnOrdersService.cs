@@ -1,5 +1,6 @@
 using UTTTGO.Api.Modules.Identity.Application;
 using UTTTGO.Api.Modules.Orders.Contracts;
+using UTTTGO.Api.Shared.Contracts;
 
 namespace UTTTGO.Api.Modules.Orders.Application;
 
@@ -37,11 +38,11 @@ public sealed class ListOwnOrdersService(IAuthenticatedLocalProfileReader profil
                 cancellationToken);
             var items = page.Items
                 .Select(order => new OrderSummaryResponse(order.OrderId, order.ProductId, order.ProductName,
-                    order.Quantity, order.Total, order.Currency, order.Status, "buyer", order.CreatedAt,
-                    order.Notes))
+                    order.SellerId, order.BuyerUserId, order.Quantity, order.UnitPrice, order.Total,
+                    order.Currency, order.Status, "buyer", order.CreatedAt, order.Notes))
                 .ToList();
             return new(ListOwnOrdersOutcome.Success,
-                new OrderListResponse(items, query.Page, query.PageSize, page.Total));
+                new OrderListResponse(items, query.Page, query.PageSize, PaginationCount.FromCount(page.Total)));
         }
         catch (Exception) when (!cancellationToken.IsCancellationRequested)
         {

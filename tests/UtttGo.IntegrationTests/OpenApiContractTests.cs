@@ -86,6 +86,77 @@ public sealed class OpenApiContractTests
         ComponentProperties(document, "OrderResponse").Should().Contain("notes");
     }
 
+    [Fact]
+    public async Task SellerRoutesDocumentTheirRealResponsesAndSchemas()
+    {
+        var document = await LoadDocumentAsync();
+
+        ResponseSchema(document, "/api/v1/sellers/activation-requests", "post", 201,
+            "SellerOwnProfileResponse");
+        ResponseSchema(document, "/api/v1/sellers/activation-requests", "post", 200,
+            "SellerOwnProfileResponse");
+        ResponseSchema(document, "/api/v1/sellers/activation-requests", "post", 400, "ApiError");
+        ResponseSchema(document, "/api/v1/sellers/activation-requests", "post", 401, "ApiError");
+        ResponseSchema(document, "/api/v1/sellers/activation-requests", "post", 403, "ApiError");
+        ResponseSchema(document, "/api/v1/sellers/activation-requests", "post", 404, "ApiError");
+        ResponseSchema(document, "/api/v1/sellers/activation-requests", "post", 409, "ApiError");
+
+        ResponseSchema(document, "/api/v1/sellers/me", "get", 200, "SellerOwnProfileResponse");
+        ResponseSchema(document, "/api/v1/sellers/me", "get", 401, "ApiError");
+        ResponseSchema(document, "/api/v1/sellers/me", "get", 404, "ApiError");
+
+        ResponseSchema(document, "/api/v1/sellers/me", "patch", 200, "SellerOwnProfileResponse");
+        ResponseSchema(document, "/api/v1/sellers/{sellerId}", "get", 200, "SellerProfileResponse");
+    }
+
+    [Fact]
+    public async Task SellerSchemasExposeStoreNameDescriptionAndPhone()
+    {
+        var document = await LoadDocumentAsync();
+
+        var activation = RequestSchemaProperties(document, "/api/v1/sellers/activation-requests", "post");
+        activation.Should().Contain("storeName").And.Contain("description").And.Contain("phone");
+        activation.Should().NotContain("businessName").And.NotContain("pickupPoint")
+            .And.NotContain("unknownFields");
+
+        var ownProfile = ComponentProperties(document, "SellerOwnProfileResponse");
+        ownProfile.Should().Contain("storeName").And.Contain("description").And.Contain("phone");
+        ownProfile.Should().Contain("status").And.Contain("isActive").And.Contain("roles");
+        ownProfile.Should().NotContain("businessName").And.NotContain("pickupPoint");
+    }
+
+    [Fact]
+    public async Task PaginatedSchemasExposeTotalCountInsteadOfTotal()
+    {
+        var document = await LoadDocumentAsync();
+
+        foreach (var schemaName in new[] { "ProductListResponse", "CategoryListResponse",
+            "OrderListResponse", "AdminUsersResponse" })
+        {
+            var properties = ComponentProperties(document, schemaName);
+            properties.Should().Contain("totalCount");
+            properties.Should().NotContain("total");
+        }
+    }
+
+    [Fact]
+    public async Task OrderSchemasExposeTheBuyerAndSellerRelations()
+    {
+        var document = await LoadDocumentAsync();
+
+        var order = ComponentProperties(document, "OrderResponse");
+        order.Should().Contain("buyerId").And.Contain("sellerId").And.Contain("productName")
+            .And.Contain("unitPrice").And.Contain("quantity").And.Contain("totalAmount")
+            .And.Contain("status").And.Contain("notes").And.Contain("createdAt");
+        order.Should().NotContain("buyerUserId").And.NotContain("total");
+
+        var summary = ComponentProperties(document, "OrderSummaryResponse");
+        summary.Should().Contain("buyerId").And.Contain("sellerId").And.Contain("productName")
+            .And.Contain("unitPrice").And.Contain("quantity").And.Contain("totalAmount")
+            .And.Contain("status").And.Contain("notes").And.Contain("createdAt");
+        summary.Should().NotContain("buyerUserId").And.NotContain("total");
+    }
+
     private static async Task<JsonDocument> LoadDocumentAsync()
     {
         using var factory = new WebApplicationFactory<Program>();

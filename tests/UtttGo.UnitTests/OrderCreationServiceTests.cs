@@ -33,12 +33,12 @@ public sealed class OrderCreationServiceTests
 
         result.Outcome.Should().Be(CreateOrderOutcome.Created);
         result.Response!.UnitPrice.Should().Be(85.50m);
-        result.Response.Total.Should().Be(171.00m);
+        result.Response.TotalAmount.Should().Be(171.00m);
         result.Response.Quantity.Should().Be(2);
         result.Response.Currency.Should().Be("MXN");
         result.Response.PaymentMethod.Should().Be("Cash");
         result.Response.Status.Should().Be("Pending");
-        result.Response.BuyerUserId.Should().Be(OrderFixtures.BuyerUserId);
+        result.Response.BuyerId.Should().Be(OrderFixtures.BuyerUserId);
         result.Response.SellerId.Should().Be(OrderFixtures.SellerId);
         result.Response.ProductName.Should().Be("Quesadillas de huitlacoche (6 pza)");
         result.Response.PickupPoint.Should().Be("Biblioteca central, entrada norte");

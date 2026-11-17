@@ -17,7 +17,7 @@ public sealed class SellerActivationServiceTests
 
         result.Outcome.Should().Be(SellerActivationOutcome.Created);
         result.Response!.SellerId.Should().Be(SellerFixtures.SellerId);
-        result.Response.BusinessName.Should().Be("Campus Snacks");
+        result.Response.StoreName.Should().Be("Campus Snacks");
         result.Response.Status.Should().Be("Active");
         result.Response.IsActive.Should().BeTrue();
         result.Response.Roles.Should().Contain("Seller");
@@ -174,9 +174,9 @@ public sealed class SellerActivationServiceTests
 
     private static SellerActivationRequest Request() => new()
     {
-        BusinessName = "Campus Snacks",
+        StoreName = "Campus Snacks",
         Description = "Snacks del campus",
-        PickupPoint = "Biblioteca central"
+        Phone = "Biblioteca central"
     };
 
     private static SellerActivationService Service(InMemorySellerWriter writer,

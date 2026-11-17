@@ -1,7 +1,7 @@
 # spec.md — Pedidos y efectivo — Backend UTTT-GO
 
 > **Fase:** 04 — Pedidos y efectivo
-> **Versión:** 0.3
+> **Versión:** 0.4
 > **Estado:** **Fase 1 (API-023, API-024, API-025) y Fase 2 (API-026, API-027, API-028, API-029) aprobadas por el propietario e implementadas el 2026-11-16** (ramas `feature/orders-phase1-p1` y `feature/orders-phase2-status-qr`)
 > **Fecha:** 2026-11-16
 > **Derivación:** `docs/constitution.md` §3 (BR-001, BR-002, BR-003, BR-009, BR-010), §4.5, §6.2, §11, §12, §13, §14; `docs/traceability.md` API-023..API-029.
@@ -33,6 +33,7 @@ Desviaciones respecto de v0.1, fijadas por instrucción del propietario:
 | D-ORD-12 (nueva) | `Published` como estado del producto | El producto publicable es el que está `Active` con categoría activa (contrato ya implementado por Catalog en el Sprint 2) | El vocabulario `Published` no existe en el catálogo vigente; no se introduce un estado nuevo. |
 | D-ORD-13 (nueva) | Replay de `Idempotency-Key` sin código definido | El replay devuelve **`200`** con el pedido ya creado (mismo `orderId`), sin reservar stock otra vez | Reproducir `201` ocultaría que el recurso ya existía. |
 | D-ORD-14 (nueva) | `CreateOrderRequest` sin nota del comprador | `POST /api/v1/orders` acepta **`notes` opcional** (string, máximo 250 caracteres tras recortar); se persiste en `orders.notes` y se devuelve en `OrderResponse` y `OrderSummaryResponse` (`null` si no se envió) | Solicitud explícita del propietario (2026-11-16) para el consumo desde el móvil: la nota viaja en el cuerpo de la orden y no en un canal aparte (BR-009: el cliente no decide precio, total ni estado). |
+| D-ORD-20 (nueva) | Respuestas con `buyerUserId`, `total` (importe) y `total` (contador de página) | Contrato público con **`buyerId`**, **`totalAmount`** (importe) y **`totalCount`** (contador de página, `int`); la colección `orders` conserva `buyerUserId` y `total` | Alineación definitiva solicitada por el equipo móvil (2026-11-16): un mismo nombre `total` designaba el importe y el contador de página, y el nombre público del comprador no era `buyerId`. El nombre interno de la colección no cambia. |
 
 Decisiones de v0.1 aplicadas en la Fase 1: **D-ORD-01** (snapshot de `unitPrice`/`total` al crear), **D-ORD-02** (reserva de stock por `reservationId` con liberación compensatoria, sin transacción cross-module), **D-ORD-04** (`Idempotency-Key` opcional con índice único parcial), **D-ORD-05** (sin filtro `role`: `/orders/mine` es solo del comprador), **D-ORD-06** (campo `version` presente; las transiciones CAS llegan en la Fase 2) y **D-ORD-08** (`completedAt` presente y `null` hasta un estado terminal).
 
@@ -151,7 +152,7 @@ Crea un pedido directo (BR-001/BR-002).
 - **`notes` (opcional):** nota del comprador para el vendedor, máximo 250 caracteres tras recortar (D-ORD-14). Vacía o ausente se persiste como `null`. Más de 250 caracteres → `400 VALIDATION_ERROR`.
 
 - **Header opcional:** `Idempotency-Key: <uuid>` (D-ORD-04).
-- **Campos prohibidos (ignorados o `400`):** `price`, `unitPrice`, `total`, `sellerId`, `status`, `paymentMethod`, `currency`.
+- **Campos prohibidos (ignorados o `400`):** `price`, `unitPrice`, `total`, `totalAmount`, `sellerId`, `buyerId`, `buyerUserId`, `status`, `paymentMethod`, `currency`.
 - **Derivación server-side:** `sellerId`, `productName`, `unitPrice` (vigente), `total = unitPrice × quantity` (decimal MXN), `paymentMethod = "Cash"`.
 - **Reserva de stock:** vía `ICatalogProductCommands` (D-ORD-02). Si falla, no se crea el pedido.
 - **Rate limit:** `order-create`, 10/60 s por comprador, fail-closed.
@@ -165,7 +166,7 @@ Crea un pedido directo (BR-001/BR-002).
   "productName": "Quesadillas de huitlacoche (6 pza)",
   "quantity": 2,
   "unitPrice": 85.50,
-  "total": 171.00,
+  "totalAmount": 171.00,
   "currency": "MXN",
   "paymentMethod": "Cash",
   "status": "Pending",
@@ -187,10 +188,10 @@ Lista pedidos del usuario autenticado, paginado.
 
 ```json
 {
-  "items": [ { "orderId": "...", "productId": "...", "productName": "...", "quantity": 1, "total": 85.50, "currency": "MXN", "status": "Pending", "role": "buyer", "createdAt": "..." } ],
+  "items": [ { "orderId": "...", "productId": "...", "productName": "...", "sellerId": "...", "buyerId": "...", "quantity": 1, "unitPrice": 85.50, "totalAmount": 85.50, "currency": "MXN", "status": "Pending", "role": "buyer", "createdAt": "...", "notes": null } ],
   "page": 1,
   "pageSize": 20,
-  "total": 3
+  "totalCount": 3
 }
 ```
 
@@ -211,10 +212,10 @@ Detalle de un pedido.
   "productId": "...",
   "productName": "...",
   "sellerId": "...",
-  "buyerUserId": "...",
+  "buyerId": "...",
   "quantity": 2,
   "unitPrice": 85.50,
-  "total": 171.00,
+  "totalAmount": 171.00,
   "currency": "MXN",
   "paymentMethod": "Cash",
   "status": "Ready",
@@ -473,6 +474,7 @@ No existe `IOrderEventPublisher` inverso desde Orders a Notifications ni depende
 | 0.1 | 2026-11-11 | Borrador inicial: API-023..029, máquina §13, reserva vía Catalog, token de entrega, CAS por versión, rate limits `order-*`. |
 | 0.2 | 2026-11-16 | Fase 1 aprobada e implementada (API-023/024/025): D-ORD-11..14 y `notes` del comprador. |
 | 0.3 | 2026-11-16 | Fase 2 aprobada e implementada (API-026/027/028/029): D-ORD-15..19, CAS por `version` en cada transición, token de entrega con hash SHA-256 y TTL configurable, commit de stock en `Delivered` y el tratamiento D-ORD-18/19 de los fallos de stock. |
+| 0.4 | 2026-11-16 | Alineación del contrato público con el equipo móvil (D-ORD-20): `buyerId`, `totalAmount` y `totalCount` en las respuestas de pedidos y listados paginados; los nombres internos de la colección no cambian. |
 
 ## 9. Rutas necesarias fuera del inventario y decisiones pendientes
 

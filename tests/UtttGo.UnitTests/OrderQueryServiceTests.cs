@@ -24,12 +24,15 @@ public sealed class OrderQueryServiceTests
         var result = await service.ListAsync("token", new OrderListQuery(1, 20, null), CancellationToken.None);
 
         result.Outcome.Should().Be(ListOwnOrdersOutcome.Success);
-        result.Response!.Total.Should().Be(1);
+        result.Response!.TotalCount.Should().Be(1);
         result.Response.Items.Should().HaveCount(1);
         result.Response.Items[0].OrderId.Should().Be(OrderFixtures.OrderId);
         result.Response.Items[0].Role.Should().Be("buyer");
-        result.Response.Items[0].Total.Should().Be(171.00m);
+        result.Response.Items[0].TotalAmount.Should().Be(171.00m);
         result.Response.Items[0].Currency.Should().Be("MXN");
+        result.Response.Items[0].SellerId.Should().Be(OrderFixtures.SellerId);
+        result.Response.Items[0].BuyerId.Should().Be(OrderFixtures.BuyerUserId);
+        result.Response.Items[0].UnitPrice.Should().Be(85.50m);
     }
 
     [Fact]
@@ -87,10 +90,12 @@ public sealed class OrderQueryServiceTests
 
         result.Outcome.Should().Be(GetOrderOutcome.Found);
         result.Response!.OrderId.Should().Be(OrderFixtures.OrderId);
-        result.Response.BuyerUserId.Should().Be(OrderFixtures.BuyerUserId);
+        result.Response.BuyerId.Should().Be(OrderFixtures.BuyerUserId);
         result.Response.UnitPrice.Should().Be(85.50m);
-        result.Response.Total.Should().Be(171.00m);
+        result.Response.TotalAmount.Should().Be(171.00m);
         result.Response.Status.Should().Be("Pending");
+        result.Response.SellerId.Should().Be(OrderFixtures.SellerId);
+        result.Response.ProductName.Should().Be(OrderFixtures.Order().ProductName);
     }
 
     [Fact]

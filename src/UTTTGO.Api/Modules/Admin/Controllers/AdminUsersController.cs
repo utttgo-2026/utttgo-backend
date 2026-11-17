@@ -18,6 +18,12 @@ public sealed class AdminUsersController(IAdminUsersService users,
         ["search", "role", "accountStatus", "page", "pageSize", "sortBy"];
 
     [HttpGet]
+    [ProducesResponseType(typeof(AdminUsersResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status429TooManyRequests)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> List(CancellationToken cancellationToken)
     {
         var authorization = Request.Headers.Authorization;

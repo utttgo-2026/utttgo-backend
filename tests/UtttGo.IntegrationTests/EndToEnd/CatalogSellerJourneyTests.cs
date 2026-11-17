@@ -76,19 +76,19 @@ public sealed class CatalogSellerJourneyTests : IAsyncLifetime
 
         using var activation = await host.Client.PostAsJsonAsync("/api/v1/sellers/activation-requests", new
         {
-            businessName = "Puesto E2E",
+            storeName = "Puesto E2E",
             description = "Vendedor de prueba E2E",
-            pickupPoint = "Biblioteca central"
+            phone = "Biblioteca central"
         });
 
         activation.StatusCode.Should().Be(HttpStatusCode.Created);
         using var activationDocument = JsonDocument.Parse(await activation.Content.ReadAsStringAsync());
         activationDocument.RootElement.EnumerateObject().Select(property => property.Name).Should()
-            .BeEquivalentTo(["sellerId", "businessName", "description", "pickupPoint", "status",
+            .BeEquivalentTo(["sellerId", "storeName", "description", "phone", "status",
                 "isActive", "roles", "createdAt", "updatedAt"]);
         var sellerId = activationDocument.RootElement.GetProperty("sellerId").GetString()!;
         sellerId.Should().MatchRegex("^[0-9a-fA-F]{24}$");
-        activationDocument.RootElement.GetProperty("businessName").GetString().Should().Be("Puesto E2E");
+        activationDocument.RootElement.GetProperty("storeName").GetString().Should().Be("Puesto E2E");
         activationDocument.RootElement.GetProperty("status").GetString().Should().Be("Active");
         activationDocument.RootElement.GetProperty("isActive").GetBoolean().Should().BeTrue();
         Roles(activationDocument.RootElement.GetProperty("roles")).Should()
@@ -99,8 +99,8 @@ public sealed class CatalogSellerJourneyTests : IAsyncLifetime
         categories.StatusCode.Should().Be(HttpStatusCode.OK);
         using var categoriesDocument = JsonDocument.Parse(await categories.Content.ReadAsStringAsync());
         categoriesDocument.RootElement.EnumerateObject().Select(property => property.Name).Should()
-            .BeEquivalentTo(["items", "page", "pageSize", "total"]);
-        categoriesDocument.RootElement.GetProperty("total").GetInt64().Should().Be(3);
+            .BeEquivalentTo(["items", "page", "pageSize", "totalCount"]);
+        categoriesDocument.RootElement.GetProperty("totalCount").GetInt32().Should().Be(3);
         var categoryItems = categoriesDocument.RootElement.GetProperty("items").EnumerateArray().ToList();
         categoryItems.Select(item => item.GetProperty("name").GetString()).Should()
             .BeEquivalentTo(["Comida Preparada", "Bebidas", "Snacks"], options => options.WithStrictOrdering());
@@ -153,7 +153,7 @@ public sealed class CatalogSellerJourneyTests : IAsyncLifetime
         listing.StatusCode.Should().Be(HttpStatusCode.OK);
         using var listingDocument = JsonDocument.Parse(await listing.Content.ReadAsStringAsync());
         listingDocument.RootElement.EnumerateObject().Select(property => property.Name).Should()
-            .BeEquivalentTo(["items", "page", "pageSize", "total"]);
+            .BeEquivalentTo(["items", "page", "pageSize", "totalCount"]);
         var listedIds = listingDocument.RootElement.GetProperty("items").EnumerateArray()
             .Select(item => item.GetProperty("id").GetString()).ToList();
         listedIds.Should().Contain(productId);

@@ -1,6 +1,6 @@
 # Guía de integración móvil · UTTT-GO Backend
 
-> Versión 1.2 · 2026-11-16 · Contrato vigente de la API pública desplegada (incluye la Fase 2 de pedidos, API-026..029, pendiente de PR/CI-1).
+> Versión 1.3 · 2026-11-16 · Contrato vigente de la API pública desplegada (incluye la Fase 2 de pedidos, API-026..029, pendiente de PR/CI-1) y la alineación definitiva de DTOs con el equipo móvil (`storeName`/`phone`, `totalCount`, `buyerId`/`totalAmount`; ver §9).
 > Fuente canónica: `docs/constitution.md` y `docs/traceability.md`; el documento OpenAPI vivo es `GET /openapi/v1.json` y la consola de lectura es `GET /openapi`.
 
 ## 1. Entorno y transporte
@@ -104,15 +104,15 @@ Errores: `400 VALIDATION_ERROR`, `401 INVALID_CREDENTIALS`, `429 RATE_LIMITED`, 
 ### 3.1 `POST /api/v1/sellers/activation-requests` → `201` (Bearer, cuenta `Active`)
 
 ```json
-{ "businessName": "Puesto de la Alumna", "description": "Tacos y beverages", "pickupPoint": "Biblioteca central" }
+{ "storeName": "Puesto de la Alumna", "description": "Tacos y bebidas", "phone": "55 1234 5678" }
 ```
 
 ```json
 {
   "sellerId": "665f1a108b3f2a0012ab34c1",
-  "businessName": "Puesto de la Alumna",
+  "storeName": "Puesto de la Alumna",
   "description": "Tacos y bebidas",
-  "pickupPoint": "Biblioteca central",
+  "phone": "55 1234 5678",
   "status": "Active",
   "isActive": true,
   "roles": ["Buyer", "Seller"],
@@ -121,13 +121,17 @@ Errores: `400 VALIDATION_ERROR`, `401 INVALID_CREDENTIALS`, `429 RATE_LIMITED`, 
 }
 ```
 
-**Autoactivación**: no existe aprobación administrativa. Al completar nombre, descripción y punto de recogida, el vendedor queda `Active` y recibe el rol `Seller` en el perfil local. Repetir la llamada devuelve `200` con el mismo perfil.
+**Autoactivación**: no existe aprobación administrativa. Al completar `storeName`, `description` y `phone`, el vendedor queda `Active` y recibe el rol `Seller` en el perfil local. Repetir la llamada devuelve `200` con el mismo perfil.
+
+El cuerpo acepta **solo** `storeName` (1..100), `description` (1..500) y `phone` (3..32). Los nombres antiguos `businessName` y `pickupPoint` ya **no** se aceptan (`400 VALIDATION_ERROR`). El `phone` es el contacto del negocio: el backend lo guarda internamente como punto de recogida del pedido, así que es el dato que el comprador ve en el pedido.
 
 Errores: `400 VALIDATION_ERROR`, `401`, `403 ACCOUNT_NOT_ACTIVE`, `404`, `429`, `503`.
 
 ### 3.2 `GET /api/v1/sellers/me` · `PATCH /api/v1/sellers/me` → `200` (Bearer)
 
-Mismo cuerpo que la activación. `PATCH` acepta solo `businessName`, `description` y `pickupPoint`; nunca `roles`, `sellerId`, `status` ni `version`. `409 SELLER_CONFLICT` indica que el perfil cambió y hay que releerlo.
+Mismo cuerpo que la activación (`storeName`, `description`, `phone`, `status`, `isActive`, `roles`, `createdAt`, `updatedAt`). Tras la activación, `GET /sellers/me` responde `200` con el perfil del negocio activo (`status: "Active"`, `isActive: true`), de modo que el frontend puede validar permisos de inmediato; si el usuario no es vendedor responde `404 SELLER_PROFILE_NOT_FOUND`.
+
+`PATCH` acepta solo `storeName`, `description` y `phone` (los campos omitidos se conservan); nunca `roles`, `sellerId`, `status` ni `version`. `409 SELLER_CONFLICT` indica que el perfil cambió y hay que releerlo.
 
 ### 3.3 `GET /api/v1/sellers/{sellerId}` → `200` (público)
 
@@ -158,7 +162,7 @@ Respuesta real de la instancia tras el seeding:
   ],
   "page": 1,
   "pageSize": 20,
-  "total": 3
+  "totalCount": 3
 }
 ```
 
@@ -192,7 +196,7 @@ Parámetros: `search`, `categoryId`, `minPrice`, `maxPrice`, `page` (≥1), `pag
   ],
   "page": 1,
   "pageSize": 20,
-  "total": 1
+  "totalCount": 1
 }
 ```
 
@@ -276,10 +280,10 @@ Idempotency-Key: <uuid-v4-unico-por-intento>
   "productId": "6afb4c1a8b3f2a0012ab34d0",
   "productName": "Tacos de pastor (3 pza)",
   "sellerId": "665f1a108b3f2a0012ab34c1",
-  "buyerUserId": "665f1f77bcf86cd799439001",
+  "buyerId": "665f1f77bcf86cd799439001",
   "quantity": 2,
   "unitPrice": 55.50,
-  "total": 111.00,
+  "totalAmount": 111.00,
   "currency": "MXN",
   "paymentMethod": "Cash",
   "status": "Pending",
@@ -295,7 +299,7 @@ Idempotency-Key: <uuid-v4-unico-por-intento>
 
 Reglas que la app móvil debe respetar:
 
-- El cuerpo acepta **solo** `productId`, `quantity` y `notes`. Enviar `price`, `total`, `sellerId`, `buyerUserId`, `status`, `paymentMethod`, `currency`, `version` o `roles` → `400 VALIDATION_ERROR`.
+- El cuerpo acepta **solo** `productId`, `quantity` y `notes`. Enviar `price`, `total`, `totalAmount`, `sellerId`, `buyerId`, `buyerUserId`, `status`, `paymentMethod`, `currency`, `version` o `roles` → `400 VALIDATION_ERROR`.
 - El **total lo calcula el servidor** (`unitPrice` vigente × `quantity`); el cliente nunca decide el precio.
 - La compra **reserva stock** de forma atómica: si no hay existencias suficientes → `400 INSUFFICIENT_STOCK` y no se crea el pedido.
 - `quantity` entre 1 y 50; `productId` con 24 hex.
@@ -315,8 +319,11 @@ Parámetros: `page` (≥1), `pageSize` (1..50), `status` (opcional).
       "orderId": "6afb4d2b8b3f2a0012ab34d1",
       "productId": "6afb4c1a8b3f2a0012ab34d0",
       "productName": "Tacos de pastor (3 pza)",
+      "sellerId": "665f1a108b3f2a0012ab34c1",
+      "buyerId": "665f1f77bcf86cd799439001",
       "quantity": 2,
-      "total": 111.00,
+      "unitPrice": 55.50,
+      "totalAmount": 111.00,
       "currency": "MXN",
       "status": "Pending",
       "role": "buyer",
@@ -326,15 +333,15 @@ Parámetros: `page` (≥1), `pageSize` (1..50), `status` (opcional).
   ],
   "page": 1,
   "pageSize": 20,
-  "total": 1
+  "totalCount": 1
 }
 ```
 
-Solo devuelve pedidos del comprador autenticado (el filtro por rol vendedor aún no existe).
+Solo devuelve pedidos del comprador autenticado (el filtro por rol vendedor aún no existe). Cada ítem trae la relación completa: `orderId`, `productId`, `productName`, `sellerId`, `buyerId`, `quantity`, `unitPrice`, `totalAmount`, `currency`, `status`, `role`, `createdAt` y `notes`.
 
 ### 5.3 `GET /api/v1/orders/{orderId}` → `200` (Bearer, participante)
 
-Devuelve el mismo objeto de `POST /orders`. Solo lo leen el comprador o el vendedor del pedido; un tercero recibe `404 ORDER_NOT_FOUND` **sin** que se revele la existencia.
+Devuelve el mismo objeto de `POST /orders` (`orderId`, `productId`, `productName`, `sellerId`, `buyerId`, `quantity`, `unitPrice`, `totalAmount`, `currency`, `paymentMethod`, `status`, `pickupPoint`, `deliveredAt`, `completedAt`, `createdAt`, `updatedAt`, `version`, `notes`). Solo lo leen el comprador o el vendedor del pedido; un tercero recibe `404 ORDER_NOT_FOUND` **sin** que se revele la existencia.
 
 ### 5.4 `POST /api/v1/orders/{orderId}/cancel` → `200` (Bearer, comprador)
 
@@ -459,3 +466,21 @@ Códigos en uso: `VALIDATION_ERROR`, `UNAUTHORIZED`, `INVALID_CREDENTIALS`, `INS
 - **Sin `role` en `/orders/mine`**: siempre `buyer`.
 - **Sin listado de pedidos del vendedor**: no existe aún una ruta para que el vendedor liste los pedidos entrantes (D-ORD-05 sin aprobar); por ahora el vendedor conoce sus pedidos por otra vía.
 - **Sin reseñas tras la entrega**: la entrega no genera automáticamente una reseña (fase 06 pendiente).
+
+## 9. Cambios incompatibles del contrato (v1.3, 2026-11-16)
+
+Estos cambios son **rompientes** para el móvil y deben aplicarse en el mismo despliegue:
+
+| Antes | Ahora | Dónde |
+|---|---|---|
+| `businessName` | `storeName` | `POST /sellers/activation-requests`, `GET/PATCH /sellers/me` |
+| `pickupPoint` (en el vendedor) | `phone` | `POST /sellers/activation-requests`, `GET/PATCH /sellers/me` |
+| `total` (contador de página) | `totalCount` | `GET /products`, `GET /categories`, `GET /orders/mine`, `GET /admin/users` |
+| `buyerUserId` | `buyerId` | `POST /orders`, `GET /orders/{id}`, `GET /orders/mine` |
+| `total` (importe del pedido) | `totalAmount` | `POST /orders`, `GET /orders/{id}`, `GET /orders/mine` |
+
+Notes:
+
+- `pickupPoint` **sigue existiendo** en la respuesta del **pedido** (`POST /orders`, `GET /orders/{id}`): es el punto de recogida que ve el comprador. Solo cambió el nombre del campo del **perfil del vendedor**.
+- El `phone` del vendedor se guarda internamente como punto de recogida del pedido, así que el valor que el comprador ve en `pickupPoint` es el mismo `phone` que registró el vendedor.
+- El OpenAPI vivo (`GET /openapi/v1.json`) ya publica estos esquemas con sus respuestas reales (200/201/4xx/5xx) para las rutas de vendedores, catálogo, pedidos y admin.

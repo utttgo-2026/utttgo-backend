@@ -113,13 +113,13 @@ HU-CAT-02 (ofertar sobre producto compartido) y la formulación antigua de HU-CA
 
 ```json
 {
-  "businessName": "Campus Snacks",
+  "storeName": "Campus Snacks",
   "description": "Snacks y bebidas preparados en el campus.",
-  "pickupPoint": "Biblioteca central, planta baja"
+  "phone": "Biblioteca central, planta baja"
 }
 ```
 
-- **Contratos de validación**: `businessName` 1..100 caracteres tras `Trim`; `description` 1..500 caracteres; `pickupPoint` 1..160 caracteres. Cualquier campo ausente, nulo, vacío o con longitud fuera de rango → `400 VALIDATION_ERROR`. Campos desconocidos → `400 VALIDATION_ERROR`. No se acepta `roles`, `sellerId`, `status` ni `version` en el cuerpo.
+- **Contratos de validación**: `storeName` 1..100 caracteres tras `Trim`; `description` 1..500 caracteres; `phone` 3..32 caracteres. Cualquier campo ausente, nulo, vacío o con longitud fuera de rango → `400 VALIDATION_ERROR`. Campos desconocidos → `400 VALIDATION_ERROR`. No se acepta `roles`, `sellerId`, `status` ni `version` en el cuerpo.
 - **Respuestas**:
 
 | Código | `code` | Condición |
@@ -139,9 +139,9 @@ HU-CAT-02 (ofertar sobre producto compartido) y la formulación antigua de HU-CA
 ```json
 {
   "sellerId": "6f1c2b8e4a1d4f7c9b0a2d3e",
-  "businessName": "Campus Snacks",
+  "storeName": "Campus Snacks",
   "description": "Snacks y bebidas preparados en el campus.",
-  "pickupPoint": "Biblioteca central, planta baja",
+  "phone": "Biblioteca central, planta baja",
   "status": "Active",
   "isActive": true,
   "roles": ["Buyer", "Seller"],
@@ -154,7 +154,8 @@ HU-CAT-02 (ofertar sobre producto compartido) y la formulación antigua de HU-CA
 
 - **Acceso**: requiere Bearer válido. No acepta parámetros de consulta; cualquier query se ignora (no existe superficie para cambiar la identidad consultada).
 - **Respuestas**: `200` con el mismo cuerpo que API-009 · `401 UNAUTHORIZED` · `404 SELLER_PROFILE_NOT_FOUND` (el usuario autenticado no es vendedor) · `429 RATE_LIMITED` con `Retry-After` · `503 SELLER_UNAVAILABLE`.
-- No expone `email`, `phone`, `supabaseUserId`, `version` ni datos de otros vendedores.
+- No expone `email`, `supabaseUserId`, `version` ni datos de otros vendedores. El `phone` que publica es el **contacto del negocio** (el que el vendedor registró), no el teléfono de la cuita del usuario.
+- Tras la activación responde `200` con el perfil del negocio activo (`status: "Active"`, `isActive: true`), de modo que el frontend valida permisos de inmediato.
 
 ### 5.3 API-010 — `PATCH /api/v1/sellers/me`
 
@@ -162,7 +163,7 @@ HU-CAT-02 (ofertar sobre producto compartido) y la formulación antigua de HU-CA
 - **Cuerpo**: objeto JSON con **al menos uno** de los campos opcionales (los tres permitidos, en cualquier combinación):
 
 ```json
-{ "businessName": "Campus Snacks", "pickupPoint": "Biblioteca central, planta baja" }
+{ "storeName": "Campus Snacks", "phone": "Biblioteca central, planta baja" }
 ```
 
 - **Contratos de validación**: mismas longitudes que API-009. `null` explícito → `400 VALIDATION_ERROR` (las reglas de borrado de campos requieren ficha aprobada). Campos desconocidos → `400 VALIDATION_ERROR`. Cuerpo no objeto → `400 VALIDATION_ERROR`.
@@ -186,9 +187,9 @@ Las particiones son identificadores internos hasheados por SHA-256 en la clave `
 |---|---|---|
 | `_id` | `ObjectId` | Identificador del vendedor; es el `sellerId` que publica la API. |
 | `ownerUserId` | `string` | `users._id` en hexadecimal; **índice único parcial**; inmutable. |
-| `displayName` | `string` | Nombre visible del negocio (1..100). Se expone como `businessName` en los contratos de vendedor y como `displayName` en la proyección pública API-008. |
+| `displayName` | `string` | Nombre visible del negocio (1..100). Se expone como `storeName` en los contratos de vendedor y como `displayName` en la proyección pública API-008. |
 | `description` | `string` | Descripción del negocio (1..500). |
-| `pickupPoint` | `string` | Punto de recogida (1..160). |
+| `pickupPoint` | `string` | Contacto/punto de recogida (1..160). Se publica como `phone` en los contratos de vendedor y es el valor que el comprador ve como `pickupPoint` en su pedido. |
 | `status` | `string` | `PendingActivation` \| `Active` \| `Inactive` \| `Suspended` \| `Deleted`. |
 | `version` | `int64` | Control de concurrencia optimista; se incrementa en cada escritura. |
 | `createdAt` / `updatedAt` | `DateTime` UTC | Fechas UTC. |

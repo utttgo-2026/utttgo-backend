@@ -17,8 +17,8 @@ public sealed class SellerActivationSecurityTests
 {
     private const string Path = "/api/v1/sellers/activation-requests";
     private const string ValidBody =
-        "{\"businessName\":\"Campus Snacks\",\"description\":\"Snacks del campus\"," +
-        "\"pickupPoint\":\"Biblioteca central\"}";
+        "{\"storeName\":\"Campus Snacks\",\"description\":\"Snacks del campus\"," +
+        "\"phone\":\"Biblioteca central\"}";
 
     [Theory]
     [InlineData("POST")]

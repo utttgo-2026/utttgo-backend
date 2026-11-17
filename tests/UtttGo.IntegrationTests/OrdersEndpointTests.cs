@@ -32,17 +32,19 @@ public sealed class OrdersEndpointTests
         response.StatusCode.Should().Be(HttpStatusCode.Created);
         using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         body.RootElement.EnumerateObject().Select(property => property.Name).Should().BeEquivalentTo(
-            ["orderId", "productId", "productName", "sellerId", "buyerUserId", "quantity", "unitPrice",
-                "total", "currency", "paymentMethod", "status", "pickupPoint", "deliveredAt", "completedAt",
-                "createdAt", "updatedAt", "version", "notes"]);
+            ["orderId", "productId", "productName", "sellerId", "buyerId", "quantity", "unitPrice",
+                "totalAmount", "currency", "paymentMethod", "status", "pickupPoint", "deliveredAt",
+                "completedAt", "createdAt", "updatedAt", "version", "notes"]);
         body.RootElement.GetProperty("unitPrice").GetDecimal().Should().Be(85.50m);
-        body.RootElement.GetProperty("total").GetDecimal().Should().Be(171.00m);
+        body.RootElement.GetProperty("totalAmount").GetDecimal().Should().Be(171.00m);
         body.RootElement.GetProperty("quantity").GetInt32().Should().Be(2);
         body.RootElement.GetProperty("status").GetString().Should().Be("Pending");
         body.RootElement.GetProperty("paymentMethod").GetString().Should().Be("Cash");
         body.RootElement.GetProperty("currency").GetString().Should().Be("MXN");
         body.RootElement.GetProperty("sellerId").GetString().Should().Be(OrderFixtures.SellerId);
-        body.RootElement.GetProperty("buyerUserId").GetString().Should().Be(SellerFixtures.UserId);
+        body.RootElement.GetProperty("buyerId").GetString().Should().Be(SellerFixtures.UserId);
+        body.RootElement.GetProperty("productName").GetString().Should().Be("Quesadillas de huitlacoche (6 pza)");
+        body.RootElement.GetProperty("notes").ValueKind.Should().Be(JsonValueKind.Null);
         body.RootElement.GetProperty("deliveredAt").ValueKind.Should().Be(JsonValueKind.Null);
     }
 
@@ -90,7 +92,10 @@ public sealed class OrdersEndpointTests
     [Theory]
     [InlineData("price")]
     [InlineData("total")]
+    [InlineData("totalAmount")]
     [InlineData("sellerId")]
+    [InlineData("buyerId")]
+    [InlineData("buyerUserId")]
     [InlineData("status")]
     [InlineData("paymentMethod")]
     [InlineData("currency")]
@@ -186,14 +191,22 @@ public sealed class OrdersEndpointTests
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         body.RootElement.EnumerateObject().Select(property => property.Name).Should()
-            .BeEquivalentTo(["items", "page", "pageSize", "total"]);
-        body.RootElement.GetProperty("total").GetInt64().Should().Be(1);
+            .BeEquivalentTo(["items", "page", "pageSize", "totalCount"]);
+        body.RootElement.GetProperty("totalCount").GetInt32().Should().Be(1);
         body.RootElement.GetProperty("page").GetInt32().Should().Be(1);
         body.RootElement.GetProperty("pageSize").GetInt32().Should().Be(20);
         var item = body.RootElement.GetProperty("items")[0];
+        item.EnumerateObject().Select(property => property.Name).Should().BeEquivalentTo(
+            ["orderId", "productId", "productName", "sellerId", "buyerId", "quantity", "unitPrice",
+                "totalAmount", "currency", "status", "role", "createdAt", "notes"]);
         item.GetProperty("orderId").GetString().Should().Be(OrderFixtures.OrderId);
         item.GetProperty("role").GetString().Should().Be("buyer");
-        item.GetProperty("total").GetDecimal().Should().Be(171.00m);
+        item.GetProperty("totalAmount").GetDecimal().Should().Be(171.00m);
+        item.GetProperty("unitPrice").GetDecimal().Should().Be(85.50m);
+        item.GetProperty("sellerId").GetString().Should().Be(OrderFixtures.SellerId);
+        item.GetProperty("buyerId").GetString().Should().Be(SellerFixtures.UserId);
+        item.GetProperty("productName").GetString().Should().Be("Quesadillas de huitlacoche (6 pza)");
+        item.GetProperty("createdAt").ValueKind.Should().Be(JsonValueKind.String);
     }
 
     [Fact]

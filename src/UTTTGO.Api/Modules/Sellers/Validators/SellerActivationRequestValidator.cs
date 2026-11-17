@@ -7,12 +7,12 @@ public sealed class SellerActivationRequestValidator : AbstractValidator<SellerA
 {
     public SellerActivationRequestValidator()
     {
-        RuleFor(request => request.BusinessName).Must(value => value is not null &&
+        RuleFor(request => request.StoreName).Must(value => value is not null &&
             value.Trim().Length is >= 1 and <= 100);
         RuleFor(request => request.Description).Must(value => value is not null &&
             value.Trim().Length is >= 1 and <= 500);
-        RuleFor(request => request.PickupPoint).Must(value => value is not null &&
-            value.Trim().Length is >= 1 and <= 160);
+        RuleFor(request => request.Phone).Must(value => value is not null &&
+            value.Trim().Length is >= 3 and <= 32);
         RuleFor(request => request.UnknownFields).Must(fields => fields is null || fields.Count == 0)
             .WithMessage("Campos no permitidos.");
     }

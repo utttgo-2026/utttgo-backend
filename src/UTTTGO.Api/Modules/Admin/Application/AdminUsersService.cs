@@ -1,5 +1,6 @@
 using UTTTGO.Api.Modules.Admin.Contracts;
 using UTTTGO.Api.Modules.Identity.Application;
+using UTTTGO.Api.Shared.Contracts;
 
 namespace UTTTGO.Api.Modules.Admin.Application;
 
@@ -51,7 +52,7 @@ public sealed class AdminUsersService(ISessionService session, IAdminUsersRateLi
 
             var response = new AdminUsersResponse(page.Items.Select(item =>
                 new AdminUserResponse(item.Id, item.DisplayName, item.Roles.ToArray(), item.AccountStatus))
-                .ToArray(), query.Page, query.PageSize, page.Total);
+                .ToArray(), query.Page, query.PageSize, PaginationCount.FromCount(page.Total));
             // No successful response until the mandatory audit has completed.
             await audit.RecordAsync(profile.Id, correlationId, "Listed", cancellationToken);
             return new(AdminUsersOutcome.Success, response);

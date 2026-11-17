@@ -17,8 +17,8 @@ public sealed class SellerActivationEndpointTests
 {
     private const string Path = "/api/v1/sellers/activation-requests";
     private const string ValidBody =
-        "{\"businessName\":\"Campus Snacks\",\"description\":\"Snacks del campus\"," +
-        "\"pickupPoint\":\"Biblioteca central\"}";
+        "{\"storeName\":\"Campus Snacks\",\"description\":\"Snacks del campus\"," +
+        "\"phone\":\"Biblioteca central\"}";
 
     [Fact]
     public async Task ActivationReturns201WithExactSellerContract()
@@ -30,14 +30,16 @@ public sealed class SellerActivationEndpointTests
         var text = await response.Content.ReadAsStringAsync();
         using var body = JsonDocument.Parse(text);
         body.RootElement.EnumerateObject().Select(property => property.Name).Should().BeEquivalentTo(
-            ["sellerId", "businessName", "description", "pickupPoint", "status", "isActive", "roles",
+            ["sellerId", "storeName", "description", "phone", "status", "isActive", "roles",
                 "createdAt", "updatedAt"]);
         body.RootElement.GetProperty("sellerId").GetString().Should().Be(SellerFixtures.SellerId);
-        body.RootElement.GetProperty("businessName").GetString().Should().Be("Campus Snacks");
+        body.RootElement.GetProperty("storeName").GetString().Should().Be("Campus Snacks");
+        body.RootElement.GetProperty("description").GetString().Should().Be("Snacks del campus");
+        body.RootElement.GetProperty("phone").GetString().Should().Be("Biblioteca central");
         body.RootElement.GetProperty("status").GetString().Should().Be("Active");
         body.RootElement.GetProperty("isActive").GetBoolean().Should().BeTrue();
         body.RootElement.GetProperty("roles")[1].GetString().Should().Be("Seller");
-        text.Should().NotContain("a@uttt.edu.mx").And.NotContain("phone").And.NotContain("supabaseUserId")
+        text.Should().NotContain("a@uttt.edu.mx").And.NotContain("supabaseUserId")
             .And.NotContain("test-jwt");
     }
 
@@ -58,12 +60,13 @@ public sealed class SellerActivationEndpointTests
     }
 
     [Theory]
-    [InlineData("{\"businessName\":\"Campus Snacks\",\"description\":\"Snacks\"}")]
-    [InlineData("{\"businessName\":\"\",\"description\":\"Snacks\",\"pickupPoint\":\"Central\"}")]
-    [InlineData("{\"businessName\":null,\"description\":\"Snacks\",\"pickupPoint\":\"Central\"}")]
-    [InlineData("{\"businessName\":\"Campus\",\"description\":\"Snacks\",\"pickupPoint\":\"Central\",\"roles\":[\"Admin\"]}")]
-    [InlineData("{\"businessName\":\"Campus\",\"description\":\"Snacks\",\"pickupPoint\":\"Central\",\"sellerId\":\"507f1f77bcf86cd799439011\"}")]
-    [InlineData("{\"businessName\":\"Campus\",\"description\":\"Snacks\",\"pickupPoint\":\"Central\",\"status\":\"Active\"}")]
+    [InlineData("{\"storeName\":\"Campus Snacks\",\"description\":\"Snacks\"}")]
+    [InlineData("{\"storeName\":\"\",\"description\":\"Snacks\",\"phone\":\"Central\"}")]
+    [InlineData("{\"storeName\":null,\"description\":\"Snacks\",\"phone\":\"Central\"}")]
+    [InlineData("{\"storeName\":\"Campus\",\"description\":\"Snacks\",\"phone\":\"Central\",\"roles\":[\"Admin\"]}")]
+    [InlineData("{\"storeName\":\"Campus\",\"description\":\"Snacks\",\"phone\":\"Central\",\"sellerId\":\"507f1f77bcf86cd799439011\"}")]
+    [InlineData("{\"storeName\":\"Campus\",\"description\":\"Snacks\",\"phone\":\"Central\",\"status\":\"Active\"}")]
+    [InlineData("{\"businessName\":\"Campus\",\"description\":\"Snacks\",\"pickupPoint\":\"Central\"}")]
     [InlineData("{}")]
     public async Task InvalidBodyIs400AndWritesNothing(string body)
     {
