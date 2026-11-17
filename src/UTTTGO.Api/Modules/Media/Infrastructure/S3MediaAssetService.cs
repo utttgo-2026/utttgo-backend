@@ -6,9 +6,9 @@ using UTTTGO.Api.Shared.Contracts;
 
 namespace UTTTGO.Api.Modules.Media.Infrastructure;
 
-public class S3MediaAssetService(IOptions<S3Config> s3Config) : IS3MediaAssetService
+public class S3MediaAssetService : IS3MediaAssetService
 {
-    private readonly S3Config _config = s3Config.Value;
+    private readonly S3Config _config;
     private readonly bool _isConfigured;
 
     public S3MediaAssetService(IOptions<S3Config> s3Config)
