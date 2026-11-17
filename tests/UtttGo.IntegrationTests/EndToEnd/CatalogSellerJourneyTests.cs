@@ -19,8 +19,7 @@ public sealed class CatalogSellerJourneyTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        host = await EndToEndHost.StartAsync();
-        await host.Services.GetRequiredService<ICatalogSeeder>().SeedAsync(CancellationToken.None);
+        host = await EndToEndHost.StartWithCatalogSeedAsync();
     }
 
     public async Task DisposeAsync() => await host.DisposeAsync();

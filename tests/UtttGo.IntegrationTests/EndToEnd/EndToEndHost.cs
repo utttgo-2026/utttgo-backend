@@ -12,6 +12,7 @@ using MongoDB.Driver;
 using StackExchange.Redis;
 using Testcontainers.MongoDb;
 using Testcontainers.Redis;
+using UTTTGO.Api.Modules.Catalog.Infrastructure;
 using UTTTGO.Api.Modules.Identity.Application;
 using UTTTGO.Api.Shared.Infrastructure;
 
@@ -33,6 +34,11 @@ internal sealed class RemoteIpStartupFilter : IStartupFilter
 internal sealed class EndToEndHost : IAsyncDisposable
 {
     public const string DatabaseName = "utttgo_e2e";
+
+    private const int StartAttempts = 3;
+    private const int SeedAttempts = 3;
+    private const ushort MongoDbPort = 27017;
+    private const ushort RedisPort = 6379;
 
     private readonly MongoDbContainer mongo;
     private readonly RedisContainer redis;
@@ -60,44 +66,34 @@ internal sealed class EndToEndHost : IAsyncDisposable
 
     public static async Task<EndToEndHost> StartAsync()
     {
-        var mongo = new MongoDbBuilder("mongo:7").Build();
-        var redis = new RedisBuilder("redis:7-alpine").Build();
-
-        await mongo.StartAsync();
-        await redis.StartAsync();
-
-        var mongoUri = mongo.GetConnectionString();
-        var redisHost = redis.Hostname;
-        var redisPort = redis.GetMappedPublicPort(6379);
-        await WaitForMongoAsync(mongoUri);
-        await WaitForRedisAsync(redisHost, redisPort);
-
-        var auth = new EndToEndAuthDoubles();
-        var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
-            builder.ConfigureTestServices(services =>
+        for (var attempt = 1; attempt <= StartAttempts; attempt++)
+        {
+            try
             {
-                services.RemoveAll<IOptions<MongoOptions>>();
-                services.AddSingleton<IOptions<MongoOptions>>(Options.Create(new MongoOptions
-                {
-                    Uri = mongoUri,
-                    Database = DatabaseName
-                }));
-                services.RemoveAll<IConnectionMultiplexer>();
-                services.AddSingleton<IConnectionMultiplexer>(CreateMultiplexer(redisHost, redisPort));
-                services.AddSingleton<IStartupFilter, RemoteIpStartupFilter>();
-                services.RemoveAll<ISupabaseRegistration>();
-                services.AddSingleton<ISupabaseRegistration>(auth);
-                services.RemoveAll<ISupabaseLogin>();
-                services.AddSingleton<ISupabaseLogin>(auth);
-                services.RemoveAll<IValidatedJwtSubjectReader>();
-                services.AddSingleton<IValidatedJwtSubjectReader>(auth);
-                services.RemoveAll<ILoginJwtGate>();
-                services.AddSingleton<ILoginJwtGate>(auth);
-                services.RemoveAll<ISupabaseSessionIdentity>();
-                services.AddSingleton<ISupabaseSessionIdentity>(auth);
-            }));
+                return await StartOnceAsync();
+            }
+            catch (Exception) when (attempt < StartAttempts)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(5 * attempt));
+            }
+        }
 
-        return new EndToEndHost(mongo, redis, factory);
+        throw new InvalidOperationException("The end-to-end host could not be started.");
+    }
+
+    public static async Task<EndToEndHost> StartWithCatalogSeedAsync()
+    {
+        var host = await StartAsync();
+        try
+        {
+            await SeedCatalogAsync(host);
+            return host;
+        }
+        catch
+        {
+            await host.DisposeAsync();
+            throw;
+        }
     }
 
     public async ValueTask DisposeAsync()
@@ -106,6 +102,92 @@ internal sealed class EndToEndHost : IAsyncDisposable
         await factory.DisposeAsync();
         await redis.DisposeAsync();
         await mongo.DisposeAsync();
+    }
+
+    private static async Task<EndToEndHost> StartOnceAsync()
+    {
+        var mongo = BuildMongoContainer();
+        var redis = BuildRedisContainer();
+
+        try
+        {
+            await mongo.StartAsync();
+            await redis.StartAsync();
+
+            var mongoUri = BuildMongoUri(mongo);
+            var redisHost = redis.Hostname;
+            var redisPort = redis.GetMappedPublicPort(RedisPort);
+            await WaitForMongoAsync(mongoUri);
+            await WaitForRedisAsync(redisHost, redisPort);
+
+            var auth = new EndToEndAuthDoubles();
+            var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+                builder.ConfigureTestServices(services =>
+                {
+                    services.RemoveAll<IOptions<MongoOptions>>();
+                    services.AddSingleton<IOptions<MongoOptions>>(Options.Create(new MongoOptions
+                    {
+                        Uri = mongoUri,
+                        Database = DatabaseName
+                    }));
+                    services.RemoveAll<IConnectionMultiplexer>();
+                    services.AddSingleton<IConnectionMultiplexer>(CreateMultiplexer(redisHost, redisPort));
+                    services.AddSingleton<IStartupFilter, RemoteIpStartupFilter>();
+                    services.RemoveAll<ISupabaseRegistration>();
+                    services.AddSingleton<ISupabaseRegistration>(auth);
+                    services.RemoveAll<ISupabaseLogin>();
+                    services.AddSingleton<ISupabaseLogin>(auth);
+                    services.RemoveAll<IValidatedJwtSubjectReader>();
+                    services.AddSingleton<IValidatedJwtSubjectReader>(auth);
+                    services.RemoveAll<ILoginJwtGate>();
+                    services.AddSingleton<ILoginJwtGate>(auth);
+                    services.RemoveAll<ISupabaseSessionIdentity>();
+                    services.AddSingleton<ISupabaseSessionIdentity>(auth);
+                }));
+
+            return new EndToEndHost(mongo, redis, factory);
+        }
+        catch
+        {
+            await redis.DisposeAsync();
+            await mongo.DisposeAsync();
+            throw;
+        }
+    }
+
+    private static MongoDbContainer BuildMongoContainer() =>
+        new MongoDbBuilder("mongo:7")
+            .WithUsername(string.Empty)
+            .WithPassword(string.Empty)
+            .WithWaitStrategy(Wait.ForUnixContainer()
+                .UntilExternalTcpPortIsAvailable(MongoDbPort)
+                .UntilCommandIsCompleted("mongosh", "--quiet", "--eval",
+                    "quit(db.adminCommand({ ping: 1 }).ok ? 0 : 1)"))
+            .Build();
+
+    private static RedisContainer BuildRedisContainer() =>
+        new RedisBuilder("redis:7-alpine")
+            .WithWaitStrategy(Wait.ForUnixContainer().UntilExternalTcpPortIsAvailable(RedisPort))
+            .Build();
+
+    private static string BuildMongoUri(MongoDbContainer mongo) =>
+        $"mongodb://{mongo.Hostname}:{mongo.GetMappedPublicPort(MongoDbPort)}/?directConnection=true";
+
+    private static async Task SeedCatalogAsync(EndToEndHost host)
+    {
+        var seeder = host.Services.GetRequiredService<ICatalogSeeder>();
+        for (var attempt = 1; attempt <= SeedAttempts; attempt++)
+        {
+            try
+            {
+                await seeder.SeedAsync(CancellationToken.None);
+                return;
+            }
+            catch (Exception) when (attempt < SeedAttempts)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(2 * attempt));
+            }
+        }
     }
 
     private static IConnectionMultiplexer CreateMultiplexer(string host, int port)
