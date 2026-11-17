@@ -110,7 +110,9 @@ public sealed class OrdersSecurityTests
     [Theory]
     [InlineData("price")]
     [InlineData("total")]
+    [InlineData("totalAmount")]
     [InlineData("sellerId")]
+    [InlineData("buyerId")]
     [InlineData("buyerUserId")]
     [InlineData("status")]
     [InlineData("paymentMethod")]
@@ -150,7 +152,7 @@ public sealed class OrdersSecurityTests
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        body.RootElement.GetProperty("total").GetInt64().Should().Be(1);
+        body.RootElement.GetProperty("totalCount").GetInt32().Should().Be(1);
         body.RootElement.GetProperty("items")[0].GetProperty("orderId").GetString()
             .Should().Be(OrderFixtures.OrderId);
     }

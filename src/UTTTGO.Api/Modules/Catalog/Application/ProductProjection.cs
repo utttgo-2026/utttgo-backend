@@ -1,4 +1,5 @@
 using UTTTGO.Api.Modules.Catalog.Contracts;
+using UTTTGO.Api.Shared.Contracts;
 
 namespace UTTTGO.Api.Modules.Catalog.Application;
 
@@ -14,5 +15,5 @@ public static class ProductProjection
     // Only the public projection is published; internal fields never reach the client.
     public static ProductListResponse ToListResponse(IReadOnlyList<ProductResponse> items,
         ProductListQuery query, long total) =>
-        new(items, query.Page, query.PageSize, total);
+        new(items, query.Page, query.PageSize, PaginationCount.FromCount(total));
 }

@@ -17,9 +17,9 @@ public sealed class UpdateOwnSellerProfileSecurityTests
     private const string Path = "/api/v1/sellers/me";
 
     [Theory]
-    [InlineData("{\"businessName\":\"Nuevo nombre\"}")]
+    [InlineData("{\"storeName\":\"Nuevo nombre\"}")]
     [InlineData("{\"description\":\"Otra descripcion\"}")]
-    [InlineData("{\"pickupPoint\":\"Otro punto\"}")]
+    [InlineData("{\"phone\":\"Otro punto\"}")]
     public async Task UpdateAlwaysTargetsTheAuthenticatedSeller(string body)
     {
         var writer = new InMemorySellerWriter();
@@ -43,7 +43,7 @@ public sealed class UpdateOwnSellerProfileSecurityTests
         writer.Sellers["other-user"] = SellerFixtures.Seller("other-user", "507f1f77bcf86cd799439012");
         using var factory = Factory(writer: writer);
 
-        using var response = await Patch(factory, "{\"businessName\":\"Nuevo nombre\"}",
+        using var response = await Patch(factory, "{\"storeName\":\"Nuevo nombre\"}",
             $"{Path}?ownerUserId=other-user&sellerId=507f1f77bcf86cd799439012");
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -77,7 +77,7 @@ public sealed class UpdateOwnSellerProfileSecurityTests
         writer.Sellers[SellerFixtures.UserId] = SellerFixtures.Seller();
         using var factory = Factory(writer: writer);
 
-        using var response = await Patch(factory, "{\"businessName\":\"Nuevo nombre\"}");
+        using var response = await Patch(factory, "{\"storeName\":\"Nuevo nombre\"}");
 
         var text = await response.Content.ReadAsStringAsync();
         text.Should().NotContain("a@uttt.edu.mx").And.NotContain("1234567890").And.NotContain("supabaseUserId")
@@ -91,7 +91,7 @@ public sealed class UpdateOwnSellerProfileSecurityTests
         writer.Sellers[SellerFixtures.UserId] = SellerFixtures.Seller();
         using var factory = Factory(writer: writer, limit: new SellerRateLimitDouble { Fail = true });
 
-        using var response = await Patch(factory, "{\"businessName\":\"Nuevo nombre\"}");
+        using var response = await Patch(factory, "{\"storeName\":\"Nuevo nombre\"}");
 
         response.StatusCode.Should().Be(HttpStatusCode.ServiceUnavailable);
         writer.UpdateCalls.Should().Be(0);
@@ -106,7 +106,7 @@ public sealed class UpdateOwnSellerProfileSecurityTests
         using var factory = Factory(writer: writer,
             outcome: AuthenticatedLocalProfileOutcome.Unauthorized);
 
-        using var response = await Patch(factory, "{\"businessName\":\"Nuevo nombre\"}");
+        using var response = await Patch(factory, "{\"storeName\":\"Nuevo nombre\"}");
 
         response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
         writer.UpdateCalls.Should().Be(0);

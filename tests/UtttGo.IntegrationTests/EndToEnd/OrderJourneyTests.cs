@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -31,9 +31,14 @@ public sealed class OrderJourneyTests : IAsyncLifetime
         var product = await GetProductAsync(sellerToken, categoryId);
         var productId = product.GetProperty("id").GetString()!;
         var price = product.GetProperty("price").GetDecimal();
+        var sellerId = product.GetProperty("sellerId").GetString()!;
 
         using var buyerClient = host.CreateClient();
         buyerClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", buyerToken);
+
+        using var profile = await buyerClient.GetAsync("/api/v1/users/me");
+        using var profileDocument = JsonDocument.Parse(await profile.Content.ReadAsStringAsync());
+        var buyerId = profileDocument.RootElement.GetProperty("id").GetString()!;
 
         using var created = await buyerClient.PostAsJsonAsync("/api/v1/orders",
             new { productId, quantity = 2 });
@@ -42,20 +47,33 @@ public sealed class OrderJourneyTests : IAsyncLifetime
         using var createdDocument = JsonDocument.Parse(await created.Content.ReadAsStringAsync());
         var orderId = createdDocument.RootElement.GetProperty("orderId").GetString()!;
         createdDocument.RootElement.GetProperty("unitPrice").GetDecimal().Should().Be(price);
-        createdDocument.RootElement.GetProperty("total").GetDecimal().Should().Be(price * 2);
+        createdDocument.RootElement.GetProperty("totalAmount").GetDecimal().Should().Be(price * 2);
         createdDocument.RootElement.GetProperty("status").GetString().Should().Be("Pending");
         createdDocument.RootElement.GetProperty("paymentMethod").GetString().Should().Be("Cash");
         createdDocument.RootElement.GetProperty("currency").GetString().Should().Be("MXN");
         createdDocument.RootElement.GetProperty("quantity").GetInt32().Should().Be(2);
         createdDocument.RootElement.GetProperty("pickupPoint").GetString().Should().Be("Biblioteca central");
+        createdDocument.RootElement.GetProperty("buyerId").GetString().Should().Be(buyerId);
+        createdDocument.RootElement.GetProperty("sellerId").GetString().Should().Be(sellerId);
+        createdDocument.RootElement.GetProperty("productName").GetString().Should().NotBeNullOrEmpty();
+        createdDocument.RootElement.GetProperty("notes").ValueKind.Should().Be(JsonValueKind.Null);
+        createdDocument.RootElement.GetProperty("createdAt").ValueKind.Should().Be(JsonValueKind.String);
 
         using var mine = await buyerClient.GetAsync("/api/v1/orders/mine");
         mine.StatusCode.Should().Be(HttpStatusCode.OK);
         using var mineDocument = JsonDocument.Parse(await mine.Content.ReadAsStringAsync());
-        mineDocument.RootElement.GetProperty("total").GetInt64().Should().Be(1);
+        mineDocument.RootElement.GetProperty("totalCount").GetInt32().Should().Be(1);
         mineDocument.RootElement.GetProperty("items")[0].GetProperty("orderId").GetString()
             .Should().Be(orderId);
         mineDocument.RootElement.GetProperty("items")[0].GetProperty("role").GetString().Should().Be("buyer");
+        mineDocument.RootElement.GetProperty("items")[0].GetProperty("buyerId").GetString()
+            .Should().Be(buyerId);
+        mineDocument.RootElement.GetProperty("items")[0].GetProperty("sellerId").GetString()
+            .Should().Be(sellerId);
+        mineDocument.RootElement.GetProperty("items")[0].GetProperty("totalAmount").GetDecimal()
+            .Should().Be(price * 2);
+        mineDocument.RootElement.GetProperty("items")[0].GetProperty("unitPrice").GetDecimal()
+            .Should().Be(price);
 
         using var detail = await buyerClient.GetAsync($"/api/v1/orders/{orderId}");
         detail.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -373,11 +391,23 @@ public sealed class OrderJourneyTests : IAsyncLifetime
 
         using var activation = await sellerClient.PostAsJsonAsync("/api/v1/sellers/activation-requests", new
         {
-            businessName = "Puesto de Pedidos E2E",
+            storeName = "Puesto de Pedidos E2E",
             description = "Vendedor de prueba para pedidos",
-            pickupPoint = "Biblioteca central"
+            phone = "Biblioteca central"
         });
         activation.StatusCode.Should().Be(HttpStatusCode.Created);
+        using var activationDocument = JsonDocument.Parse(await activation.Content.ReadAsStringAsync());
+        activationDocument.RootElement.GetProperty("storeName").GetString()
+            .Should().Be("Puesto de Pedidos E2E");
+        activationDocument.RootElement.GetProperty("phone").GetString().Should().Be("Biblioteca central");
+        activationDocument.RootElement.GetProperty("status").GetString().Should().Be("Active");
+
+        using var ownProfile = await sellerClient.GetAsync("/api/v1/sellers/me");
+        ownProfile.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var ownProfileDocument = JsonDocument.Parse(await ownProfile.Content.ReadAsStringAsync());
+        ownProfileDocument.RootElement.GetProperty("status").GetString().Should().Be("Active");
+        ownProfileDocument.RootElement.GetProperty("isActive").GetBoolean().Should().BeTrue();
+        ownProfileDocument.RootElement.GetProperty("phone").GetString().Should().Be("Biblioteca central");
 
         using var categories = await sellerClient.GetAsync("/api/v1/categories");
         using var categoriesDocument = JsonDocument.Parse(await categories.Content.ReadAsStringAsync());

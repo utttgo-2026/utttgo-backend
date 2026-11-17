@@ -9,9 +9,9 @@ public sealed record ProductResponse(string Id, string SellerId, string? SellerD
     DateTime CreatedAt, DateTime UpdatedAt);
 
 public sealed record ProductListResponse(IReadOnlyList<ProductResponse> Items, int Page, int PageSize,
-    long Total);
+    int TotalCount);
 
 public sealed record CategoryResponse(string Id, string Name, int SortOrder);
 
 public sealed record CategoryListResponse(IReadOnlyList<CategoryResponse> Items, int Page, int PageSize,
-    long Total);
+    int TotalCount);

@@ -12,6 +12,11 @@ public sealed class SellersController(ISellerProfileService sellers, IValidator<
     : ControllerBase
 {
     [HttpGet("{sellerId}")]
+    [ProducesResponseType(typeof(SellerProfileResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status429TooManyRequests)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> Get([FromRoute] string sellerId, CancellationToken cancellationToken)
     {
         if (!(await validator.ValidateAsync(new SellerIdRequest(sellerId), cancellationToken)).IsValid)

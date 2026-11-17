@@ -45,13 +45,13 @@ public sealed class UpdateOwnSellerProfileService(IAuthenticatedLocalProfileRead
             if (seller is null) return new(UpdateOwnSellerProfileOutcome.NotSeller);
             if (seller.Status != "Active") return new(UpdateOwnSellerProfileOutcome.NotSeller);
 
-            var businessName = request.HasBusinessName ? request.BusinessName!.Trim() : null;
+            var storeName = request.HasStoreName ? request.StoreName!.Trim() : null;
             var description = request.HasDescription ? request.Description!.Trim() : null;
-            var pickupPoint = request.HasPickupPoint ? request.PickupPoint!.Trim() : null;
+            var phone = request.HasPhone ? request.Phone!.Trim() : null;
 
             var result = await sellers.UpdateOwnAsync(profile.Id, seller.SellerId, seller.Version,
-                businessName, request.HasBusinessName, description, request.HasDescription,
-                pickupPoint, request.HasPickupPoint, cancellationToken);
+                storeName, request.HasStoreName, description, request.HasDescription,
+                phone, request.HasPhone, cancellationToken);
             if (result.Outcome == SellerProfileUpdateOutcome.Missing)
                 return new(UpdateOwnSellerProfileOutcome.NotSeller);
             if (result.Outcome == SellerProfileUpdateOutcome.Conflict)
@@ -62,9 +62,9 @@ public sealed class UpdateOwnSellerProfileService(IAuthenticatedLocalProfileRead
             if (updated is null || updated.Version <= seller.Version ||
                 updated.SellerId != seller.SellerId || updated.OwnerUserId != seller.OwnerUserId ||
                 updated.Status != seller.Status ||
-                updated.BusinessName != (request.HasBusinessName ? businessName : seller.BusinessName) ||
+                updated.BusinessName != (request.HasStoreName ? storeName : seller.BusinessName) ||
                 updated.Description != (request.HasDescription ? description : seller.Description) ||
-                updated.PickupPoint != (request.HasPickupPoint ? pickupPoint : seller.PickupPoint))
+                updated.PickupPoint != (request.HasPhone ? phone : seller.PickupPoint))
                 return new(UpdateOwnSellerProfileOutcome.Unavailable);
 
             return new(UpdateOwnSellerProfileOutcome.Updated,

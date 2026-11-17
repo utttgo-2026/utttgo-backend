@@ -24,9 +24,12 @@ public sealed class OwnSellerProfileEndpointTests
         var text = await response.Content.ReadAsStringAsync();
         using var body = JsonDocument.Parse(text);
         body.RootElement.EnumerateObject().Select(property => property.Name).Should().BeEquivalentTo(
-            ["sellerId", "businessName", "description", "pickupPoint", "status", "isActive", "roles",
+            ["sellerId", "storeName", "description", "phone", "status", "isActive", "roles",
                 "createdAt", "updatedAt"]);
         body.RootElement.GetProperty("sellerId").GetString().Should().Be(SellerFixtures.SellerId);
+        body.RootElement.GetProperty("storeName").GetString().Should().Be("Campus Snacks");
+        body.RootElement.GetProperty("status").GetString().Should().Be("Active");
+        body.RootElement.GetProperty("isActive").GetBoolean().Should().BeTrue();
         text.Should().NotContain("a@uttt.edu.mx").And.NotContain("1234567890").And.NotContain("supabaseUserId")
             .And.NotContain("test-jwt");
     }

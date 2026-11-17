@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
@@ -22,13 +22,13 @@ public sealed class UpdateOwnSellerProfileEndpointTests
     {
         using var factory = Factory();
 
-        using var response = await Patch(factory, "{\"businessName\":\"Nuevo nombre\"}");
+        using var response = await Patch(factory, "{\"storeName\":\"Nuevo nombre\"}");
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        body.RootElement.GetProperty("businessName").GetString().Should().Be("Nuevo nombre");
+        body.RootElement.GetProperty("storeName").GetString().Should().Be("Nuevo nombre");
         body.RootElement.GetProperty("description").GetString().Should().Be("Snacks del campus");
-        body.RootElement.GetProperty("pickupPoint").GetString().Should().Be("Biblioteca central");
+        body.RootElement.GetProperty("phone").GetString().Should().Be("Biblioteca central");
     }
 
     [Theory]
@@ -36,8 +36,8 @@ public sealed class UpdateOwnSellerProfileEndpointTests
     [InlineData("{\"sellerId\":\"507f1f77bcf86cd799439011\"}")]
     [InlineData("{\"status\":\"Active\"}")]
     [InlineData("{\"version\":7}")]
-    [InlineData("{\"businessName\":null}")]
-    [InlineData("{\"businessName\":\"\"}")]
+    [InlineData("{\"storeName\":null}")]
+    [InlineData("{\"storeName\":\"\"}")]
     [InlineData("{}")]
     [InlineData("[]")]
     public async Task InvalidBodyIs400AndWritesNothing(string body)
@@ -58,7 +58,7 @@ public sealed class UpdateOwnSellerProfileEndpointTests
     {
         using var factory = Factory();
         using var client = factory.CreateClient();
-        using var content = new StringContent("{\"businessName\":\"Nuevo nombre\"}", Encoding.UTF8,
+        using var content = new StringContent("{\"storeName\":\"Nuevo nombre\"}", Encoding.UTF8,
             "application/json");
 
         using var response = await client.PatchAsync(Path, content);
@@ -71,7 +71,7 @@ public sealed class UpdateOwnSellerProfileEndpointTests
     {
         using var factory = Factory(seller: false);
 
-        using var response = await Patch(factory, "{\"businessName\":\"Nuevo nombre\"}");
+        using var response = await Patch(factory, "{\"storeName\":\"Nuevo nombre\"}");
 
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
         (await response.Content.ReadAsStringAsync()).Should().Contain("SELLER_PROFILE_NOT_FOUND");
@@ -85,7 +85,7 @@ public sealed class UpdateOwnSellerProfileEndpointTests
         writer.ForceConflict = true;
         using var factory = Factory(writer: writer);
 
-        using var response = await Patch(factory, "{\"businessName\":\"Nuevo nombre\"}");
+        using var response = await Patch(factory, "{\"storeName\":\"Nuevo nombre\"}");
 
         response.StatusCode.Should().Be(HttpStatusCode.Conflict);
         (await response.Content.ReadAsStringAsync()).Should().Contain("SELLER_CONFLICT");
@@ -96,7 +96,7 @@ public sealed class UpdateOwnSellerProfileEndpointTests
     {
         using var factory = Factory(limit: new SellerRateLimitDouble { Allowed = false });
 
-        using var response = await Patch(factory, "{\"businessName\":\"Nuevo nombre\"}");
+        using var response = await Patch(factory, "{\"storeName\":\"Nuevo nombre\"}");
 
         response.StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
     }
@@ -106,7 +106,7 @@ public sealed class UpdateOwnSellerProfileEndpointTests
     {
         using var factory = Factory(writer: new InMemorySellerWriter { Fail = true });
 
-        using var response = await Patch(factory, "{\"businessName\":\"Nuevo nombre\"}");
+        using var response = await Patch(factory, "{\"storeName\":\"Nuevo nombre\"}");
 
         response.StatusCode.Should().Be(HttpStatusCode.ServiceUnavailable);
         (await response.Content.ReadAsStringAsync()).Should().Contain("SELLER_UNAVAILABLE")

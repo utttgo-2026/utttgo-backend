@@ -1,4 +1,4 @@
-using FluentAssertions;
+﻿using FluentAssertions;
 using UTTTGO.Api.Modules.Catalog.Application;
 using UTTTGO.Api.Modules.Catalog.Contracts;
 using Xunit;
@@ -21,7 +21,7 @@ public sealed class CatalogReadServiceTests
 
         result.Outcome.Should().Be(ProductListOutcome.Success);
         result.Response!.Items.Should().HaveCount(1);
-        result.Response.Total.Should().Be(1);
+        result.Response.TotalCount.Should().Be(1);
         result.Response.Page.Should().Be(1);
         result.Response.PageSize.Should().Be(20);
         var item = result.Response.Items[0];
@@ -156,7 +156,7 @@ public sealed class CatalogReadServiceTests
         result.Outcome.Should().Be(CategoryListOutcome.Success);
         result.Response!.Items.Should().HaveCount(1);
         result.Response.Items[0].Name.Should().Be("Comida");
-        result.Response.Total.Should().Be(1);
+        result.Response.TotalCount.Should().Be(1);
     }
 
     [Fact]

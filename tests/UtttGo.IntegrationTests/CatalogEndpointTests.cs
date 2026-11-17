@@ -28,7 +28,7 @@ public sealed class CatalogEndpointTests
         using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         body.RootElement.GetProperty("page").GetInt32().Should().Be(1);
         body.RootElement.GetProperty("pageSize").GetInt32().Should().Be(20);
-        body.RootElement.GetProperty("total").GetInt64().Should().Be(1);
+        body.RootElement.GetProperty("totalCount").GetInt32().Should().Be(1);
         var item = body.RootElement.GetProperty("items")[0];
         item.GetProperty("id").GetString().Should().Be(CatalogFixtures.ProductId);
         item.GetProperty("sellerId").GetString().Should().Be(CatalogFixtures.SellerId);

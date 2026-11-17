@@ -4,7 +4,7 @@ public sealed record AdminUserResponse(string Id, string DisplayName, IReadOnlyL
     string AccountStatus);
 
 public sealed record AdminUsersResponse(IReadOnlyList<AdminUserResponse> Items, int Page, int PageSize,
-    long Total);
+    int TotalCount);
 
 public sealed record AdminUsersQueryRequest(string? Search, string? Role, string? AccountStatus,
     string? Page, string? PageSize, string? SortBy);

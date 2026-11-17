@@ -16,6 +16,15 @@ public sealed class OwnSellerController(ISellerActivationService activation,
     : ControllerBase
 {
     [HttpPost("activation-requests")]
+    [ProducesResponseType(typeof(SellerOwnProfileResponse), StatusCodes.Status201Created)]
+    [ProducesResponseType(typeof(SellerOwnProfileResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status429TooManyRequests)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> Activate([FromBody] SellerActivationRequest request,
         CancellationToken cancellationToken)
     {
@@ -48,6 +57,11 @@ public sealed class OwnSellerController(ISellerActivationService activation,
     }
 
     [HttpGet("me")]
+    [ProducesResponseType(typeof(SellerOwnProfileResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status429TooManyRequests)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> Me(CancellationToken cancellationToken)
     {
         var token = BearerTokenReader.Read(Request);
@@ -70,6 +84,13 @@ public sealed class OwnSellerController(ISellerActivationService activation,
     }
 
     [HttpPatch("me")]
+    [ProducesResponseType(typeof(SellerOwnProfileResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status429TooManyRequests)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> UpdateMe([FromBody] JsonElement json, CancellationToken cancellationToken)
     {
         var token = BearerTokenReader.Read(Request);

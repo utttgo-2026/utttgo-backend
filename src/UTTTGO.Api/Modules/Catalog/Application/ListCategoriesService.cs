@@ -1,4 +1,5 @@
 using UTTTGO.Api.Modules.Catalog.Contracts;
+using UTTTGO.Api.Shared.Contracts;
 
 namespace UTTTGO.Api.Modules.Catalog.Application;
 
@@ -26,7 +27,7 @@ public sealed class ListCategoriesService(ICatalogRateLimitGate rateLimit, ICate
             var items = result.Items.Select(item => new CategoryResponse(item.CategoryId, item.Name,
                 item.SortOrder)).ToList();
             return new(CategoryListOutcome.Success, new CategoryListResponse(items, page, pageSize,
-                result.Total));
+                PaginationCount.FromCount(result.Total)));
         }
         catch (Exception) when (!cancellationToken.IsCancellationRequested)
         {

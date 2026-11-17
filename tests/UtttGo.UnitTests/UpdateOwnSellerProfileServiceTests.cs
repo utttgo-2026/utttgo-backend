@@ -17,7 +17,7 @@ public sealed class UpdateOwnSellerProfileServiceTests
         var result = await Service(writer).UpdateAsync("token", Request("Nuevo nombre"), default);
 
         result.Outcome.Should().Be(UpdateOwnSellerProfileOutcome.Updated);
-        result.Response!.BusinessName.Should().Be("Nuevo nombre");
+        result.Response!.StoreName.Should().Be("Nuevo nombre");
         writer.UpdateCalls.Should().Be(1);
         writer.LastOwnerUserId.Should().Be(SellerFixtures.UserId);
     }
@@ -31,7 +31,7 @@ public sealed class UpdateOwnSellerProfileServiceTests
         var result = await Service(writer).UpdateAsync("token", Request("Nuevo nombre"), default);
 
         result.Response!.Description.Should().Be("Snacks del campus");
-        result.Response.PickupPoint.Should().Be("Biblioteca central");
+        result.Response.Phone.Should().Be("Biblioteca central");
     }
 
     [Fact]

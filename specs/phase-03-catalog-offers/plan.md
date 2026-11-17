@@ -38,7 +38,7 @@
 | DEC-019.d | `GET /api/v1/sellers/me` | Bearer | `200` · `401` · `404` `SELLER_PROFILE_NOT_FOUND` · `429` · `503` |
 | API-010 | `PATCH /api/v1/sellers/me` | Bearer + propietario implícito | `200` · `400` `VALIDATION_ERROR` · `401` · `404` `SELLER_PROFILE_NOT_FOUND` · `409` `SELLER_CONFLICT` · `429` · `503` |
 
-Detalle de cuerpos, validaciones y ejemplo de respuesta en `spec.md` § 5. El cuerpo de éxito es el mismo en las tres rutas: `sellerId`, `businessName`, `description`, `pickupPoint`, `status`, `isActive`, `roles`, `createdAt`, `updatedAt`. No se expone `email`, `phone`, `supabaseUserId` ni `version`.
+Detalle de cuerpos, validaciones y ejemplo de respuesta en `spec.md` § 5. El cuerpo de éxito es el mismo en las tres rutas: `sellerId`, `storeName`, `description`, `phone`, `status`, `isActive`, `roles`, `createdAt`, `updatedAt`. El `phone` es el contacto del negocio (se guarda como `pickupPoint` en `sellers`); no se expone `email`, `supabaseUserId` ni `version`.
 
 **Contratos no tocados:** API‑008 (`GET /api/v1/sellers/{sellerId}`) mantiene su proyección pública de cinco campos; API‑001..008 y API‑039 no cambian de comportamiento ni de forma de payload.
 

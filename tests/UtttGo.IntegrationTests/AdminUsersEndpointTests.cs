@@ -24,7 +24,7 @@ public sealed class AdminUsersEndpointTests
         json.Should().NotContain("email").And.NotContain("test-jwt").And.NotContain("createdAt")
             .And.NotContain("phone").And.NotContain("supabaseUserId");
         using var body = JsonDocument.Parse(json);
-        body.RootElement.GetProperty("total").GetInt64().Should().Be(2);
+        body.RootElement.GetProperty("totalCount").GetInt32().Should().Be(2);
         body.RootElement.GetProperty("page").GetInt32().Should().Be(1);
         body.RootElement.GetProperty("pageSize").GetInt32().Should().Be(1);
         var item = body.RootElement.GetProperty("items")[0];
