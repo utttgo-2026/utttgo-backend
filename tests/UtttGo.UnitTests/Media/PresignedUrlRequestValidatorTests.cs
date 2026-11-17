@@ -1,11 +1,7 @@
+using FluentAssertions;
 using FluentValidation;
-using Microsoft.Extensions.Options;
-using UTTTGO.Api.Modules.Media.Application;
 using UTTTGO.Api.Modules.Media.Contracts;
-using UTTTGO.Api.Modules.Media.Infrastructure;
 using UTTTGO.Api.Modules.Media.Validators;
-using UTTTGo.UnitTests;
-
 using Xunit;
 
 namespace UtttGo.UnitTests;
