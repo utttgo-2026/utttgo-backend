@@ -75,3 +75,4 @@ public class S3MediaAssetService(IOptions<S3Config> s3Config) : IS3MediaAssetSer
             Key = objectKey
         }, cancellationToken);
     }
+}

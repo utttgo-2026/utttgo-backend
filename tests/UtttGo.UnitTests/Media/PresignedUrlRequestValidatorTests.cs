@@ -28,7 +28,7 @@ public class PresignedUrlRequestValidatorTests
         var result = validator.Validate(request);
 
         // Assert
-        result.IsValid.Should(). be True();
+        result.IsValid.Should().BeTrue();
     }
 
     [Fact]
@@ -47,9 +47,9 @@ public class PresignedUrlRequestValidatorTests
         var result = validator.Validate(request);
 
         // Assert
-        result.IsValid.Should(). be False();
-        result.Errors.Should(). HaveCount(1);
-        result.Errors[0].ErrorMessage.Should(). Contain("no permitido");
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().HaveCount(1);
+        result.Errors[0].ErrorMessage.Should().Contain("no permitido");
     }
 
     [Fact]
@@ -68,7 +68,7 @@ public class PresignedUrlRequestValidatorTests
         var result = validator.Validate(request);
 
         // Assert
-        result.IsValid.Should(). be False();
+        result.IsValid.Should().BeFalse();
     }
 
     [Fact]
@@ -87,8 +87,8 @@ public class PresignedUrlRequestValidatorTests
         var result = validator.Validate(request);
 
         // Assert
-        result.IsValid.Should(). be False();
-        result.Errors.Should(). HaveCount(1);
-        result.Errors[0].ErrorMessage.Should(). Contain("5 MB");
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().HaveCount(1);
+        result.Errors[0].ErrorMessage.Should().Contain("5 MB");
     }
 }
