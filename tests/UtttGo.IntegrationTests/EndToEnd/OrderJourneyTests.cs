@@ -6,7 +6,6 @@ using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Bson;
 using MongoDB.Driver;
-using UTTTGO.Api.Modules.Catalog.Infrastructure;
 using Xunit;
 
 namespace UtttGo.IntegrationTests.EndToEnd;
@@ -18,8 +17,7 @@ public sealed class OrderJourneyTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        host = await EndToEndHost.StartAsync();
-        await host.Services.GetRequiredService<ICatalogSeeder>().SeedAsync(CancellationToken.None);
+        host = await EndToEndHost.StartWithCatalogSeedAsync();
     }
 
     public async Task DisposeAsync() => await host.DisposeAsync();
