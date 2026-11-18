@@ -1,6 +1,6 @@
 # Guía de integración móvil · UTTT-GO Backend
 
-> Versión 1.3 · 2026-11-16 · Contrato vigente de la API pública desplegada (incluye la Fase 2 de pedidos, API-026..029, pendiente de PR/CI-1) y la alineación definitiva de DTOs con el equipo móvil (`storeName`/`phone`, `totalCount`, `buyerId`/`totalAmount`; ver §9).
+> Versión 1.4 · 2026-11-18 · Contrato vigente de la API pública desplegada (incluye la Fase 2 de pedidos, API-026..029, la alineación definitiva de DTOs con el equipo móvil (`storeName`/`phone`, `totalCount`, `buyerId`/`totalAmount`; ver §9) y el listado de pedidos del vendedor `GET /sellers/me/orders` (D-ORD-05, ficha nueva aprobada; ver §5.8)).
 > Fuente canónica: `docs/constitution.md` y `docs/traceability.md`; el documento OpenAPI vivo es `GET /openapi/v1.json` y la consola de lectura es `GET /openapi`.
 
 ## 1. Entorno y transporte
@@ -430,6 +430,41 @@ Errores: `401`, `403 ACCOUNT_NOT_ACTIVE`/`403 ORDER_FORBIDDEN`, `404 ORDER_NOT_F
 
 Errores: `400 VALIDATION_ERROR`, `401`, `403 ACCOUNT_NOT_ACTIVE`/`403 ORDER_FORBIDDEN`, `404 ORDER_NOT_FOUND`, `409 ORDER_STATE_CONFLICT`, `409 ORDER_VERSION_CONFLICT`, `409 DELIVERY_TOKEN_ALREADY_USED`, `422 DELIVERY_TOKEN_INVALID`, `422 DELIVERY_TOKEN_EXPIRED`, `429 RATE_LIMITED`, `503 ORDER_UNAVAILABLE`.
 
+### 5.8 `GET /api/v1/sellers/me/orders` → `200` (Bearer, vendedor)
+
+Query: `page` (≥1), `pageSize` (≤50) y `status` opcional (`Pending|Accepted|Rejected|InPreparation|Ready|Delivered|CancelledByBuyer`).
+
+```json
+{
+  "items": [
+    {
+      "orderId": "6afb4d2b8b3f2a0012ab34d1",
+      "buyerId": "6afb4a1c8b3f2a0012ab3310",
+      "sellerId": "6afb4b5d8b3f2a0012ab3402",
+      "productName": "Tacos de canasta",
+      "unitPrice": 45.0,
+      "quantity": 2,
+      "totalAmount": 90.0,
+      "status": "Pending",
+      "role": "seller",
+      "notes": null,
+      "createdAt": "2026-11-18T17:05:00Z"
+    }
+  ],
+  "page": 1,
+  "pageSize": 20,
+  "totalCount": 3
+}
+```
+
+- **Ficha nueva aprobada (D-ORD-05, 2026-11-18)**: es la bandeja «Pedidos Recibidos» del vendedor; no es una de las 42 fichas del Excel.
+- Cada item trae `role: "seller"`; el `sellerId` lo deriva el servidor del perfil autenticado (el cliente nunca lo envía).
+- Solo el rol `Seller` con cuenta `Active`: sin rol → `403 SELLER_ROLE_REQUIRED`; cuenta inactiva → `403 SELLER_ACCOUNT_NOT_ACTIVE`.
+- `/api/v1/orders/mine` **no cambia** (sigue siendo solo del comprador, `role: "buyer"`); para ver el detalle de un pedido ya recibido sigue existiendo `GET /api/v1/orders/{orderId}` (participantes; un tercero recibe `404`).
+- Rate limit `order-read` (60/60 s) fail-closed: Redis caído → `503 ORDER_UNAVAILABLE`.
+
+Errores: `400 VALIDATION_ERROR`, `401`, `403 SELLER_ROLE_REQUIRED`/`403 SELLER_ACCOUNT_NOT_ACTIVE`, `429 RATE_LIMITED`, `503 ORDER_UNAVAILABLE`.
+
 ## 6. Contrato único de error
 
 ```json
@@ -463,8 +498,7 @@ Códigos en uso: `VALIDATION_ERROR`, `UNAUTHORIZED`, `INVALID_CREDENTIALS`, `INS
 - **Sin "mis productos" ni filtro `sellerId`**: el catálogo no permite filtrar por vendedor; está decidido para la siguiente iteración (el índice `sellerId_status` ya existe).
 - **Sin eliminación de producto**: no hay DELETE.
 - **Sin chat ni notificaciones push**: pertenecen a fases posteriores; la Fase 2 de pedidos no emite push (D-ORD-15).
-- **Sin `role` en `/orders/mine`**: siempre `buyer`.
-- **Sin listado de pedidos del vendedor**: no existe aún una ruta para que el vendedor liste los pedidos entrantes (D-ORD-05 sin aprobar); por ahora el vendedor conoce sus pedidos por otra vía.
+- **Sin `role` en `/orders/mine`**: siempre `buyer`. El listado del vendedor es la ruta separada `GET /sellers/me/orders` (§5.8) con `role: "seller"`.
 - **Sin reseñas tras la entrega**: la entrega no genera automáticamente una reseña (fase 06 pendiente).
 
 ## 9. Cambios incompatibles del contrato (v1.3, 2026-11-16)

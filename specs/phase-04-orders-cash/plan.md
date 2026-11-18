@@ -1,10 +1,10 @@
 # plan.md — Pedidos y efectivo · Backend UTTT-GO
-> Fase `phase-04-orders-cash` · Versión 0.3 · **Fase 1 (API-023..025) y Fase 2 (API-026..029) aprobadas e implementadas el 2026-11-16** · 2026-11-16.
-> Deriva de `spec.md` v0.3 y `docs/constitution.md` v2.6 (BR-001, BR-002, BR-003, BR-009, BR-010, §13, §14). Las decisiones D-ORD-01..19 quedan registradas en `spec.md` §0 y §9.2.
+> Fase `phase-04-orders-cash` · Versión 0.4 · **Fase 1 (API-023..025) y Fase 2 (API-026..029) aprobadas e implementadas el 2026-11-16; ficha nueva `GET /api/v1/sellers/me/orders` aprobada el 2026-11-18 (D-ORD-05)** · 2026-11-18.
+> Deriva de `spec.md` v0.5 y `docs/constitution.md` v2.6 (BR-001, BR-002, BR-003, BR-009, BR-010, §13, §14). Las decisiones D-ORD-01..20 quedan registradas en `spec.md` §0 y §9.2.
 
 ## 1. Alcance y fronteras
 
-**Autoriza (tras aprobación):** el módulo `Orders` con las fichas API-023..API-029 y las colecciones propias `orders` y `orderAuditLogs`. Estructura objetivo: `src/UTTTGO.Api/Modules/Orders/{Contracts,Application,Infrastructure,Validators,Controllers}` (§4.5).
+**Autoriza (tras aprobación):** el módulo `Orders` con las fichas API-023..API-029 y la **ficha nueva aprobada `GET /api/v1/sellers/me/orders`** (D-ORD-05), más las colecciones propias `orders` y `orderAuditLogs`. Estructura objetivo: `src/UTTTGO.Api/Modules/Orders/{Contracts,Application,Infrastructure,Validators,Controllers}` (§4.5).
 
 **Orders consume (solo contratos publicados por el módulo dueño):**
 
@@ -51,18 +51,19 @@
 | Ficha | Método y ruta | Acceso | Códigos |
 |---|---|---|---|
 | API-023 | `POST /api/v1/orders` | Bearer + cuenta `Active` | `201` · `200` (replay de `Idempotency-Key`, D-ORD-13) · `400` `VALIDATION_ERROR` / `INSUFFICIENT_STOCK` (D-ORD-11) · `401` · `403` `ACCOUNT_NOT_ACTIVE` · `404` `PRODUCT_NOT_FOUND` · `409` `ORDER_VERSION_CONFLICT` · `422` `PRODUCT_NOT_AVAILABLE` · `429` `RATE_LIMITED` · `503` `ORDER_UNAVAILABLE` |
-| API-024 | `GET /api/v1/orders/mine` | Bearer | `200` (paginado `{items,page,pageSize,total}`) · `400` · `401` · `429` · `503` |
+| API-024 | `GET /api/v1/orders/mine` | Bearer | `200` (paginado `{items,page,pageSize,totalCount}`) · `400` · `401` · `429` · `503` |
 | API-025 | `GET /api/v1/orders/{orderId}` | Bearer + participante | `200` · `401` · `404` `ORDER_NOT_FOUND` · `429` · `503` |
 | API-026 | `POST /api/v1/orders/{orderId}/cancel` | Bearer + comprador | `200` · `401` · `403` `ORDER_FORBIDDEN` · `404` · `409` `ORDER_STATE_CONFLICT` · `429` · `503` |
 | API-027 | `PATCH /api/v1/orders/{orderId}/status` | Bearer + vendedor | `200` · `400` · `401` · `403` · `404` · `409` `ORDER_STATE_CONFLICT` / `ORDER_VERSION_CONFLICT` · `429` · `503` |
 | API-028 | `POST /api/v1/orders/{orderId}/delivery-token` | Bearer + comprador + `Ready` | `201` · `401` · `403` · `404` · `409` `ORDER_STATE_CONFLICT` · `429` · `503` |
 | API-029 | `POST /api/v1/orders/{orderId}/delivery-confirmations` | Bearer + vendedor + token | `200` · `400` · `401` · `403` · `404` · `409` `ORDER_STATE_CONFLICT` / `DELIVERY_TOKEN_ALREADY_USED` · `422` `DELIVERY_TOKEN_INVALID` / `DELIVERY_TOKEN_EXPIRED` · `429` · `503` |
+| D-ORD-05 (ficha nueva) | `GET /api/v1/sellers/me/orders` | Bearer + rol `Seller` + cuenta `Active` (perfil local) | `200` (paginado `{items,page,pageSize,totalCount}` con `role: "seller"`) · `400` · `401` · `403` `SELLER_ROLE_REQUIRED` / `SELLER_ACCOUNT_NOT_ACTIVE` · `429` · `503` |
 
-Detalle de cuerpos, validaciones y ejemplos JSON en `spec.md` §5. Contrato de error único `{correlationId,status,code,message}` (§14; sin `details` — ver D-ORD-10).
+Detalle de cuerpos, validaciones y ejemplos JSON en `spec.md` §5 (§5.10 para la ficha nueva). Contrato de error único `{correlationId,status,code,message}` (§14; sin `details` — ver D-ORD-10).
 
 **No participante → `404` (no `403`) para no revelar existencia; participante con rol equivocado → `403 ORDER_FORBIDDEN`.**
 
-**Rutas fuera del inventario:** ninguna se implementa sin ficha nueva aprobada. El listado del vendedor se propone resolver extendiendo `/orders/mine` con `role` (D-ORD-05); ruta alternativa `GET /api/v1/sellers/me/orders` requeriría ficha nueva (precedente DEC-019.d).
+**Rutas fuera del inventario:** la única aprobada hasta ahora es `GET /api/v1/sellers/me/orders` (D-ORD-05, opción B, aprobada el 2026-11-18; precedente DEC-019.d). `/orders/mine` permanece solo del comprador. Cualquier otra ruta nueva requiere ficha aprobada.
 
 ## 4. Redis y rate limiting
 
@@ -94,7 +95,7 @@ Detalle de cuerpos, validaciones y ejemplos JSON en `spec.md` §5. Contrato de e
 | Nivel | Cobertura mínima |
 |---|---|
 | Unitarias | cálculo de total server-side; snapshot de precio inalterable; máquina de estados (todas las transiciones válidas e inválidas); CAS por `version`; reserva/liberación/commit idempotentes por `reservationId`; generación/consumo de token (hash, TTL, single-use); validadores (cantidad, formato `ObjectId`, campos prohibidos); `/mine` solo participantes. |
-| Integración | API-023..029 con `WebApplicationFactory` y dobles: `201`, `200`, `400`, `401`, `403`, `404`, `409`, `422`, `429`, `503`; forma exacta del JSON de éxito y del contrato de error; paginación `{items,page,pageSize,total}`. |
+| Integración | API-023..029 y `GET /sellers/me/orders` con `WebApplicationFactory` y dobles: `201`, `200`, `400`, `401`, `403`, `404`, `409`, `422`, `429`, `503`; forma exacta del JSON de éxito y del contrato de error; paginación `{items,page,pageSize,totalCount}`; el listado del vendedor solo devuelve pedidos propios con `role: "seller"` (T-ORD-21..23). |
 | Seguridad | token ausente/inválido/expirado/revocado → `401`; no participante → `404`; rol equivocado → `403`; campos privilegios del cliente ignorados/rechazados; token de entrega no filtrado ni logueado; rate limit agotado y Redis caído → `429`/`503` sin operación; sin caché de pedidos. |
 | Concurrencia | dos `PATCH /status` con la misma `version` → un `200` y un `409`; dos `POST /orders` con el mismo `Idempotency-Key` → un pedido y una reserva; rechazo de token reutilizado. |
 | Operativa | `dotnet build -c Release --no-restore` 0 errores · `dotnet format --verify-no-changes` · las tres suites en verde · `docker compose config` · smoke local (`/health` + rutas de pedido) · CI-1 verde en la PR; CD-1 y evidencia en EC2 tras el merge. |
@@ -103,7 +104,7 @@ Detalle de cuerpos, validaciones y ejemplos JSON en `spec.md` §5. Contrato de e
 
 1. **Gate documental:** `spec.md` v0.3, este `plan.md` v0.3 y `task.md` v0.3 alineados → **cumplido** (Fase 1 y Fase 2 aprobadas por el propietario el 2026-11-16).
 2. **Gate técnico:** fase-03 Sprint 2 aprobada/implementada (contratos de catálogo y stock) → **cumplido**; la Fase 2 amplía `ICatalogOrderProducts` con `CommitStockAsync` (commit idempotente por `reservationId`).
-3. **Fuera de este plan:** implementación en `src/` antes de la aprobación; rutas nuevas fuera de API-023..029; `Accepted → CancelledByBuyer` sin D-ORD-07; handler de borrado de cuenta (D-ORD-09, bloqueado por DEC-003); publicación de notificaciones o hechos de Reviews antes de sus fases (D-ORD-15).
+3. **Fuera de este plan:** implementación en `src/` antes de la aprobación; rutas nuevas fuera de API-023..029 **y de la ficha D-ORD-05 ya aprobada**; `Accepted → CancelledByBuyer` sin D-ORD-07; handler de borrado de cuenta (D-ORD-09, bloqueado por DEC-003); publicación de notificaciones o hechos de Reviews antes de sus fases (D-ORD-15).
 4. **Evidencia:** la disponibilidad productiva solo se afirma tras merge + CD-1; hasta entonces el estado es «Fase 2 implementada en rama, pendiente de PR».
 
 ## 8. Historial
@@ -113,3 +114,4 @@ Detalle de cuerpos, validaciones y ejemplos JSON en `spec.md` §5. Contrato de e
 | 0.1 | 2026-11-11 | Borrador inicial: fronteras del módulo Orders, modelo `orders`/`orderAuditLogs`, contratos API-023..029, rate limits `order-*`, verificación y gates. |
 | 0.2 | 2026-11-16 | Fase 1 (API-023/024/025) implementada: reserva/liberación de stock vía Catalog, `Idempotency-Key`, auditoría `Created`. |
 | 0.3 | 2026-11-16 | Fase 2 (API-026/027/028/029) implementada: CAS por `version` en cada transición, token de entrega con hash SHA-256 y TTL configurable, commit de stock en `Delivered`, rate limits `order-write`/`order-cancel`/`order-delivery-token`/`order-delivery-confirm`. |
+| 0.4 | 2026-11-18 | Ficha nueva aprobada `GET /api/v1/sellers/me/orders` (D-ORD-05, opción B): fila de contrato en §3, verificación T-ORD-21..23 y alcance ampliado de §1/§7; `/orders/mine` permanece solo del comprador. |

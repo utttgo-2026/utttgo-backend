@@ -48,6 +48,19 @@ internal sealed class OrdersRepositoryDouble : IOrderRepository
         return Task.FromResult(new OrderPage(items, items.Count));
     }
 
+    public Task<OrderPage> ListForSellerAsync(string sellerId, string? status, int page, int pageSize,
+        CancellationToken cancellationToken)
+    {
+        if (Fail) throw new InvalidOperationException("internal-secret");
+        var all = Orders.Values
+            .Where(order => order.SellerId == sellerId)
+            .Where(order => status is null || order.Status == status)
+            .OrderByDescending(order => order.CreatedAt)
+            .ToList();
+        var items = all.Skip((page - 1) * pageSize).Take(pageSize).ToList();
+        return Task.FromResult(new OrderPage(items, all.Count));
+    }
+
     public Task<OrderRecord?> ApplyAsync(string orderId, string expectedStatus, long expectedVersion,
         string? expectedDeliveryTokenHash, OrderMutation mutation, CancellationToken cancellationToken)
     {

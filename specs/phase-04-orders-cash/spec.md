@@ -1,16 +1,18 @@
 # spec.md — Pedidos y efectivo — Backend UTTT-GO
 
 > **Fase:** 04 — Pedidos y efectivo
-> **Versión:** 0.4
-> **Estado:** **Fase 1 (API-023, API-024, API-025) y Fase 2 (API-026, API-027, API-028, API-029) aprobadas por el propietario e implementadas el 2026-11-16** (ramas `feature/orders-phase1-p1` y `feature/orders-phase2-status-qr`)
-> **Fecha:** 2026-11-16
+> **Versión:** 0.5
+> **Estado:** **Fase 1 (API-023, API-024, API-025) y Fase 2 (API-026, API-027, API-028, API-029) aprobadas por el propietario e implementadas el 2026-11-16** (ramas `feature/orders-phase1-p1` y `feature/orders-phase2-status-qr`); **ficha nueva `GET /api/v1/sellers/me/orders` aprobada el 2026-11-18 (D-ORD-05, opción B)**
+> **Fecha:** 2026-11-18
 > **Derivación:** `docs/constitution.md` §3 (BR-001, BR-002, BR-003, BR-009, BR-010), §4.5, §6.2, §11, §12, §13, §14; `docs/traceability.md` API-023..API-029.
-> **Fichas:** API-023, API-024, API-025, API-026, API-027, API-028, API-029.
+> **Fichas:** API-023, API-024, API-025, API-026, API-027, API-028, API-029; ficha nueva `GET /api/v1/sellers/me/orders` (D-ORD-05, precedente DEC-019.d; no altera el Excel de 42 fichas).
 > **Gate previo:** fase-03 Sprint 2 (catálogo y contratos de stock) aprobada y verificada.
 
 ## 0. Alcance de la Fase 2 (aprobado el 2026-11-16)
 
 El propietario aprobó por instrucción directa implementar la **Fase 2** (API-026..029) sobre la Fase 1 ya fusionada y desplegada. Quedan fuera de esta fase la cancelación desde `Accepted` (D-ORD-07), el filtro `role` del listado (D-ORD-05), el handler de borrado de cuenta (D-ORD-09) y las fases de Reviews, Notifications y Chat.
+
+**Aprobación de la ficha nueva (2026-11-18, v0.5):** el propietario resolvió **D-ORD-05** eligiendo la **opción B**: una ruta propia `GET /api/v1/sellers/me/orders` («Pedidos Recibidos» del vendedor) en lugar de extender `/orders/mine` con el filtro `role`. Es una **ficha nueva aprobada** al estilo de `GET /api/v1/sellers/me` (DEC-019.d): no figura en el Excel de 42 fichas, que no se modifica, y se registra en `docs/traceability.md` con su propio identificador. En el mismo turno se confirmó que **API-025 no cambia**: el detalle sigue respondiendo `404 ORDER_NOT_FOUND` a los terceros (RF-ORD-15), pese a la solicitud móvil de `403`. El equipo móvil etiquetó esta ruta como «API-040», pero API-040 es `PATCH /api/v1/admin/users/{userId}/status`; el identificador correcto es **D-ORD-05**.
 
 Desviaciones respecto de v0.2, fijadas por la implementación y la instrucción del propietario:
 
@@ -129,6 +131,7 @@ Contratos cross-module publicados para esta fase: `ICatalogOrderProducts` (Catal
 | RF-ORD-30 | **WHEN** se consulta `GET /orders/mine`, **THEN** el sistema devolverá paginación `page`+`pageSize` con máximo configurable, solo pedidos en los que el usuario autenticado es participante. | §12, D-ORD-05 |
 | RF-ORD-31 | **WHILE** el pedido existe, **THEN** ninguna respuesta expone documentos completos de MongoDB: solo DTOs explícitos con `camelCase` y `ObjectId` como string. | §11, §4.5 |
 | RF-ORD-32 | **WHEN** MongoDB o un contrato de otro módulo no responde, **THEN** la operación falla con `503`/`ORDER_UNAVAILABLE` sin dejar el pedido en un estado inconsistente (sin reserva huérfana). | §14 |
+| RF-ORD-33 | **WHEN** un usuario con rol `Seller` y cuenta `Active` consulta `GET /api/v1/sellers/me/orders`, **THEN** el sistema devolverá una página `page`+`pageSize` con `totalCount` conteniendo **solo** los pedidos cuyo `sellerId` coincide con el del perfil autenticado, con `role: "seller"`; sin rol `Seller` → `403 SELLER_ROLE_REQUIRED` y cuenta no `Active` → `403 SELLER_ACCOUNT_NOT_ACTIVE`. | BR-009, D-ORD-05 |
 
 ## 5. Contratos HTTP
 
@@ -329,6 +332,29 @@ Confirmación de entrega y cobro en efectivo por el vendedor (BR-003, §13).
 - **Cancelación y rechazo:** liberación de stock idempotente por `reservationId` (D-ORD-02); repetir no libera dos veces.
 - **Token de entrega:** single-use marcado en el mismo documento del token; carrera resuelta por update condicional.
 
+### 5.10 Ficha nueva — `GET /api/v1/sellers/me/orders` (D-ORD-05, opción B)
+
+Bandeja «Pedidos Recibidos» del vendedor. **Ficha nueva aprobada** por el propietario el 2026-11-18 (precedente DEC-019.d); no altera el Excel de 42 fichas.
+
+- **Query:** `page` (≥1, default 1), `pageSize` (default 20, máx 50), `status` (opcional, enum §13).
+- **Auth:** JWT validado + cuenta `Active` + rol `Seller`, leídos del **perfil local** (nunca del JWT, §6). El `sellerId` con el que se filtra sale del perfil autenticado; el cliente no lo envía ni puede elegirlo (BR-009).
+- **Alcance:** solo pedidos cuyo `sellerId` coincide con el del perfil, ordenados por `createdAt` descendente; consulta apoyada en el índice existente `sellerId_createdAt_desc`.
+- **Módulo:** el endpoint vive en **Orders** (dueño de la colección `orders`) bajo el prefijo de ruta de Sellers; así la ruta pública queda en la familia `sellers/me` y no se crea la dependencia inversa Sellers→Orders (evita el ciclo §4.4).
+- **Rate limit:** `order-read`, 60/60 s, partición por usuario, fail-closed (Redis caído → `503 ORDER_UNAVAILABLE` sin ejecutar la consulta).
+- **Respuesta `200`:** mismo `OrderListResponse` que §5.2 con `role: "seller"`:
+
+```json
+{
+  "items": [ { "orderId": "...", "productId": "...", "productName": "...", "sellerId": "...", "buyerId": "...", "quantity": 1, "unitPrice": 85.50, "totalAmount": 85.50, "currency": "MXN", "status": "Pending", "role": "seller", "createdAt": "...", "notes": null } ],
+  "page": 1,
+  "pageSize": 20,
+  "totalCount": 3
+}
+```
+
+- **Errores:** `400 VALIDATION_ERROR`, `401 UNAUTHORIZED`, `403 SELLER_ROLE_REQUIRED` (sin rol `Seller`), `403 SELLER_ACCOUNT_NOT_ACTIVE` (cuenta no `Active`), `429 RATE_LIMITED`, `503 ORDER_UNAVAILABLE`. Códigos ya existentes en el inventario de `docs/guia-integracion-movil.md`; no se agrega ninguno nuevo.
+- **Detalle API-025 (sin cambios):** comprador o vendedor → `200`; tercero → `404 ORDER_NOT_FOUND` (RF-ORD-15). El equipo móvil pidió `403` para terceros y el propietario resolvió **conservar `404`** para no divulgar existencia de pedidos.
+
 ## 6. Modelo de datos
 
 Propiedad de colecciones (matriz en `memoria.md`): `orders`, `orderAuditLogs` pertenecen a **Orders**. Orders no lee ni escribe colecciones ajenas.
@@ -458,6 +484,9 @@ No existe `IOrderEventPublisher` inverso desde Orders a Notifications ni depende
 | T-ORD-18 | **Given** el mismo `Idempotency-Key`, **when** se envían dos `POST /orders`, **then** solo hay un pedido y una reserva. |
 | T-ORD-19 | **Given** `GET /orders/mine?page=2&pageSize=20`, **when** el comprador tiene 25 pedidos, **then** la página 2 tiene 5 items y `total` 25; no se exponen pedidos ajenos. |
 | T-ORD-20 | **Given** un pedido `InPreparation`, **when** el vendedor lo mueve a `Ready`, **then** la respuesta incluye `version` incrementada y hay notificación encolada vía `INotificationPublisher` (mock en pruebas). |
+| T-ORD-21 | **Given** un vendedor con dos pedidos propios y un pedido de otro vendedor, **when** consulta `GET /api/v1/sellers/me/orders`, **then** recibe solo sus dos pedidos con `role: "seller"` y `totalCount: 2`, sin exponer pedidos ajenos. |
+| T-ORD-22 | **Given** un usuario autenticado sin rol `Seller` (o con cuenta no `Active`), **when** consulta `GET /api/v1/sellers/me/orders`, **then** recibe `403 SELLER_ROLE_REQUIRED` (o `403 SELLER_ACCOUNT_NOT_ACTIVE`) y no se ejecuta la consulta. |
+| T-ORD-23 | **Given** sin token, **when** se consulta `GET /api/v1/sellers/me/orders`, **then** responde `401 UNAUTHORIZED`. |
 
 ## 8. Criterios de cierre y aprobación
 
@@ -475,12 +504,13 @@ No existe `IOrderEventPublisher` inverso desde Orders a Notifications ni depende
 | 0.2 | 2026-11-16 | Fase 1 aprobada e implementada (API-023/024/025): D-ORD-11..14 y `notes` del comprador. |
 | 0.3 | 2026-11-16 | Fase 2 aprobada e implementada (API-026/027/028/029): D-ORD-15..19, CAS por `version` en cada transición, token de entrega con hash SHA-256 y TTL configurable, commit de stock en `Delivered` y el tratamiento D-ORD-18/19 de los fallos de stock. |
 | 0.4 | 2026-11-16 | Alineación del contrato público con el equipo móvil (D-ORD-20): `buyerId`, `totalAmount` y `totalCount` en las respuestas de pedidos y listados paginados; los nombres internos de la colección no cambian. |
+| 0.5 | 2026-11-18 | D-ORD-05 resuelta con la **opción B** aprobada por el propietario: ficha nueva `GET /api/v1/sellers/me/orders` (§5.10, RF-ORD-33, T-ORD-21..23) con `403 SELLER_ROLE_REQUIRED`/`SELLER_ACCOUNT_NOT_ACTIVE` y `role: "seller"`; API-025 conserva `404` para terceros (la solicitud móvil de `403` queda rechazada y registrada). |
 
 ## 9. Rutas necesarias fuera del inventario y decisiones pendientes
 
 ### 9.1 Rutas fuera del inventario de las 42 fichas
 
-- **Listado de pedidos del vendedor:** API-024 es `GET /orders/mine` orientado al comprador (`docs/traceability.md`: «paginación y comprador autenticado»). Para que el vendedor descubra pedidos entrantes y use API-027/API-029, se propone **extender `/orders/mine`** con el filtro `role` (D-ORD-05). Si el propietario prefiere una ruta separada (p. ej. `GET /api/v1/sellers/me/orders`), requiere ficha nueva aprobada (precedente: `GET /api/v1/sellers/me`, DEC-019.d). **No se implementa ninguna sin aprobación.**
+- **Listado de pedidos del vendedor:** API-024 es `GET /orders/mine` orientado al comprador (`docs/traceability.md`: «paginación y comprador autenticado»). **Resuelto el 2026-11-18 (D-ORD-05, opción B, aprobada por el propietario):** se implementa la ruta separada **`GET /api/v1/sellers/me/orders`** como ficha nueva (precedente: `GET /api/v1/sellers/me`, DEC-019.d), en lugar de extender `/orders/mine` con el filtro `role`. `/orders/mine` sigue siendo solo del comprador y su contrato no cambia. Contrato completo en §5.10.
 
 ### 9.2 Decisiones del propietario
 
@@ -490,11 +520,11 @@ No existe `IOrderEventPublisher` inverso desde Orders a Notifications ni depende
 | D-ORD-02 | Mecanismo de reserva de stock: contrato `ICatalogProductCommands` con `reservationId` y saga de compensación sin transacciones cross-module (Atlas Free Tier). | Reserva + liberación idempotente por `reservationId`; commit en `Delivered`. | **Aplicada (Fases 1 y 2)** |
 | D-ORD-03 | `Delivered` solo por API-029 con token (no por API-027). | Sí: obliga a evidenciar cobro presencial (BR-003). | **Aplicada (Fase 2)** |
 | D-ORD-04 | Header opcional `Idempotency-Key` en API-023. | Sí, opcional, con índice único parcial. | **Aplicada (Fase 1)** |
-| D-ORD-05 | Alcance de `/orders/mine` (solo comprador vs. participante con `role`). | Participante con `role` opcional (ver 9.1). | **Pendiente** (el listado del vendedor sigue sin ruta) |
+| D-ORD-05 | Alcance de `/orders/mine` (solo comprador vs. participante con `role`). | **Opción B aprobada (2026-11-18):** ficha nueva `GET /api/v1/sellers/me/orders` (§5.10); `/orders/mine` permanece solo del comprador. | **Aplicada (ficha nueva D-ORD-05)** |
 | D-ORD-06 | Concurrencia por CAS `version` → `409 ORDER_VERSION_CONFLICT`. | Sí. | **Aplicada (Fase 2)** |
 | D-ORD-07 | `Accepted → CancelledByBuyer` (constitución §13: «solo si el equipo lo aprueba»). | **No habilitar en el MVP** (fail-closed a `409 ORDER_STATE_CONFLICT`). | **Aplicada (Fase 2): permanece prohibida** |
 | D-ORD-08 | `completedAt` en cualquier terminal como ancla de purga de chat (BR-012), coordinado con fase-07. | Fijar en `Delivered`, `Rejected`, `CancelledByBuyer`; fase-07 define la purga. | **Aplicada (Fase 2)** |
 | D-ORD-09 | Borrado de cuenta (BR-011/DEC-003): handler de evento desde Identity para `orders`/`orderAuditLogs` compartidos. | Interfaz prevista, **bloqueada** hasta que DEC-003 defina el diseño. | **Bloqueada** |
 | D-ORD-10 | Contrato de error: `ApiError` real tiene 4 campos sin `details` (§14). | Alinear `spec.md` §14 con el código en una revisión transversal; este spec usa solo los 4 campos. | **Pendiente (transversal)** |
 
-> **Estado:** Fase 1 y Fase 2 aprobadas por el propietario e implementadas (2026-11-16). Siguen pendientes D-ORD-05 (listado del vendedor), D-ORD-09 (borrado de cuenta, bloqueada por DEC-003) y D-ORD-10 (alineación transversal de `ApiError`).
+> **Estado:** Fase 1 y Fase 2 aprobadas por el propietario e implementadas (2026-11-16). **D-ORD-05 resuelta el 2026-11-18** (ficha nueva `GET /api/v1/sellers/me/orders`, §5.10, en implementación). Siguen pendientes D-ORD-09 (borrado de cuenta, bloqueada por DEC-003) y D-ORD-10 (alineación transversal de `ApiError`).
