@@ -189,6 +189,7 @@ builder.Services.AddSingleton<IOrderAuditWriter, MongoOrderAuditWriter>();
 builder.Services.AddScoped<IOrdersRateLimitGate, RedisOrdersRateLimitGate>();
 builder.Services.AddScoped<ICreateOrderService, CreateOrderService>();
 builder.Services.AddScoped<IListOwnOrdersService, ListOwnOrdersService>();
+builder.Services.AddScoped<IListSellerOrdersService, ListSellerOrdersService>();
 builder.Services.AddScoped<IGetOrderService, GetOrderService>();
 builder.Services.AddScoped<ICancelOrderService, CancelOrderService>();
 builder.Services.AddScoped<IUpdateOrderStatusService, UpdateOrderStatusService>();

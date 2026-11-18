@@ -9,6 +9,8 @@ public interface IOrderRepository
         CancellationToken cancellationToken);
     Task<OrderPage> ListForBuyerAsync(string buyerUserId, string? status, int page, int pageSize,
         CancellationToken cancellationToken);
+    Task<OrderPage> ListForSellerAsync(string sellerId, string? status, int page, int pageSize,
+        CancellationToken cancellationToken);
     Task<OrderRecord?> ApplyAsync(string orderId, string expectedStatus, long expectedVersion,
         string? expectedDeliveryTokenHash, OrderMutation mutation, CancellationToken cancellationToken);
 }

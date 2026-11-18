@@ -65,10 +65,20 @@ public sealed class MongoOrderRepository(MongoStore store) : IOrderRepository
         return document is null ? null : ToRecord(document);
     }
 
-    public async Task<OrderPage> ListForBuyerAsync(string buyerUserId, string? status, int page, int pageSize,
-        CancellationToken cancellationToken)
+    public Task<OrderPage> ListForBuyerAsync(string buyerUserId, string? status, int page, int pageSize,
+        CancellationToken cancellationToken) =>
+        ListByParticipantAsync(Builders<OrderDocument>.Filter.Eq(item => item.BuyerUserId, buyerUserId),
+            status, page, pageSize, cancellationToken);
+
+    public Task<OrderPage> ListForSellerAsync(string sellerId, string? status, int page, int pageSize,
+        CancellationToken cancellationToken) =>
+        ListByParticipantAsync(Builders<OrderDocument>.Filter.Eq(item => item.SellerId, sellerId),
+            status, page, pageSize, cancellationToken);
+
+    private async Task<OrderPage> ListByParticipantAsync(FilterDefinition<OrderDocument> participant,
+        string? status, int page, int pageSize, CancellationToken cancellationToken)
     {
-        var filter = Builders<OrderDocument>.Filter.Eq(item => item.BuyerUserId, buyerUserId);
+        var filter = participant;
         if (!string.IsNullOrWhiteSpace(status))
             filter &= Builders<OrderDocument>.Filter.Eq(item => item.Status, status);
 

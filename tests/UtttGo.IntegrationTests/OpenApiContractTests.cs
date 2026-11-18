@@ -107,6 +107,13 @@ public sealed class OpenApiContractTests
 
         ResponseSchema(document, "/api/v1/sellers/me", "patch", 200, "SellerOwnProfileResponse");
         ResponseSchema(document, "/api/v1/sellers/{sellerId}", "get", 200, "SellerProfileResponse");
+
+        ResponseSchema(document, "/api/v1/sellers/me/orders", "get", 200, "OrderListResponse");
+        ResponseSchema(document, "/api/v1/sellers/me/orders", "get", 400, "ApiError");
+        ResponseSchema(document, "/api/v1/sellers/me/orders", "get", 401, "ApiError");
+        ResponseSchema(document, "/api/v1/sellers/me/orders", "get", 403, "ApiError");
+        ResponseSchema(document, "/api/v1/sellers/me/orders", "get", 429, "ApiError");
+        ResponseSchema(document, "/api/v1/sellers/me/orders", "get", 503, "ApiError");
     }
 
     [Fact]
