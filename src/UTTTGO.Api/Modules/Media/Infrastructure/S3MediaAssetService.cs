@@ -13,7 +13,7 @@ public class S3MediaAssetService : IS3MediaAssetService
 
     public S3MediaAssetService(IOptions<S3Config> s3Config)
     {
-        _config = s3Config?.Value ?? new S3Config();
+        _config = s3Config.Value;
         _isConfigured = !string.IsNullOrWhiteSpace(_config.AccessKey)
                      && !string.IsNullOrWhiteSpace(_config.SecretKey)
                      && !string.IsNullOrWhiteSpace(_config.BucketName);
