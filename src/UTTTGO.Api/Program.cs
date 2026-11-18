@@ -173,6 +173,7 @@ builder.Services.AddHostedService<CatalogSeedHostedService>();
 builder.Services.AddSingleton<ICatalogOrderProducts, MongoOrderProductRepository>();
 builder.Services.AddSingleton<ISellerOrderProfiles, MongoSellerOrderProfiles>();
 builder.Services.Configure<OrderLimitsOptions>(builder.Configuration.GetSection("Orders"));
+builder.Services.AddScoped<IValidator<CreateOrderRequest>, CreateOrderRequestValidator>();
 builder.Services.Configure<S3Config>(builder.Configuration.GetSection("S3"));
 builder.Services.AddSingleton<IS3MediaAssetService, S3MediaAssetService>();
 builder.Services.AddScoped<ISignedUrlService, SignedUrlService>();
