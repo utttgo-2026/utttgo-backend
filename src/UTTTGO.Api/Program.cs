@@ -26,6 +26,10 @@ using UTTTGO.Api.Modules.Sellers.Validators;
 using UTTTGO.Api.Shared.Contracts;
 using UTTTGO.Api.Shared.Health;
 using UTTTGO.Api.Shared.Infrastructure;
+using UTTTGO.Api.Modules.Media.Application;
+using UTTTGO.Api.Modules.Media.Contracts;
+using UTTTGO.Api.Modules.Media.Infrastructure;
+using UTTTGO.Api.Modules.Media.Validators;
 using UTTTGO.Api.Shared.OpenApi;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -170,6 +174,13 @@ builder.Services.AddSingleton<ICatalogOrderProducts, MongoOrderProductRepository
 builder.Services.AddSingleton<ISellerOrderProfiles, MongoSellerOrderProfiles>();
 builder.Services.Configure<OrderLimitsOptions>(builder.Configuration.GetSection("Orders"));
 builder.Services.AddScoped<IValidator<CreateOrderRequest>, CreateOrderRequestValidator>();
+builder.Services.Configure<S3Config>(builder.Configuration.GetSection("S3"));
+builder.Services.AddSingleton<IS3MediaAssetService, S3MediaAssetService>();
+builder.Services.AddScoped<ISignedUrlService, SignedUrlService>();
+builder.Services.AddScoped<IMediaAssetService, MediaAssetService>();
+builder.Services.AddScoped<IMediaAssetRepository, InMemoryMediaAssetRepository>();
+builder.Services.AddScoped<IValidator<PresignedUrlRequest>, PresignedUrlRequestValidator>();
+builder.Services.AddScoped<IValidator<ConfirmRequest>, ConfirmRequestValidator>();
 builder.Services.AddScoped<IValidator<OrderListQuery>, OrderListQueryValidator>();
 builder.Services.AddScoped<IValidator<UpdateOrderStatusRequest>, UpdateOrderStatusRequestValidator>();
 builder.Services.AddScoped<IValidator<DeliveryConfirmationRequest>, DeliveryConfirmationRequestValidator>();
