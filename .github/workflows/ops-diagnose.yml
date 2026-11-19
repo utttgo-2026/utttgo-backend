@@ -175,7 +175,7 @@ jobs:
               "ps aux 2>/dev/null | grep -E 'dotnet|docker build|containerd' | grep -v grep | head -n 20 || true",
               "echo '=== agente SSM ==='",
               "systemctl is-active snap.amazon-ssm-agent 2>&1 || systemctl is-active amazon-ssm-agent 2>&1 || true",
-              "echo '=== ultimos eventos del agente SSM ===",
+              "echo '=== ultimos eventos del agente SSM ==='",
               "journalctl -u snap.amazon-ssm-agent -u amazon-ssm-agent --no-pager -n 40 2>&1 || tail -n 40 /var/log/amazon/ssm/ssm-agent.log 2>&1 || true",
               "echo '=== docker compose logs --tail=40 ==='",
               "cd /opt/utttgo && docker compose logs --tail=40 2>&1 || true",
