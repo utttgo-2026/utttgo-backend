@@ -212,7 +212,16 @@ jobs:
               username = os.environ.get("GHCR_USERNAME", "utttgo-2026")
               prefix.append("export GHCR_USERNAME='{}'".format(username.replace("'", "'\\''")))
               prefix.append("export GHCR_TOKEN='{}'".format(token.replace("'", "'\\''")))
-          payload = "\n".join(prefix) + "\n" + script
+
+          # El shebang debe seguir siendo la PRIMERA linea del comando que
+          # ejecuta el agente SSM: si los exports van primero, el archivo
+          # arranca sin interprete declarado y no se ejecuta en bash.
+          lines = script.splitlines()
+          if lines and lines[0].startswith("#!"):
+              shebang, body = lines[0], lines[1:]
+          else:
+              shebang, body = "#!/usr/bin/env bash", lines
+          payload = shebang + "\n" + "\n".join(prefix) + "\n" + "\n".join(body)
           print(json.dumps({"commands": [payload]}))
           PY
           command_id="$(aws ssm send-command \
