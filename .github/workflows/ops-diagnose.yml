@@ -106,6 +106,11 @@ jobs:
           aws logs tail /utttgo/api/dev --since 12h --format short 2>/dev/null | tail -n 30 \
             || echo "CloudWatch Logs sin eventos o no disponible"
 
+          echo "----- permisos de recuperacion (dry-run, NO ejecuta nada) -----"
+          aws ec2 reboot-instances --instance-ids "$instance_id" --dry-run 2>&1 | tail -n 3 || true
+          aws ec2 stop-instances --instance-ids "$instance_id" --dry-run 2>&1 | tail -n 3 || true
+          aws ec2 start-instances --instance-ids "$instance_id" --dry-run 2>&1 | tail -n 3 || true
+
       - name: Detalle de la invocacion SSM previa
         if: inputs.command_id != ''
         env:
