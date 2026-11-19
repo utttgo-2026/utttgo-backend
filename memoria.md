@@ -230,6 +230,26 @@
 
 ---
 
+## Lecciones aprendidas
+
+Síntoma → causa verificada → solución. Lo no confirmado se marca como tal. Sin secretos ni identificadores de claves.
+
+| Síntoma | Causa verificada | Solución |
+|---|---|---|
+| Job de CD agotando `timeout-minutes: 75` sin completar el despliegue, con el paso de SSM sin salida | El comando SSM **no se entregó**: `StatusDetails` `Undeliverable` / `DeliveryTimedOut` con `ExecutionStartDateTime` nulo, y el agente no respondía (`PingStatus: ConnectionLost`, último ping `2026-11-18T06:55:39.090000+00:00`). El job siguió esperando en el bucle hasta agotar el tiempo. El `BrokenPipeError` del log era **ruido al cancelar**, no la causa. | Reiniciar la EC2 para recuperar el agente y **DEC-022**: la imagen se construye en GitHub Actions y se publica en GHCR; en la EC2 solo `docker compose pull api` + `up -d --no-build`. No confundir con el run `44255395753`, donde el cuello de botella era el build en la instancia (ver DEC-022). |
+| El comando SSM falla en el primer segundo con `Syntax error: "(" unexpected` (o `set: Illegal option -o pipefail`) y el script nunca hace nada | Sin `#!` en la primera línea el agente SSM ejecuta el archivo con `/bin/sh` (dash); el formato `_script.sh: N: Syntax error` es el de dash. **Verificado** en la salida del comando `f547e118`. | `#!/usr/bin/env bash` como **primera** línea del payload (los `export` van después del shebang). Relacionado y **detectado en revisión de código, no observado en un run** (el comando del run 157 no se entregó): con `set -euo pipefail` toda variable opcional debe leerse como `${VAR:-}` o el script aborta con *unbound variable*. |
+| `Clon inicial del repositorio en {{ DEPLOYPATH }}` y `fatal: repository '{{ REPOURL }}' does not exist` (run `44463627005`) | El canal **inline** `AWS-RunShellScript` no sustituye `{{ ... }}` — eso solo lo hace el documento SSM de Terraform — y el parámetro no se pasaba en el prefijo, así que el script usaba la plantilla literal. **Verificado** en el log del paso y en el diff del workflow. | Tratar `"{{*"` como vacío en `deploy.sh` para que manden los defaults, y exportar `REPOURL` y `DEPLOYPATH` explícitos en el prefijo del comando. |
+| `AccessDenied` / `UnauthorizedOperation` de `ssm:SendCommand` y `ec2:DescribeInstances` con el perfil local del propietario | **SCP de la organización con *deny* explícito** sobre esas acciones para el usuario local. | **No se rodea.** Prohibido crear access keys ni asumir roles para esquivarla: se pide el permiso al administrador. |
+| Error de compilación `CS0111` (firmas de constructor duplicadas) | Se declaró un *primary constructor* junto a constructores explícitos con la misma firma en la misma clase. | No mezclar *primary constructors* con constructores explícitos: elegir una sola forma para la clase. |
+| Un agente IA borró `AddControllers` de `Program.cs` y declaró el trabajo terminado | Declaró éxito sin compilar: corrió `dotnet test --no-build`, que ejecuta los binarios antiguos que todavía tenían `AddControllers`; además no se revisó el `git diff`. | **Build + test de TODA la solución**, mostrar la salida real y revisar `git diff` antes de dar nada por terminado. |
+| `500` en las pruebas E2E **solo en CI** | **Causa raíz no confirmado.** Lo que **no sirvió**: el *null guard* sobre `IOptions<T>` (`Value` nunca es `null`). | Sigue abierto: reproducir en CI con más contexto antes de proponer más parches. |
+| Conexión a ElastiCache rechazada o degradada | Falta `,ssl=true` en la *connection string* cuando el nodo tiene cifrado en tránsito; además el security group de la app debe permitir **6379** desde el de ElastiCache. | Añadir `,ssl=true` y abrir 6379 desde el SG de la aplicación. (ElastiCache está **descartado en DEC-018**: la lección queda por si se retoma.) |
+| El *target group* da por sano un backend que devuelve errores | El health check aceptaba el rango **200-499**, así que cualquier `4xx`/`5xx` contaba como éxito. | Fijar el health check en **200**. |
+| `actions/upload-artifact` falla por nombre duplicado; los scripts de un paso se rompen | En **v4** cada job debe publicar un nombre de artefacto único en el run; y `run: >` plegado convierte los saltos de línea en espacios, destruyendo los scripts multilínea. | Nombre único por job y **`run: |`**, nunca `run: >`. |
+| Un comando falla de forma inesperada en el shell del equipo | En PowerShell 5.1 **no existe `&&`**, y `$` dentro de comillas dobles se expande antes de tiempo. | Encadenar con `;` / `if ($?)` y usar **comillas simples** para los valores literales. |
+
+---
+
 ## Notas y pendientes
 
 - [ ] Completar HU-027 (notificaciones) con descripción funcional.
