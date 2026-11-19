@@ -78,6 +78,34 @@ jobs:
           echo "Instancia objetivo: $instance_id"
           echo "instance_id=$instance_id" >> "$GITHUB_OUTPUT"
 
+      - name: Estado de la instancia por API (sin entrega SSM)
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          INSTANCE_ID: ${{ steps.target.outputs.instance_id }}
+        run: |
+          set -euo pipefail
+          instance_id="$INSTANCE_ID"
+
+          echo "----- inventario SSM (PingStatus) -----"
+          aws ssm describe-instance-information \
+            --instance-ids "$instance_id" \
+            --output json || echo "describe-instance-information no disponible"
+
+          echo "----- checks de estado EC2 -----"
+          aws ec2 describe-instance-status \
+            --instance-ids "$instance_id" \
+            --include-all-instances \
+            --output json || echo "describe-instance-status no disponible"
+
+          echo "----- ultimo evento de CloudWatch Logs -----"
+          aws logs get-log-events \
+            --log-group-name /utttgo/api/dev \
+            --log-stream "$(aws logs describe-log-streams --log-group-name /utttgo/api/dev --order-by LastEventTime --descending --max-items 1 --query 'logStreams[0].logStreamName' --output text 2>/dev/null || echo '')" \
+            --start-from-head --limit 5 --output json 2>/dev/null \
+            || aws logs tail /utttgo/api/dev --since 6h --format short 2>/dev/null | tail -n 20 \
+            || echo "CloudWatch Logs no disponible"
+
       - name: Detalle de la invocacion SSM previa
         if: inputs.command_id != ''
         env:
