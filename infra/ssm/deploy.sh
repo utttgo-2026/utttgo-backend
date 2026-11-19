@@ -37,6 +37,14 @@ export HOME="${HOME:-/root}"
 [ -n "${DEPLOYPATH:-}" ] || DEPLOYPATH='{{ DEPLOYPATH }}'
 [ -n "${GITHUBTOKEN:-}" ] || GITHUBTOKEN='{{ GITHUBTOKEN }}'
 
+# Si el documento SSM no llego a sustituir {{ ... }} (o el canal inyecta la
+# plantilla literal), el valor no es una URL ni una ruta: se trata como vacio
+# para que manden los defaults de abajo. Sin este filtro el script crearia un
+# directorio llamado "{{ DEPLOYPATH }}" y fallaria el clone con
+# "repository '{{ REPOURL }}' does not exist" (run CD 44463627005).
+case "$REPOURL" in "{{"*) REPOURL="";; esac
+case "$DEPLOYPATH" in "{{"*) DEPLOYPATH="";; esac
+
 DEPLOY_PATH="${DEPLOYPATH:-/opt/utttgo}"
 TARGET_SHA="${DEPLOY_SHA:-}"
 REPO_URL="${REPOURL:-https://github.com/utttgo-2026/utttgo-backend.git}"

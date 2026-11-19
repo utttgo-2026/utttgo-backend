@@ -203,9 +203,14 @@ jobs:
           import pathlib
 
           script = pathlib.Path("infra/ssm/deploy.sh").read_text(encoding="utf-8")
+          # Este canal es inline (AWS-RunShellScript), no el documento
+          # utttgo-dev-deploy: nadie sustituye {{ ... }}, asi que REPOURL y
+          # DEPLOYPATH viajan explicitos con los mismos defaults de Terraform.
           prefix = [
               "export DEPLOY_SHA='{}'".format(os.environ["TARGET_SHA"]),
               "export API_IMAGE='{}'".format(os.environ["API_IMAGE"]),
+              "export REPOURL='https://github.com/utttgo-2026/utttgo-backend.git'",
+              "export DEPLOYPATH='/opt/utttgo'",
           ]
           token = os.environ.get("GHCR_TOKEN", "")
           if token:
