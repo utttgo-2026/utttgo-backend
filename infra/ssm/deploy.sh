@@ -67,6 +67,12 @@ git remote set-url origin "$REPO_URL"
 # ownership"), asi que se declara este checkout como seguro.
 git config --global --add safe.directory "$DEPLOY_PATH"
 
+# El canal inyecta DEPLOY_SHA / API_IMAGE y, si el paquete GHCR no es
+# publico, GHCR_USERNAME / GHCR_TOKEN. El token del repositorio no viaja:
+# el repositorio es publico, asi que git lo opera sin credenciales. Se
+# iguala a vacio porque el script corre con `set -u`.
+GITHUB_TOKEN="${GITHUB_TOKEN:-}"
+
 # El token nunca se escribe en disco ni en el historial: se usa solo como
 # cabecera extra de git durante el fetch.
 if [ -n "$GITHUB_TOKEN" ]; then
