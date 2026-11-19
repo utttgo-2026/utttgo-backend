@@ -19,3 +19,15 @@ scripts
 *.md
 .env
 .env.*
+**/.env
+**/.env.*
+**/*.pem
+**/*.key
+**/*.pfx
+**/*.p12
+**/*.tfvars
+**/*.tfstate
+**/*.tfstate.*
+.aws
+credentials
+secrets

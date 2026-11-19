@@ -5,7 +5,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: utttgo/api:0.1.0
+    # En la EC2 la imagen llega desde GHCR con el tag del commit (DEC-022):
+    # la instancia no compila. En local se construye esta misma imagen.
+    image: ${API_IMAGE:-utttgo/api:0.1.0}
     restart: unless-stopped
     deploy:
       replicas: 2
