@@ -58,6 +58,63 @@ jobs:
         run: |
           printf 'Motivo: %s\n' "$DIAGNOSE_REASON"
 
+      # Solo lectura: no toca la instancia ni modifica el documento. Sirve
+      # para ver si el documento publicado en AWS sustituye REPOURL y
+      # DEPLOYPATH o si siguen los defaults de Terraform.
+      - name: Documento SSM publicado (solo lectura)
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          SSM_DOCUMENT_NAME: utttgo-dev-deploy
+        run: |
+          set -euo pipefail
+          doc="$SSM_DOCUMENT_NAME"
+
+          echo "----- documento SSM $doc -----"
+          if ! aws ssm describe-document --name "$doc" --output json \
+                > /tmp/ssm-document.json 2>/tmp/ssm-document.err; then
+            echo "describe-document no disponible; se intenta get-document:"
+            sed -n '1,5p' /tmp/ssm-document.err || true
+            if ! aws ssm get-document --name "$doc" --output json \
+                  > /tmp/ssm-document.json 2>/tmp/ssm-document.err2; then
+              echo "get-document tampoco disponible:"
+              sed -n '1,5p' /tmp/ssm-document.err2 || true
+              rm -f /tmp/ssm-document.json /tmp/ssm-document.err /tmp/ssm-document.err2
+              exit 0
+            fi
+          fi
+
+          python3 - <<'PY'
+          import json
+
+          with open("/tmp/ssm-document.json", encoding="utf-8") as fh:
+              doc = json.load(fh)
+
+          print("Nombre:", doc.get("Name"))
+          print("Version:", doc.get("DocumentVersion"))
+          print("Estado:", doc.get("Status"))
+          print("Tipo:", doc.get("DocumentType") or "(no devuelto)")
+
+          content = doc.get("Content")
+          if isinstance(content, str):
+              try:
+                  content = json.loads(content)
+              except ValueError:
+                  content = {}
+
+          params = (content or {}).get("parameters") or {}
+          if not params:
+              print("Parameters: ninguno o no disponibles")
+          else:
+              print("Parameters:")
+              for name in sorted(params):
+                  spec = params[name]
+                  default = spec.get("default") if isinstance(spec, dict) else None
+                  print(" - {} = {!r}".format(name, default))
+          PY
+
+          rm -f /tmp/ssm-document.json /tmp/ssm-document.err /tmp/ssm-document.err2
+
       - name: Identificar la instancia
         id: target
         env:
