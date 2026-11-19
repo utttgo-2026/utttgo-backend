@@ -89,22 +89,22 @@ jobs:
 
           echo "----- inventario SSM (PingStatus) -----"
           aws ssm describe-instance-information \
-            --instance-ids "$instance_id" \
+            --filters "Key=InstanceIds,Values=$instance_id" \
             --output json || echo "describe-instance-information no disponible"
 
-          echo "----- checks de estado EC2 -----"
-          aws ec2 describe-instance-status \
-            --instance-ids "$instance_id" \
-            --include-all-instances \
-            --output json || echo "describe-instance-status no disponible"
+          echo "----- comandos SSM recientes -----"
+          aws ssm list-commands --max-results 5 --output json \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); print(json.dumps([{"CommandId":c.get("CommandId"),"Status":c.get("Status"),"StatusDetails":c.get("StatusDetails"),"DeliveryStatus":(c.get("DeliveryStatus") or {}).get("DeliveryStatus"),"TargetCount":c.get("TargetCount"),"RequestedDateTime":str(c.get("RequestedDateTime"))} for c in d.get("Commands",[])], indent=2))' \
+            || echo "list-commands no disponible"
+
+          echo "----- consola EC2 (ultimas lineas) -----"
+          aws ec2 get-console-output --instance-id "$instance_id" --query Output --output text 2>/dev/null \
+            | base64 -d 2>/dev/null | tail -n 60 \
+            || echo "get-console-output no disponible"
 
           echo "----- ultimo evento de CloudWatch Logs -----"
-          aws logs get-log-events \
-            --log-group-name /utttgo/api/dev \
-            --log-stream "$(aws logs describe-log-streams --log-group-name /utttgo/api/dev --order-by LastEventTime --descending --max-items 1 --query 'logStreams[0].logStreamName' --output text 2>/dev/null || echo '')" \
-            --start-from-head --limit 5 --output json 2>/dev/null \
-            || aws logs tail /utttgo/api/dev --since 6h --format short 2>/dev/null | tail -n 20 \
-            || echo "CloudWatch Logs no disponible"
+          aws logs tail /utttgo/api/dev --since 12h --format short 2>/dev/null | tail -n 30 \
+            || echo "CloudWatch Logs sin eventos o no disponible"
 
       - name: Detalle de la invocacion SSM previa
         if: inputs.command_id != ''
