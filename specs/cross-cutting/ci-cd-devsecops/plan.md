@@ -71,6 +71,19 @@ No elevar números por la sola documentación/ejecución de CI. Versiones defini
 
 Pendientes de CD-1 que no se cierran con este diseño: environment con aprobadores, secrets del repositorio, deploy key de lectura del repositorio en la instancia, `.env` real en la EC2, backend remoto de estado de Terraform (S3 + DynamoDB), OIDC en lugar de clave SSH a largo plazo, DEP/versionado por despliegue y reversión probada a combinación anterior.
 
+**CD-2 implementado (DEC-022; CI-R14, CI-AC-14..15):** el run 44255395753 (cancelado a los 75 min por `timeout-minutes`, con el build de la imagen todavía en curso) dejó el stack sin responder. El diseño nuevo mueve el build de .NET al runner y deja la instancia solo descargando:
+
+| Paso | Acción | Gate |
+|---|---|---|
+| 1 | Job `build_image` (20 min, `packages: write`): `docker/build-push-action` publica `ghcr.io/utttgo-2026/utttgo-api:<sha>` y `:latest` con caché de Actions; se consulta la visibilidad del paquete | La imagen existe antes de desplegar; si el paquete es privado se marca `needs_token` |
+| 2 | Job `deploy` (30 min) envía `infra/ssm/deploy.sh` del commit objetivo como `AWS-RunShellScript` (`send-command`, `--timeout-seconds 1500`), con `DEPLOY_SHA` y `API_IMAGE` exportados | El bucle de espera (140 × 10 s = 1400 s) es menor que el límite del comando y que el del job |
+| 3 | En la instancia: `flock /opt/utttgo/.deploy.lock` (dos despliegues no se contradicen), **swap de 2 GB idempotente**, `git reset --hard` al SHA, `docker compose pull api` y `up -d --no-build --remove-orphans --scale api=2` | La instancia **no compila**; el SHA impreso coincide con el objetivo |
+| 4 | Espera de réplicas `healthy` (240 s), `docker image prune`, smoke de **`GET /health`** y TLS best-effort | Falla con logs acotados si no se cumple |
+| 5 | Evidencia: SHA objetivo, SHA desplegado (`git rev-parse HEAD` de la instancia), imagen, código HTTP de `/health` y de HTTPS | Sin secretos ni logs crudos |
+| 6 | `.github/workflows/ops-diagnose.yml` (`workflow_dispatch`, 10 min, solo lectura): `docker ps -a`, `docker compose ps`, `free -m`, `df -h`, `uptime`, `git rev-parse HEAD`, `docker compose logs --tail=50` | No modifica el estado de la instancia |
+
+Pendientes que este diseño no cierra: `terraform apply` del propietario para re-sincronizar el documento SSM `utttgo-dev-deploy` con el nuevo `deploy.sh` (el workflow ya no depende de ese documento), política de visibilidad del paquete en GHCR, reversión probada a una imagen anterior, backend remoto de estado de Terraform y entorno con aprobadores.
+
 **CD de la nube posterior (CI-R03/05/07, CI-AC-06):** constitución v2.4 (DEC-018) ya resolvió la nube AWS: una EC2 t3.micro con 2 réplicas Compose detrás de Nginx y EIP (`3.129.142.54`, infraestructura aplicada por el propietario). CD-1 cubre el despliegue del contenedor; siguen abiertos el backend remoto de estado (S3 + DynamoDB), la promoción por entornos (`dev/staging/prod`), el inventario de artefactos, el registro DEP por despliegue, la compatibilidad móvil y el aprobador operativo real. No se adoptan CloudFormation, `destroy` programado ni `apply` en PR.
 
 **Móvil:** acordar interfaz documental de versión backend/API/móvil, evidencias de pruebas y compatibilidad, y quién aprueba promoción conjunta. El equipo móvil mantiene su CI/CD SDD separado; el reporte del backend no acredita su cumplimiento académico.
@@ -91,3 +104,4 @@ Pendientes de CD-1 que no se cierran con este diseño: environment con aprobador
 - [ ] Piloto adversarial de escáneres, acceso directo al contenido del artefacto por este agente y conciliación de referencias no publicadas.
 - [ ] TASK-AUTH-007/031, CI-2 y CD siguen abiertos.
 - [x] CD-1 autorizado por el propietario de producto (2026-11-06) e implementado; **sin ejecutar** hasta configurar secrets, environment y deploy key.
+- [ ] CD-2 (DEC-022) implementado en `fix/cd-ghcr-deploy`; pendiente la aprobación del propietario de producto y el run en verde que acredite el SHA desplegado y el código HTTP real de `GET /health`.
