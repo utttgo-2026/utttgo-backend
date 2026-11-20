@@ -1,0 +1,11 @@
+# Fotografías de productos — propuesta de secuencia
+
+> Estado: **ejecución funcional autorizada por el equipo el 2026-11-19**; validación de seguridad, infraestructura y despliegue pendientes. No declarar aceptación S3/Content Safety real por pruebas locales.
+
+1. **Media:** implementación local candidata de API-017/018 tras aprobación funcional comunicada. Guard JWT/Redis y propietario local; `mediaAssets` Mongo con intención y estados; interfaz S3 para PUT firmado y HEAD/borrado/GET; abstracción Content Safety fail-closed y transiciones CAS/idempotentes. Adaptador real de moderación, índices definitivos y revisión de IAM siguen pendientes; credenciales AWS mediante cadena de proveedores, nunca access keys en cliente ni mocks en producción.
+2. **Frontera:** Media publica contrato de verificar asset propio `Approved` y emitir GET temporal; Catalog lo consume sin leer/escribir `mediaAssets`. Definir política ante revocación/concurrencia antes de asociar.
+3. **Catalog:** POST y PATCH aceptan el ID aprobado según contrato, `products` conserva solo referencia; filtro Mongo por propietario+versión para reemplazo/quita. GET/listado/creación/PATCH proyectan URL temporal o `null` sin guardar URL.
+4. **OpenAPI/Expo:** rutas reales incluidas API-017/018 y `POST /api/v1/media/confirm` como compatibilidad funcional (registro de ficha formal pendiente); DTO de intención/confirmación, headers PUT, `mediaAssetId`, `imageUrl` nullable, `imageUrlExpiresAt` y semántica de PATCH. Mantener caso sin foto.
+5. **Verificación:** unitarias para estados, fallos y CAS; WebApplicationFactory con Mongo/Redis aislados, S3 emulado y Content Safety mock; seguridad de propietario/JWT/revocación/firma/URL y E2E de subida emulada. Build, formato y tres suites Release; no servicios productivos ni afirmaciones AWS.
+
+Gates externos: S3 no productivo o emulador autorizado; política IAM de mínimos permisos/CORS revisada por dueño de infraestructura; credenciales no productivas de moderación solo para aceptación autorizada. Los dobles se registran **solo en tests**, nunca como fallback de producción.

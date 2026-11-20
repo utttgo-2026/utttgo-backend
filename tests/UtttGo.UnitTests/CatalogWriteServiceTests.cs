@@ -2,12 +2,84 @@ using FluentAssertions;
 using UTTTGO.Api.Modules.Catalog.Application;
 using UTTTGO.Api.Modules.Catalog.Contracts;
 using UTTTGO.Api.Modules.Identity.Application;
+using UTTTGO.Api.Modules.Media.Application;
+using System.Text.Json;
 using Xunit;
 
 namespace UtttGo.UnitTests;
 
 public sealed class CatalogWriteServiceTests
 {
+    private const string MediaId = "507f1f77bcf86cd799439011";
+
+    [Fact]
+    public async Task CreationWithImageRequiresApprovedOwnershipAndPersistsReference()
+    {
+        var products = new CatalogProductRepository();
+        var request = new CreateProductRequest
+        {
+            Name = ValidRequest.Name,
+            Description = ValidRequest.Description,
+            Ingredients = ValidRequest.Ingredients,
+            CategoryId = ValidRequest.CategoryId,
+            Price = ValidRequest.Price,
+            Stock = ValidRequest.Stock,
+            MediaAssetId = MediaId
+        };
+        var media = new ProductMediaDouble();
+        (await CreateService(SellerProfile(), products, ActiveCategories(), media: media)
+            .CreateAsync("token", request, default)).Outcome.Should().Be(CreateProductOutcome.ImageNotApproved);
+        products.CreateCalls.Should().Be(0);
+        media.Approved = true;
+        var result = await CreateService(SellerProfile(), products, ActiveCategories(), media: media)
+            .CreateAsync("token", request, default);
+        result.Outcome.Should().Be(CreateProductOutcome.Created);
+        products.Products[CatalogFixtures.ProductId].MediaAssetId.Should().Be(MediaId);
+        result.Response!.ImageUrl.Should().Be("https://local.invalid/get");
+        result.Response.ImageUrlExpiresAt.Should().NotBeNull();
+    }
+
+    [Theory]
+    [InlineData("{\"mediaAssetId\":\"507f1f77bcf86cd799439011\"}", MediaId)]
+    [InlineData("{\"mediaAssetId\":null}", null)]
+    [InlineData("{\"stock\":3}", MediaId)]
+    public async Task PatchAddsRemovesOrPreservesImage(string json, string? expected)
+    {
+        var products = new CatalogProductRepository();
+        products.Products[CatalogFixtures.ProductId] = CatalogFixtures.Product(CatalogFixtures.SellerId)
+            with
+        { MediaAssetId = MediaId };
+        UpdateProductRequest.TryParse(JsonDocument.Parse(json).RootElement, out var request).Should().BeTrue();
+        var result = await UpdateService(SellerProfile(), products, ActiveCategories(),
+            media: new ProductMediaDouble { Approved = true })
+            .UpdateAsync("token", CatalogFixtures.ProductId, request!, default);
+        result.Outcome.Should().Be(UpdateProductOutcome.Updated);
+        products.Products[CatalogFixtures.ProductId].MediaAssetId.Should().Be(expected);
+        result.Response!.ImageUrl.Should().Be(expected is null ? null : "https://local.invalid/get");
+    }
+
+    [Fact]
+    public async Task PatchRejectsUnapprovedAssetWithoutWriting()
+    {
+        var products = new CatalogProductRepository();
+        products.Products[CatalogFixtures.ProductId] = CatalogFixtures.Product(CatalogFixtures.SellerId);
+        UpdateProductRequest.TryParse(JsonDocument.Parse($"{{\"mediaAssetId\":\"{MediaId}\"}}").RootElement,
+            out var request).Should().BeTrue();
+        var result = await UpdateService(SellerProfile(), products, ActiveCategories(),
+            media: new ProductMediaDouble()).UpdateAsync("token", CatalogFixtures.ProductId, request!, default);
+        result.Outcome.Should().Be(UpdateProductOutcome.ImageNotApproved);
+        products.UpdateCalls.Should().Be(0);
+    }
+
+    private sealed class ProductMediaDouble : IProductMediaAccess
+    {
+        public bool Approved;
+        public Task<bool> IsApprovedForOwnerAsync(string id, string owner, CancellationToken ct) =>
+            Task.FromResult(Approved && id == MediaId && !string.IsNullOrWhiteSpace(owner));
+        public Task<MediaReadUrl?> GetApprovedReadUrlAsync(string id, CancellationToken ct) =>
+            Task.FromResult<MediaReadUrl?>(Approved && id == MediaId
+                ? new("https://local.invalid/get", DateTime.UtcNow.AddMinutes(5)) : null);
+    }
     private static readonly CreateProductRequest ValidRequest = new()
     {
         Name = "Tacos de pastor",
@@ -229,13 +301,13 @@ public sealed class CatalogWriteServiceTests
 
     private static CreateProductService CreateService(AuthenticatedProfileDouble profiles,
         CatalogProductRepository products, CatalogCategoryRepository categories,
-        CatalogRateLimitGate? rateLimit = null) =>
-        new(profiles, rateLimit ?? new CatalogRateLimitGate(), categories, products, new CatalogSellerNames());
+        CatalogRateLimitGate? rateLimit = null, IProductMediaAccess? media = null) =>
+        new(profiles, rateLimit ?? new CatalogRateLimitGate(), categories, products, new CatalogSellerNames(), media);
 
     private static UpdateProductService UpdateService(AuthenticatedProfileDouble profiles,
         CatalogProductRepository products, CatalogCategoryRepository categories,
-        CatalogRateLimitGate? rateLimit = null) =>
-        new(profiles, rateLimit ?? new CatalogRateLimitGate(), products, categories);
+        CatalogRateLimitGate? rateLimit = null, IProductMediaAccess? media = null) =>
+        new(profiles, rateLimit ?? new CatalogRateLimitGate(), products, categories, media);
 
     private static UpdateProductAvailabilityService AvailabilityService(AuthenticatedProfileDouble profiles,
         CatalogProductRepository products, CatalogCategoryRepository categories,

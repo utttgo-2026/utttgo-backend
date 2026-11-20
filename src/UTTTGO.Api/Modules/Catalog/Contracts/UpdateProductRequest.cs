@@ -2,11 +2,11 @@ using System.Text.Json;
 
 namespace UTTTGO.Api.Modules.Catalog.Contracts;
 
-// Explicit presence flags preserve PATCH omission; null is rejected until deletion rules are
-// approved. The whitelist never accepts sellerId, status, version, categoryId or media.
+// Explicit presence flags distinguish image removal (null) from omission.
+// The whitelist never accepts sellerId, status, version or categoryId.
 public sealed record UpdateProductRequest(bool HasName, string? Name, bool HasDescription,
     string? Description, bool HasIngredients, IReadOnlyList<string>? Ingredients, bool HasPrice,
-    decimal? Price, bool HasStock, int? Stock)
+    decimal? Price, bool HasStock, int? Stock, bool HasMediaAssetId = false, string? MediaAssetId = null)
 {
     public static bool TryParse(JsonElement json, out UpdateProductRequest? request)
     {
@@ -23,6 +23,8 @@ public sealed record UpdateProductRequest(bool HasName, string? Name, bool HasDe
         var hasIngredients = false;
         var hasPrice = false;
         var hasStock = false;
+        var hasMediaAssetId = false;
+        string? mediaAssetId = null;
 
         foreach (var field in json.EnumerateObject())
         {
@@ -63,12 +65,20 @@ public sealed record UpdateProductRequest(bool HasName, string? Name, bool HasDe
                 hasStock = true;
                 stock = parsedStock;
             }
+            else if (field.NameEquals("mediaAssetId"))
+            {
+                if (hasMediaAssetId || field.Value.ValueKind is not (JsonValueKind.String or JsonValueKind.Null))
+                    return false;
+                hasMediaAssetId = true;
+                mediaAssetId = field.Value.ValueKind == JsonValueKind.Null ? null : field.Value.GetString();
+            }
             else return false; // Strict whitelist: ownership and privileged fields are never accepted.
         }
 
-        if (!hasName && !hasDescription && !hasIngredients && !hasPrice && !hasStock) return false;
+        if (!hasName && !hasDescription && !hasIngredients && !hasPrice && !hasStock &&
+            !hasMediaAssetId) return false;
         request = new(hasName, name, hasDescription, description, hasIngredients, ingredients, hasPrice,
-            price, hasStock, stock);
+            price, hasStock, stock, hasMediaAssetId, mediaAssetId);
         return true;
     }
 }

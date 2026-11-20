@@ -34,6 +34,12 @@
 
 ## Contexto del proyecto
 
+**2026-11-19, fase 05 (rama `feature/catalog-product-images`, sin commit):** el equipo comunicó aprobación **funcional** de asociación `mediaAssetId`, estados y PATCH/null; no equivale a aprobación de seguridad, IAM ni despliegue. Se implementó un primer corte Media (`mediaAssets` Mongo, S3 vía provider chain, HEAD, CAS y abstracción de moderación fail-closed) y Catalog (referencia aprobada por interfaz Media y URLs GET temporales). Sin adaptador Azure Content Safety configurado ningún asset real alcanza `Approved`; falta E2E S3 emulada, conciliación de `/media/confirm` con API-018 y validación completa. Build Release y formato verdes; unitarias 345/345, OpenAPI+E2E sin foto 2/2; integración/seguridad completas excedieron 450 s cada una. Evitar presentar esta rama como lista para PR o atribuir pruebas de dobles a servicios reales.
+
+**Continuación de fase 05 (2026-11-19):** `POST /api/v1/media/confirm` ahora reutiliza API-018 `/media/{mediaAssetId}/complete` con body `{mediaAssetId}`; pendiente registro formal de la ruta adicional. La causa de los timeouts fue que los factories con dobles iniciaban los cuatro indexadores Mongo con conexión de desarrollo: factories **solo de pruebas** los desregistran; el E2E conserva el factory real y usa Mongo/Redis Testcontainers. Unitarias 345/345, integración completa 278/278 (última corrida tras ampliar POST con imagen: ~1m37s), seguridad completa 148/148 (~23s), 0 omitidas en las tres. E2E + OpenAPI focalizadas 2/2. LocalStack emula PUT/HEAD/GET firmado y el moderador aprobador existe solo en tests; no acredita seguridad anónima del bucket (el emulador devolvió 200 sin firma). Adapter real Azure Content Safety/umbral y acceso privado S3 siguen pendientes.
+
+**Preparación de PR de revisión (2026-11-19):** `docs/traceability.md` conserva las 42 filas inventariadas e incorpora explícitamente la compatibilidad `/api/v1/media/confirm` y GET de asset como rutas funcionales adicionales **sin ficha formal aún**; no modifica el Excel. `.env` y `docker-compose.override.yml` permanecen ignorados/no rastreados. Revisión de diff y patrones de credenciales de archivos modificados/no rastreados sin hallazgos; no sustituye secret scan de CI. Revisión permitida sin confundir 771 pruebas locales con aceptación Content Safety/IAM/S3 real; no ejecutar recursos productivos, commit ni push desde esta preparación.
+
 ### Fuentes consultadas
 - `UTTT_GO_Punto_4_Especificacion_API_v1.xlsx` — 42 fichas de endpoint (v0.1 borrador).
 - `IC-Agile-User-Story-UTTT-GO_ACTUALIZADO.xlsx` — 44 historias de usuario.
@@ -107,7 +113,7 @@
 | jti | JWT ID — identificador único del token, usado como clave en la blacklist de Redis (`revoked:{jti}`) |
 | SAS (histórico) | Shared Access Signature — URL temporal de Azure Blob usada antes del cambio a AWS (DEC-018); superado |
 | Presigned URL | URL temporal firmada de la API de S3 generada por el backend con el Instance Profile de la EC2: PUT de escritura y GET de lectura; alcance mínimo (un objeto), TTL corto y sin claves al cliente |
-| MediaAsset | Registro de una imagen en Amazon S3 con estado `PendingUpload`, `Approved` o `Rejected` |
+| MediaAsset | Registro Mongo de una imagen cuyo objeto vive en S3 privado; estados `PendingUpload`, `PendingModeration`, `Approved`, `Rejected` o `ProcessingFailed` |
 | DeviceToken | Token FCM por dispositivo; se elimina si FCM lo rechaza |
 | FCM | Firebase Cloud Messaging — canal único de notificaciones push, emitido por el backend con Admin SDK |
 | Azure App Service | Entorno de cómputo oficial anterior en Azure; **superado por DEC-018**: hoy es EC2 t3.micro única con 2 réplicas Compose detrás de Nginx y EIP en `us-east-2` |
@@ -232,6 +238,7 @@
 
 ## Notas y pendientes
 
+- [ ] **Fotografías de productos (rama `feature/catalog-product-images`, 2026-11-19):** `specs/phase-05-media-product-images/{spec,plan,task}.md` propone `mediaAssetId` persistente, publicación solo de `Approved` tras HEAD S3 y moderación, lectura temporal presigned GET e imagen nullable, sin URL pública ni fallback mock. **NO APROBADO; no se editó código ni se ejecutaron pruebas en esta tarea.** Bloquean implementación la conciliación DEC-019.f/h y fichas API-012/013/014/017/018, ruta `/media/confirm` solicitada vs `/media/{assetId}/complete` del inventario, semántica PATCH y errores/umbrales/fallos; mantener rechazo actual de imágenes no aprobadas. Evitar presentar `Ready` o `publicUrl` como prueba de moderación o lectura privada.
 - [ ] Completar HU-027 (notificaciones) con descripción funcional.
 - [ ] Agregar HU para chat (API-037, API-038) en el documento de historias de usuario.
 - [ ] Revisar integralmente y aprobar borradores de fases 02/03/07; la confirmación funcional no aprueba sus diseños técnicos ni pruebas.

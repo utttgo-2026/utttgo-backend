@@ -124,7 +124,7 @@ public sealed class CatalogSellerJourneyTests : IAsyncLifetime
         createdDocument.RootElement.EnumerateObject().Select(property => property.Name).Should()
             .BeEquivalentTo(["id", "sellerId", "sellerDisplayName", "name", "description", "ingredients",
                 "categoryId", "categoryName", "price", "stock", "status", "isAvailable", "ratingAverage",
-                "ratingCount", "createdAt", "updatedAt"]);
+                "ratingCount", "createdAt", "updatedAt", "imageUrl", "imageUrlExpiresAt"]);
         var productId = createdDocument.RootElement.GetProperty("id").GetString()!;
         productId.Should().MatchRegex("^[0-9a-fA-F]{24}$");
         createdDocument.RootElement.GetProperty("sellerId").GetString().Should().Be(sellerId);
@@ -137,6 +137,8 @@ public sealed class CatalogSellerJourneyTests : IAsyncLifetime
         createdDocument.RootElement.GetProperty("isAvailable").GetBoolean().Should().BeTrue();
         createdDocument.RootElement.GetProperty("ratingAverage").ValueKind.Should().Be(JsonValueKind.Null);
         createdDocument.RootElement.GetProperty("ratingCount").ValueKind.Should().Be(JsonValueKind.Null);
+        createdDocument.RootElement.GetProperty("imageUrl").ValueKind.Should().Be(JsonValueKind.Null);
+        createdDocument.RootElement.GetProperty("imageUrlExpiresAt").ValueKind.Should().Be(JsonValueKind.Null);
 
         var storedProduct = await host.Database.GetCollection<BsonDocument>("products")
             .Find(Builders<BsonDocument>.Filter.Eq("name", "Tacos de pastor E2E"))

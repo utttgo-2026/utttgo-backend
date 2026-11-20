@@ -1,6 +1,7 @@
 using UTTTGO.Api.Modules.Catalog.Contracts;
 using UTTTGO.Api.Modules.Identity.Application;
 using UTTTGO.Api.Modules.Sellers.Application;
+using UTTTGO.Api.Modules.Media.Application;
 
 namespace UTTTGO.Api.Modules.Catalog.Application;
 
@@ -18,6 +19,7 @@ public enum CreateProductOutcome
     NotSeller,
     CategoryNotFound,
     ImageNotAvailable,
+    ImageNotApproved,
     RateLimited,
     Unavailable
 }
@@ -26,7 +28,7 @@ public sealed record CreateProductResult(CreateProductOutcome Outcome, ProductRe
 
 public sealed class CreateProductService(IAuthenticatedLocalProfileReader profiles,
     ICatalogRateLimitGate rateLimit, ICategoryRepository categories, IProductRepository products,
-    ISellerDisplayNames sellers) : ICreateProductService
+    ISellerDisplayNames sellers, IProductMediaAccess? media = null) : ICreateProductService
 {
     public async Task<CreateProductResult> CreateAsync(string token, CreateProductRequest request,
         CancellationToken cancellationToken)
@@ -50,10 +52,12 @@ public sealed class CreateProductService(IAuthenticatedLocalProfileReader profil
             if (!await rateLimit.IsAllowedForWriteAsync(profile.SellerId, cancellationToken))
                 return new(CreateProductOutcome.RateLimited);
 
-            // Fail-closed on images: Media does not exist yet, so no URL can be presigned by the
-            // backend nor moderated by Azure AI Content Safety (BR-007, DEC-019.f, RF-V11).
+            // Client-provided permanent URLs are never accepted; only approved Media references.
             if (!string.IsNullOrWhiteSpace(request.ImageUrl))
                 return new(CreateProductOutcome.ImageNotAvailable);
+            if (request.MediaAssetId is { } assetId &&
+                (media is null || !await media.IsApprovedForOwnerAsync(assetId, profile.Id, cancellationToken)))
+                return new(CreateProductOutcome.ImageNotApproved);
 
             var category = await categories.FindByIdAsync(request.CategoryId!, cancellationToken);
             if (category is null || !category.IsActive)
@@ -65,17 +69,22 @@ public sealed class CreateProductService(IAuthenticatedLocalProfileReader profil
                 .ToList();
             var product = await products.CreateAsync(new NewProduct(profile.SellerId,
                 request.Name!.Trim(), request.Description!.Trim(), ingredients, category.CategoryId,
-                request.Price!.Value, request.Stock!.Value), cancellationToken);
+                request.Price!.Value, request.Stock!.Value, request.MediaAssetId), cancellationToken);
 
             // Never trust a repository response that changed ownership or privileged fields.
             if (product.SellerId != profile.SellerId || product.Status != ProductAvailability.Active ||
-                product.CategoryId != category.CategoryId || product.Version != 0)
+                product.CategoryId != category.CategoryId || product.Version != 0 ||
+                product.MediaAssetId != request.MediaAssetId)
                 return new(CreateProductOutcome.Unavailable);
 
             var sellerNames = await sellers.FindDisplayNamesAsync([product.SellerId], cancellationToken);
+            var image = product.MediaAssetId is { } id
+                ? await media!.GetApprovedReadUrlAsync(id, cancellationToken) : null;
+            if (product.MediaAssetId is not null && image is null)
+                return new(CreateProductOutcome.Unavailable);
             var response = ProductProjection.ToResponse(product,
                 sellerNames.TryGetValue(product.SellerId, out var displayName) ? displayName : null,
-                category.Name, null);
+                category.Name, null, image);
             return new(CreateProductOutcome.Created, response);
         }
         catch (Exception) when (!cancellationToken.IsCancellationRequested)

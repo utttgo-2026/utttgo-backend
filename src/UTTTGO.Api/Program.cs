@@ -174,11 +174,16 @@ builder.Services.AddSingleton<ICatalogOrderProducts, MongoOrderProductRepository
 builder.Services.AddSingleton<ISellerOrderProfiles, MongoSellerOrderProfiles>();
 builder.Services.Configure<OrderLimitsOptions>(builder.Configuration.GetSection("Orders"));
 builder.Services.AddScoped<IValidator<CreateOrderRequest>, CreateOrderRequestValidator>();
-builder.Services.Configure<S3Config>(builder.Configuration.GetSection("S3"));
-builder.Services.AddSingleton<IS3MediaAssetService, S3MediaAssetService>();
-builder.Services.AddScoped<ISignedUrlService, SignedUrlService>();
-builder.Services.AddScoped<IMediaAssetService, MediaAssetService>();
-builder.Services.AddScoped<IMediaAssetRepository, InMemoryMediaAssetRepository>();
+builder.Services.Configure<S3Config>(options =>
+{
+    options.BucketName = builder.Configuration["S3_BUCKET_IMAGES"] ?? "";
+    options.Region = builder.Configuration["AWS_REGION"] ?? "us-east-2";
+});
+builder.Services.AddSingleton<IMediaObjectStore, S3MediaObjectStore>();
+builder.Services.AddSingleton<IMediaRepository, MongoMediaRepository>();
+builder.Services.AddSingleton<IImageModerator, UnconfiguredImageModerator>();
+builder.Services.AddScoped<MediaService>();
+builder.Services.AddScoped<IProductMediaAccess>(services => services.GetRequiredService<MediaService>());
 builder.Services.AddScoped<IValidator<PresignedUrlRequest>, PresignedUrlRequestValidator>();
 builder.Services.AddScoped<IValidator<ConfirmRequest>, ConfirmRequestValidator>();
 builder.Services.AddScoped<IValidator<OrderListQuery>, OrderListQueryValidator>();

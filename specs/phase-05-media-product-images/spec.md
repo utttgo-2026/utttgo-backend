@@ -1,0 +1,34 @@
+# Fotografías de productos — contrato funcional fase 05
+
+> Estado: **contrato funcional aprobado por el equipo (comunicación del 2026-11-19)**; seguridad, infraestructura y despliegue NO aprobados ni verificados. Su implementación permanece fail-closed sin moderador y bucket no productivo configurados.
+> Autoridad: `docs/constitution.md` § 7 y BR-007 → fichas API-017/018 y API-012/013/014 → este borrador → `plan.md` → `task.md`. Ante conflicto prevalecen constitución y fichas aprobadas.
+
+## Alcance y compatibilidad
+
+| Aspecto | Propuesta mínima | Decisión pendiente |
+|---|---|---|
+| Identificador persistente | `mediaAssetId` opaco en JSON; en Mongo `products` se guarda solo la referencia, no la URL ni los bytes. Media es dueño de `mediaAssets`. | Aprobar formato del ID, unicidad de uso y posible reutilización entre productos del mismo vendedor. |
+| Publicación | Únicamente `Approved`, tras verificar en S3 objeto/tipo/tamaño y moderación **aprobada** por Azure AI Content Safety; `Ready` no autoriza publicación. Fallo de proveedor = no publicar. | Aprobar umbrales, política de reintentos y compensación si S3/Mongo/Content Safety fallan parcialmente. |
+| Propiedad | Media registra `ownerUserId` del perfil local autenticado, nunca del body. Para POST/PATCH Catalog resuelve el vendedor autenticado y solicita a Media comprobación del asset `Approved` perteneciente al usuario dueño de ese vendedor; Catalog nunca consulta la colección `mediaAssets`. | Aprobar relación exacta `users._id` ↔ `sellers.ownerUserId` e identidad utilizada por la interfaz; confirmar tratamiento de cuentas/vendedores inactivos. |
+| Lectura | `imageUrl: string|null` en POST/PATCH/GET/listado; Media entrega presigned GET de duración corta para objeto aprobado de S3 privado. Ausencia de imagen → `null`. No se almacena URL ni se construye `publicUrl` permanente. | Aprobar TTL, política de fallo de presigner para lecturas y si la URL se renueva en cada GET. |
+| Expo Go | La aplicación conserva `mediaAssetId` para POST/PATCH y usa `imageUrl` solo hasta `expiresAt` o solicita un GET nuevo al vencer. PUT directo a URL firmada con los headers exactos indicados por backend; sin credenciales S3 en el cliente. | Ratificar si se expone también `imageUrlExpiresAt` y compatibilidad/migración del `imageUrl` de entrada ya anunciado por POST. |
+| PATCH | Campo `mediaAssetId` omitido preserva imagen; ID válido asigna/reemplaza solo si Media confirma dueño y `Approved`; `null` explícito quita la referencia. CAS de producto por `sellerId` + `version` evita perder cambios concurrentes. | Aprobar eliminación, destino de asset reemplazado, HTTP/errores y política ante carreras de revocación de aprobación. |
+| Rutas Media | API-017 `POST /api/v1/media/upload-url` y API-018 `POST /api/v1/media/{mediaAssetId}/complete`; por instrucción funcional posterior `POST /api/v1/media/confirm` acepta `{mediaAssetId}` y comparte lógica/controles con API-018. | Registrar ficha formal de la ruta de compatibilidad; `/presigned-url` permanece descartada. |
+
+## Acuerdos funcionales comunicados por el equipo (2026-11-19)
+
+Se aprueban `PendingUpload`, `PendingModeration`, `Approved`, `Rejected`, `ProcessingFailed`; solo `Approved` es publicable. Media persiste por usuario autenticado, verifica HEAD/tipo/tamaño, modera fail-closed, confirma idempotentemente y responde el estado real (incluido `PendingModeration`). Catalog recibe `mediaAssetId` opcional en POST; PATCH omisión conserva, ID agrega/reemplaza y `null` quita, siempre con propiedad/CAS. Las respuestas de creación/listado/detalle incluyen `imageUrl` y `imageUrlExpiresAt` nulos o presigned GET temporal. Se aprueba también `GET /api/v1/media/{mediaAssetId}` autorizado por propietario. **No hay acta de aprobación de seguridad/IAM/despliegue ni de umbrales del proveedor**; ningún fallback permite afirmar `Approved`. Por instrucción funcional posterior del equipo se ofrece además `POST /api/v1/media/confirm` (`{ "mediaAssetId": "..." }`) como compatibilidad con API-018 `POST /api/v1/media/{mediaAssetId}/complete` (sin body): ambas usan la misma autorización, rate limit, servicio y transición idempotente. Registrar la ruta adicional en el inventario formal sigue pendiente.
+
+## Requisitos y escenarios verificables propuestos
+
+- **IMG-01:** dado un usuario autenticado, solicitar intención crea asset propio `PendingUpload` persistido en Mongo; backend firma PUT de **un objeto staging** con tipo/tamaño acotados y TTL ≤ 5 min. Sin configuración real S3 o Redis/Mongo disponibles se falla cerrado; jamás devolver URL mock en la API.
+- **IMG-02:** completar una intención propia hace HEAD/cotejo de objeto y metadatos; Content Safety seguro → CAS a `Approved`; inseguro → borrar objeto y registrar `Rejected`. Repetición segura e idempotente del mismo resultado sin aprobar otra vez ni permitir actor ajeno.
+- **IMG-03:** POST de producto sin imagen conserva el comportamiento actual; con ID inexistente, ajeno, `PendingUpload` o `Rejected` no escribe producto; con ID propio `Approved`, guarda referencia después de validar vendedor y categoría.
+- **IMG-04:** PATCH de producto ajeno no muta ni revela su existencia; PATCH propio añade/reemplaza/quita referencia con control de versión. Media ajena o no aprobada nunca aparece en proyección pública.
+- **IMG-05:** respuestas de producto sin imagen contienen `imageUrl:null`; con imagen aprobada solo una presigned GET temporal del backend. Si no puede acreditarse aprobación, no se expone URL. Probar ausencia de URL pública y que caducidad no se persiste como dato de producto.
+
+## Brecha conocida y gates de aprobación
+
+El código candidato ya sustituyó el repositorio en memoria y las URL simuladas: `mediaAssets` en Mongo, PUT/GET firmados por S3, HEAD y CAS, con aprobación controlada **solo en pruebas**. En ejecución real `UnconfiguredImageModerator` falla cerrado: falta adaptador/configuración de Azure AI Content Safety y criterio de moderación aprobado, por lo que no se afirma publicación real de fotografías. La prueba local con LocalStack verifica subida/HEAD/GET firmado y Catalog, pero LocalStack devolvió `200` también a una GET sin firma y **no acredita privacidad real de S3**.
+
+Antes de desplegar se requieren revisión de seguridad e IAM/CORS, aceptación de Content Safety, registro formal de las dos rutas adicionales y verificación de bucket privado por su responsable; ninguna se presupone por la aprobación funcional ni por las pruebas locales. No consultar producción para aprobar la ficha ni modificar el Excel de 42 rutas.
