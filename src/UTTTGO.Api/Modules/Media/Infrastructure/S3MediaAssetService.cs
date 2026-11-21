@@ -14,9 +14,8 @@ public class S3MediaAssetService : IS3MediaAssetService
     public S3MediaAssetService(IOptions<S3Config> s3Config)
     {
         _config = s3Config.Value;
-        _isConfigured = !string.IsNullOrWhiteSpace(_config.AccessKey)
-                     && !string.IsNullOrWhiteSpace(_config.SecretKey)
-                     && !string.IsNullOrWhiteSpace(_config.BucketName);
+        _isConfigured = !string.IsNullOrWhiteSpace(_config.BucketName)
+                     && !string.IsNullOrWhiteSpace(_config.Region);
     }
 
     public async Task<PresignedPutUrlResult> GetPresignedPutUrlAsync(string assetId, string objectKey, string contentType, CancellationToken cancellationToken = default)
@@ -100,12 +99,17 @@ public class S3MediaAssetService : IS3MediaAssetService
 
     private AmazonS3Client CreateS3Client()
     {
-        var credentials = new Amazon.Runtime.BasicAWSCredentials(_config.AccessKey, _config.SecretKey);
         var config = new AmazonS3Config
         {
             RegionEndpoint = Amazon.RegionEndpoint.GetBySystemName(_config.Region),
             ForcePathStyle = !_config.EnableSSL
         };
-        return new AmazonS3Client(credentials, config);
+
+        if (!string.IsNullOrWhiteSpace(_config.AccessKey) &&
+            !string.IsNullOrWhiteSpace(_config.SecretKey))
+            return new AmazonS3Client(
+                new Amazon.Runtime.BasicAWSCredentials(_config.AccessKey, _config.SecretKey), config);
+
+        return new AmazonS3Client(config);
     }
 }
