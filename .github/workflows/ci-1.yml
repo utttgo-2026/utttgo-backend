@@ -146,7 +146,7 @@ jobs:
 
   mutation:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -187,7 +187,7 @@ jobs:
             exit 1
           fi
           echo "Base de mutacion: $base"
-          dotnet stryker -p UTTTGO.Api.csproj --since:"$base" --concurrency 4 \
+          dotnet stryker -p UTTTGO.Api.csproj --since:"$base" --concurrency 2 \
             --mutation-level Standard --test-case-filter "Category!=E2E" \
             -f ../../stryker-config.json --output ../../StrykerOutput
       - name: Publish mutation summary
