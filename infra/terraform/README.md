@@ -10,7 +10,7 @@ IaC del stack de DEC-018/020/021 (región `us-east-2`, cuenta de desarrollo).
 | Elastic IP | `3.129.142.54` | fija, asociada a la instancia |
 | Security Group | `utttgo-api-dev-*` | ingress **80/443**; el 22 está cerrado (administración por SSM) |
 | S3 | `utttgo-images-*` | privado, Block Public Access, SSE, CORS estricto (vacío por defecto) |
-| IAM | rol de la instancia + `utttgo-dev-github-actions-deploy` | permisos de CloudWatch Logs y `ssm-deploy` |
+| IAM | rol de la instancia + `utttgo-dev-github-actions-deploy` | CloudWatch Logs, SSM y S3 mínimo para `staging/*`; CI no recibe S3 |
 | CloudWatch Logs | `/utttgo/api/dev` | alimentado por el driver `awslogs` de Docker (DEC-021) |
 | SSM | `utttgo-dev-deploy` | documento de despliegue ejecutado por CD-1 |
 | Budget | `utttgo-dev-zero-cost-guard` | COST mensual, umbral 0 %, `prevent_destroy` |
@@ -75,3 +75,9 @@ aws logs tail /utttgo/api/dev --since 10m
   la instancia. El rollover de AMI se decide en una ventana de mantenimiento.
 - El estado es local y está fuera de Git; el backend remoto (S3 + DynamoDB) es un
   refactor obligatorio antes de producción.
+- El rol de la EC2 puede operar únicamente objetos bajo `staging/*` del bucket de
+  imágenes con `s3:PutObject`, `s3:GetObject` y `s3:DeleteObject`. No tiene
+  `s3:ListBucket`, permisos sobre el bucket raíz ni acceso S3 el usuario de CI.
+- `allowed_origins = []` mantiene CORS deshabilitado para el cliente nativo Expo.
+  Si se incorpora un cliente web, declarar únicamente orígenes HTTPS explícitos;
+  el comodín `*` está prohibido por la validación.

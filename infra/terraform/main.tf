@@ -157,6 +157,26 @@ resource "aws_iam_role_policy" "cloudwatch_logs" {
   })
 }
 
+resource "aws_iam_role_policy" "media_objects" {
+  name = "media-s3-objects"
+  role = aws_iam_role.ec2.name
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:PutObject",
+          "s3:GetObject",
+          "s3:DeleteObject"
+        ]
+        Resource = "${aws_s3_bucket.images.arn}/staging/*"
+      }
+    ]
+  })
+}
+
 # Publicacion de logs: el driver `awslogs` de Docker escribe directamente en
 # CloudWatch Logs usando el Instance Profile (IMDSv2). La politica anterior
 # `cloudwatch-logs` cubre CreateLogStream y PutLogEvents; el driver no necesita

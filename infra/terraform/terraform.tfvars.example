@@ -15,6 +15,6 @@ app_log_group_name     = "/utttgo/api"
 log_retention_days     = 7
 images_bucket_suffix   = null             # null = random suffix for global uniqueness
 bucket_force_destroy   = true             # set false before prod
-allowed_origins        = ["*"]            # replace with explicit app origins before production
-budget_alert_email     = null             # set your email to enable the $0 cost alert
+allowed_origins        = []               # native Expo client needs no browser CORS
+budget_alert_email     = "replace-with-institutional-email@uttt.edu.mx" # set your real email locally
 budget_limit_usd       = 1
