@@ -17,12 +17,40 @@ public sealed class AzureContentSafetyAnalyzer(HttpClient client, IOptions<Conte
             endpoint.Query.Length != 0 || endpoint.Fragment.Length != 0 ||
             endpoint.UserInfo.Length != 0 || string.IsNullOrWhiteSpace(config.SubscriptionKey))
             throw new InvalidOperationException("Content Safety provider is not configured.");
-        if (image.Length is <= 0 or > 5_242_880)
+        if (image.Length is <= 0 or > MediaImagePolicy.MaxBytes)
             throw new InvalidOperationException("Invalid moderation image size.");
 
         var address = new Uri(endpoint, "contentsafety/image:analyze?api-version=2024-09-01");
+        for (var attempt = 1; attempt <= 3; attempt++)
+        {
+            using var attemptTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            attemptTimeout.CancelAfter(TimeSpan.FromSeconds(10));
+            try
+            {
+                return await AnalyzeOnceAsync(address, config.SubscriptionKey, image, attemptTimeout.Token,
+                    attempt < 3);
+            }
+            catch (RetryableContentSafetyException) when (attempt < 3)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(attempt), cancellationToken);
+            }
+            catch (HttpRequestException) when (attempt < 3 && !cancellationToken.IsCancellationRequested)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(attempt), cancellationToken);
+            }
+            catch (OperationCanceledException) when (attempt < 3 && !cancellationToken.IsCancellationRequested)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(attempt), cancellationToken);
+            }
+        }
+        throw new InvalidOperationException("Content Safety provider failed.");
+    }
+
+    private async Task<IReadOnlyDictionary<string, int>> AnalyzeOnceAsync(Uri address, string subscriptionKey,
+        byte[] image, CancellationToken attemptToken, bool canRetry)
+    {
         using var request = new HttpRequestMessage(HttpMethod.Post, address);
-        request.Headers.Add("Ocp-Apim-Subscription-Key", config.SubscriptionKey);
+        request.Headers.Add("Ocp-Apim-Subscription-Key", subscriptionKey);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         request.Content = new ByteArrayContent(JsonSerializer.SerializeToUtf8Bytes(new
         {
@@ -32,14 +60,17 @@ public sealed class AzureContentSafetyAnalyzer(HttpClient client, IOptions<Conte
         }));
         request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
         using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead,
-            cancellationToken);
+            attemptToken);
+        if (canRetry && (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests ||
+            (int)response.StatusCode >= 500))
+            throw new RetryableContentSafetyException();
         if (!response.IsSuccessStatusCode)
             throw new InvalidOperationException("Content Safety provider failed.");
-        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        await using var stream = await response.Content.ReadAsStreamAsync(attemptToken);
         using var document = await JsonDocument.ParseAsync(stream, new JsonDocumentOptions
         {
             MaxDepth = 12
-        }, cancellationToken);
+        }, attemptToken);
         if (!document.RootElement.TryGetProperty("categoriesAnalysis", out var categories) ||
             categories.ValueKind != JsonValueKind.Array || categories.GetArrayLength() != 4)
             throw new InvalidOperationException("Unexpected Content Safety response.");
@@ -53,4 +84,6 @@ public sealed class AzureContentSafetyAnalyzer(HttpClient client, IOptions<Conte
         }
         return result;
     }
+
+    private sealed class RetryableContentSafetyException : Exception;
 }

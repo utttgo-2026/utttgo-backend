@@ -4449,6 +4449,8 @@
             "type": "string"
           },
           "size": {
+            "maximum": 4000000,
+            "minimum": 1,
             "pattern": "^-?(?:0|[1-9]\\d*)$",
             "type": [
               "integer",

@@ -83,6 +83,68 @@ public sealed class MediaServiceTests
         (await confirmation)!.Status.Should().Be(MediaStatus.Rejected);
     }
 
+    [Fact]
+    public async Task ConcurrentConfirmDoesNotRunSecondModerationOrChangeTerminalRejection()
+    {
+        var repo = new Repository { Value = Asset() };
+        var moderator = new DelayedModerator();
+        var store = new ObjectStore { Head = (10, "image/jpeg") };
+        var service = new MediaService(repo, store, moderator);
+        var first = service.ConfirmAsync(Id, Owner, default);
+        await moderator.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        (await service.ConfirmAsync(Id, Owner, default))!.Status.Should().Be(MediaStatus.PendingModeration);
+        moderator.Calls.Should().Be(1);
+        moderator.Complete(false);
+        (await first)!.Status.Should().Be(MediaStatus.Rejected);
+        (await service.ConfirmAsync(Id, Owner, default))!.Status.Should().Be(MediaStatus.Rejected);
+        moderator.Calls.Should().Be(1);
+        store.Deletes.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task StalePendingModerationBecomesTerminalFailureWithoutAnotherAnalysis()
+    {
+        var repo = new Repository
+        {
+            Value = Asset() with
+            {
+                Status = MediaStatus.PendingModeration,
+                Version = 1,
+                ModerationStartedAt = DateTime.UtcNow.AddMinutes(-3)
+            }
+        };
+        var moderator = new Moderator();
+        var service = new MediaService(repo, new ObjectStore(), moderator);
+        (await service.ConfirmAsync(Id, Owner, default))!.Status.Should().Be(MediaStatus.ProcessingFailed);
+        (await service.ConfirmAsync(Id, Owner, default))!.Status.Should().Be(MediaStatus.ProcessingFailed);
+        moderator.Calls.Should().Be(0);
+        (await service.GetApprovedReadUrlAsync(Id, default)).Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData(MediaImagePolicy.MaxBytes, true)]
+    [InlineData(MediaImagePolicy.MaxBytes + 1, false)]
+    public async Task UploadIntentEnforcesDocumentedDecimalAzureLimit(int size, bool allowed)
+    {
+        var repo = new Repository();
+        var service = new MediaService(repo, new ObjectStore(), new Moderator());
+        var request = new PresignedUrlRequest { FileName = "food.png", MimeType = "image/png", Size = size };
+        if (allowed)
+            (await service.StartAsync(Owner, request, default)).MediaAssetId.Should().NotBeEmpty();
+        else
+            await Assert.ThrowsAsync<ArgumentException>(() => service.StartAsync(Owner, request, default));
+    }
+
+    [Theory]
+    [InlineData("image/jpeg", true)]
+    [InlineData("image/png", false)]
+    [InlineData("image/webp", false)]
+    public void MagicBytesMustMatchClaimedFormat(string mime, bool matches)
+    {
+        MediaImagePolicy.MatchesFormat(new byte[] { 0xff, 0xd8, 0xff, 0, 0, 0xff, 0xd9 }, mime)
+            .Should().Be(matches);
+    }
+
     private static MediaRecord Asset() =>
         new(Id, Owner, "staging/owner/" + Id, "image/jpeg", 10,
             MediaStatus.PendingUpload, DateTime.UtcNow);
@@ -131,7 +193,7 @@ public sealed class MediaServiceTests
     {
         public bool Safe = true;
         public int Calls;
-        public Task<bool> IsSafeAsync(string key, CancellationToken ct)
+        public Task<bool> IsSafeAsync(string key, string mime, long size, CancellationToken ct)
         {
             Calls++;
             return Task.FromResult(Safe);
@@ -140,10 +202,12 @@ public sealed class MediaServiceTests
 
     private sealed class DelayedModerator : IImageModerator
     {
+        public int Calls;
         public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly TaskCompletionSource<bool> result = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public Task<bool> IsSafeAsync(string key, CancellationToken ct)
+        public Task<bool> IsSafeAsync(string key, string mime, long size, CancellationToken ct)
         {
+            Calls++;
             Started.SetResult();
             return result.Task;
         }

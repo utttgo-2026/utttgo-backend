@@ -84,7 +84,8 @@ public sealed class S3MediaObjectStore(IOptions<S3Config> options) : IMediaObjec
                 cancellationToken);
     }
 
-    public async Task<byte[]> ReadForModerationAsync(string objectKey, CancellationToken cancellationToken)
+    public async Task<byte[]> ReadForModerationAsync(string objectKey, string expectedMime, long expectedSize,
+        CancellationToken cancellationToken)
     {
         var (client, bucket) = Open();
         using (client)
@@ -94,19 +95,20 @@ public sealed class S3MediaObjectStore(IOptions<S3Config> options) : IMediaObjec
             Key = objectKey
         }, cancellationToken))
         {
-            if (response.ContentLength is <= 0 or > 5_242_880)
-                throw new InvalidOperationException("Invalid moderation image size.");
+            if (response.ContentLength != expectedSize || response.ContentLength is <= 0 or > MediaImagePolicy.MaxBytes ||
+                !string.Equals(response.Headers.ContentType, expectedMime, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidMediaImageException();
             await using var result = new MemoryStream();
             var buffer = new byte[81920];
             int length;
             while ((length = await response.ResponseStream.ReadAsync(buffer, cancellationToken)) > 0)
             {
-                if (result.Length + length > 5_242_880)
-                    throw new InvalidOperationException("Invalid moderation image size.");
+                if (result.Length + length > MediaImagePolicy.MaxBytes)
+                    throw new InvalidMediaImageException();
                 await result.WriteAsync(buffer.AsMemory(0, length), cancellationToken);
             }
             if (result.Length != response.ContentLength)
-                throw new InvalidOperationException("Incomplete moderation image.");
+                throw new InvalidMediaImageException();
             return result.ToArray();
         }
     }

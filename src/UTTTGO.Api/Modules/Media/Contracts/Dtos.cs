@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using System.Text.Json.Serialization;
 
 namespace UTTTGO.Api.Modules.Media.Contracts;
@@ -6,7 +7,9 @@ public sealed class PresignedUrlRequest
 {
     [JsonRequired] public string FileName { get; init; } = "";
     [JsonRequired] public string MimeType { get; init; } = "";
-    [JsonRequired] public long Size { get; init; }
+    [JsonRequired]
+    [Range(1, 4_000_000)]
+    public long Size { get; init; }
 }
 
 public sealed record PresignedUrlResponse(string MediaAssetId, string UploadUrl, DateTime ExpiresAt,

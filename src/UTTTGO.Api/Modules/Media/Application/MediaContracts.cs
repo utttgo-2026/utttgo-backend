@@ -10,7 +10,8 @@ public static class MediaStatus
 }
 
 public sealed record MediaRecord(string Id, string OwnerUserId, string ObjectKey, string MimeType,
-    long Size, string Status, DateTime CreatedAt, DateTime? ConfirmedAt = null, long Version = 0);
+    long Size, string Status, DateTime CreatedAt, DateTime? ConfirmedAt = null, long Version = 0,
+    DateTime? ModerationStartedAt = null);
 
 public interface IMediaRepository
 {
@@ -42,7 +43,8 @@ public interface IMediaObjectStore
 // Moderation reads the staging object server-side; the client never supplies bytes or a URL.
 public interface IMediaImageSource
 {
-    Task<byte[]> ReadForModerationAsync(string objectKey, CancellationToken cancellationToken);
+    Task<byte[]> ReadForModerationAsync(string objectKey, string expectedMime, long expectedSize,
+        CancellationToken cancellationToken);
 }
 
 public interface IContentSafetyAnalyzer
@@ -53,11 +55,11 @@ public interface IContentSafetyAnalyzer
 public interface IImageModerator
 {
     // No configured provider or provider error must never yield true.
-    Task<bool> IsSafeAsync(string objectKey, CancellationToken cancellationToken);
+    Task<bool> IsSafeAsync(string objectKey, string mime, long size, CancellationToken cancellationToken);
 }
 
 public sealed class UnconfiguredImageModerator : IImageModerator
 {
-    public Task<bool> IsSafeAsync(string objectKey, CancellationToken cancellationToken) =>
+    public Task<bool> IsSafeAsync(string objectKey, string mime, long size, CancellationToken cancellationToken) =>
         throw new InvalidOperationException("Content Safety is not configured.");
 }

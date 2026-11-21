@@ -40,11 +40,18 @@ firma); los pasos siguientes requieren evidencia AWS independiente.
   (o `404` que no divulgue existencia), sin bytes. Guardar solo estado HTTP y
   fecha, nunca URL completa. Si es `200`, bloquear publicación y corregir
   política/ACL antes de cualquier despliegue.
-- [ ] Con identidad de backend EC2, solicitar intención y confirmar objeto:
+- [ ] Verificar **en AWS S3 controlado**, no en LocalStack, que PUT firmado con
+  `Content-Type` diferente, clave alterada y URL caducada son rechazados por
+  S3; confirmar que PUT del mismo objeto no puede reemplazar un asset ya
+  aprobado dentro del TTL de firma (riesgo a revisar). LocalStack ha aceptado
+  cambios en MIME firmado, por lo que las pruebas locales solo acreditan
+  rechazo posterior por HEAD y firma binaria, no enforcement de SigV4 ni
+  privacidad/expiración reales de AWS.
+- [ ] Con identidad de backend **no productivo**, solicitar intención y confirmar objeto:
   PUT presignado de **una clave staging** con `Content-Type` exacto,
   `X-Amz-Expires ≤ 300`, sin ACL pública; HEAD por backend debe ver MIME y
   tamaño reales. Una URL PUT no debe firmar otra clave, ni cambiar
-  Content-Type, ni funcionar tras expiración. Intento de >5 MiB debe fallar
+  Content-Type, ni funcionar tras expiración. Intento de >4 000 000 bytes debe fallar
   en backend/confirmación; comprobar que la presigned PUT por sí sola
   **no limita bytes** (se necesita revisión de política ante consumo indebido).
 - [ ] Comprobar que GET presignado se devuelve **solo** tras `Approved`,

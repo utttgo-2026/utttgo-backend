@@ -1,5 +1,6 @@
 using FluentValidation;
 using UTTTGO.Api.Modules.Media.Contracts;
+using UTTTGO.Api.Modules.Media.Application;
 
 namespace UTTTGO.Api.Modules.Media.Validators;
 
@@ -17,7 +18,7 @@ public class PresignedUrlRequestValidator : AbstractValidator<PresignedUrlReques
 
         RuleFor(x => x.Size)
             .GreaterThan(0).WithMessage("El tamaño debe ser mayor a 0")
-            .LessThanOrEqualTo(5 * 1024 * 1024).WithMessage("El tamaño máximo es 5 MB");
+            .LessThanOrEqualTo(MediaImagePolicy.MaxBytes).WithMessage("El tamaño máximo es 4 MB");
     }
 }
 

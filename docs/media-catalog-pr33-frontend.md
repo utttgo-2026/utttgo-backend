@@ -26,10 +26,14 @@ JSON en camelCase; fechas UTC. No conservar ni registrar una URL firmada despué
 ```
 
 El cliente hace `PUT` directamente al `uploadUrl`, con el **mismo**
-`Content-Type: image/jpeg` y los bytes exactos. Límite de intención: 5 MiB;
+`Content-Type: image/jpeg` y los bytes exactos. **Cambio de contrato Media
+pendiente de aprobación final de Expo Go:** el backend de esta rama rechaza
+`size` debe estar entre **1 y 4 000 000 bytes inclusivos** (antes: 5 MiB);
+Expo Go debe validar el tamaño binario antes de solicitar la URL y mostrar un
+error si excede **4 000 000 bytes**, sin comprimir ni transformar automáticamente.
 MIME `image/jpeg`, `image/png` o `image/webp` y extensión correspondiente.
 La URL expira a más tardar en 5 minutos; el backend comprueba tamaño y MIME
-del objeto real con S3 HEAD durante la confirmación. El estado inicial en
+del objeto real con S3 HEAD y comprueba firma binaria antes de llamar a Azure durante la confirmación. El estado inicial en
 Mongo es `PendingUpload`.
 
 ## 2. Confirmar subida y leer estado

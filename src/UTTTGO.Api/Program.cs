@@ -185,6 +185,11 @@ builder.Services.AddSingleton<IMediaImageSource>(services => services.GetRequire
 builder.Services.AddSingleton<IMediaRepository, MongoMediaRepository>();
 builder.Services.Configure<ContentSafetyOptions>(options =>
 {
+    // Even if production has threshold variables, a live approval requires an
+    // explicit isolated validation environment and a separate test-only switch.
+    options.AllowControlledTestPolicy = builder.Environment.IsEnvironment("ModerationValidation") &&
+        string.Equals(builder.Configuration["CONTENT_SAFETY_TEST_ENABLED"], "true",
+            StringComparison.OrdinalIgnoreCase);
     options.Endpoint = builder.Configuration["CONTENT_SAFETY_ENDPOINT"];
     options.SubscriptionKey = builder.Configuration["CONTENT_SAFETY_KEY"];
     if (int.TryParse(builder.Configuration["CONTENT_SAFETY_MAX_HATE_SEVERITY"], out var hate))

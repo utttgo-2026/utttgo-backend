@@ -56,6 +56,7 @@ public sealed class MediaCatalogJourneyTests : IAsyncLifetime
             // Deliberate test-only policy; no values are configured as production defaults.
             services.AddSingleton<IOptions<ContentSafetyOptions>>(Options.Create(new ContentSafetyOptions
             {
+                AllowControlledTestPolicy = true,
                 MaxHateSeverity = 0,
                 MaxSelfHarmSeverity = 0,
                 MaxSexualSeverity = 0,
@@ -141,6 +142,69 @@ public sealed class MediaCatalogJourneyTests : IAsyncLifetime
         await PatchImage(client, productId!, """{"mediaAssetId":null}""", null);
     }
 
+    [Fact]
+    public async Task AlteredSignedPutIsNotTrustedWithoutBackendHeadAndOwnership()
+    {
+        var key = "staging/negative/signature.jpg";
+        var url = s3.GetPreSignedURL(new GetPreSignedUrlRequest
+        {
+            BucketName = Bucket,
+            Key = key,
+            Verb = HttpVerb.PUT,
+            ContentType = ImageType,
+            Expires = DateTime.UtcNow.AddMinutes(2),
+            Protocol = Protocol.HTTP
+        });
+        using var http = new HttpClient();
+        using var mimeBody = new ByteArrayContent(new byte[] { 1, 2, 3 });
+        mimeBody.Headers.ContentType = new MediaTypeHeaderValue("image/png");
+        using var changedMime = await http.PutAsync(url, mimeBody);
+        // LocalStack can accept a changed signed Content-Type; backend HEAD must
+        // reject the object's actual MIME (separate API test below).
+        if (changedMime.IsSuccessStatusCode)
+        {
+            var metadata = await s3.GetObjectMetadataAsync(Bucket, key);
+            metadata.Headers.ContentType.Should().Be("image/png");
+        }
+
+        var changedKeyUrl = url.Replace("/signature.jpg?", "/changed.jpg?", StringComparison.Ordinal);
+        changedKeyUrl.Should().NotBe(url);
+        using var keyBody = new ByteArrayContent(new byte[] { 1, 2, 3 });
+        keyBody.Headers.ContentType = new MediaTypeHeaderValue(ImageType);
+        using var changedKey = await http.PutAsync(changedKeyUrl, keyBody);
+        if (changedKey.IsSuccessStatusCode)
+        {
+            // Emulated signature verification is not AWS evidence.
+            var metadata = await s3.GetObjectMetadataAsync(Bucket, "staging/negative/changed.jpg");
+            metadata.ContentLength.Should().Be(3);
+        }
+    }
+
+    [Fact]
+    public async Task ExpiredPresignedPutIsProbedButRequiresAwsEnforcementEvidence()
+    {
+        var url = s3.GetPreSignedURL(new GetPreSignedUrlRequest
+        {
+            BucketName = Bucket,
+            Key = "staging/negative/expired.jpg",
+            Verb = HttpVerb.PUT,
+            ContentType = ImageType,
+            Expires = DateTime.UtcNow.AddSeconds(2),
+            Protocol = Protocol.HTTP
+        });
+        var query = System.Web.HttpUtility.ParseQueryString(new Uri(url).Query);
+        var signedSeconds = int.Parse(query["X-Amz-Expires"]!);
+        signedSeconds.Should().BeLessThanOrEqualTo(4);
+        await Task.Delay(TimeSpan.FromSeconds(signedSeconds + 2));
+        using var body = new ByteArrayContent(new byte[] { 1 });
+        body.Headers.ContentType = new MediaTypeHeaderValue(ImageType);
+        using var response = await new HttpClient().PutAsync(url, body);
+        // LocalStack does not reliably enforce expired credentials. This probe
+        // must not claim AWS rejection; record the HTTP result during review.
+        response.StatusCode.Should().BeOneOf(HttpStatusCode.OK, HttpStatusCode.Forbidden,
+            HttpStatusCode.BadRequest);
+    }
+
     private async Task<string> UploadAndApprove(HttpClient client, string file)
     {
         using var intent = await client.PostAsJsonAsync("/api/v1/media/upload-url",
@@ -155,7 +219,7 @@ public sealed class MediaCatalogJourneyTests : IAsyncLifetime
         var parameters = System.Web.HttpUtility.ParseQueryString(new Uri(upload).Query);
         int.Parse(parameters["X-Amz-Expires"]!).Should().BeLessThanOrEqualTo(300);
         json.RootElement.GetProperty("headers").GetProperty("Content-Type").GetString().Should().Be(ImageType);
-        using var body = new ByteArrayContent(Encoding.ASCII.GetBytes("0123456789"));
+        using var body = new ByteArrayContent(new byte[] { 0xff, 0xd8, 0xff, 0, 0, 0, 0, 0, 0xff, 0xd9 });
         body.Headers.ContentType = new MediaTypeHeaderValue(ImageType);
         using var put = await new HttpClient().PutAsync(upload, body);
         put.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -170,8 +234,13 @@ public sealed class MediaCatalogJourneyTests : IAsyncLifetime
 
     private async Task CheckRejectedUploadsAndUnapprovedRead(HttpClient client, string categoryId)
     {
+        using var boundary = await client.PostAsJsonAsync("/api/v1/media/upload-url",
+            new { fileName = "boundary.jpg", mimeType = ImageType, size = MediaImagePolicy.MaxBytes });
+        boundary.StatusCode.Should().Be(HttpStatusCode.Created);
+        using var boundaryJson = JsonDocument.Parse(await boundary.Content.ReadAsStringAsync());
+        var absentId = boundaryJson.RootElement.GetProperty("mediaAssetId").GetString();
         using var invalid = await client.PostAsJsonAsync("/api/v1/media/upload-url",
-            new { fileName = "invalid.jpg", mimeType = "image/jpeg", size = 5_242_881 });
+            new { fileName = "invalid.jpg", mimeType = "image/jpeg", size = MediaImagePolicy.MaxBytes + 1 });
         invalid.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         using var wrongMime = await client.PostAsJsonAsync("/api/v1/media/upload-url",
             new { fileName = "invalid.png", mimeType = "image/jpeg", size = 10 });
@@ -206,6 +275,58 @@ public sealed class MediaCatalogJourneyTests : IAsyncLifetime
         using var afterJson = JsonDocument.Parse(await after.Content.ReadAsStringAsync());
         afterJson.RootElement.GetProperty("status").GetString().Should().Be(MediaStatus.PendingUpload);
         afterJson.RootElement.GetProperty("imageUrl").ValueKind.Should().Be(JsonValueKind.Null);
+
+        // A presigned PUT is not a size constraint: reject its actual oversized HEAD.
+        using var oversizedIntent = await client.PostAsJsonAsync("/api/v1/media/upload-url",
+            new { fileName = "oversized.jpg", mimeType = ImageType, size = 10 });
+        using var oversizedJson = JsonDocument.Parse(await oversizedIntent.Content.ReadAsStringAsync());
+        var oversizedId = oversizedJson.RootElement.GetProperty("mediaAssetId").GetString();
+        using var oversizedBytes = new ByteArrayContent(new byte[MediaImagePolicy.MaxBytes + 1]);
+        oversizedBytes.Headers.ContentType = new MediaTypeHeaderValue(ImageType);
+        using var oversizedPut = await new HttpClient().PutAsync(
+            oversizedJson.RootElement.GetProperty("uploadUrl").GetString(), oversizedBytes);
+        oversizedPut.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var oversizedConfirm = await client.PostAsJsonAsync("/api/v1/media/confirm",
+            new { mediaAssetId = oversizedId });
+        oversizedConfirm.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        using var oversizedRead = await client.GetAsync($"/api/v1/media/{oversizedId}");
+        using var oversizedState = JsonDocument.Parse(await oversizedRead.Content.ReadAsStringAsync());
+        oversizedState.RootElement.GetProperty("imageUrl").ValueKind.Should().Be(JsonValueKind.Null);
+
+        using var absent = await client.PostAsJsonAsync("/api/v1/media/confirm",
+            new { mediaAssetId = absentId });
+        absent.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+
+        await CheckInvalidStoredObject(client, "image/png", new byte[10], HttpStatusCode.BadRequest);
+        await CheckInvalidStoredObject(client, ImageType, new byte[10], HttpStatusCode.OK);
+    }
+
+    private async Task CheckInvalidStoredObject(HttpClient client, string actualMime, byte[] bytes,
+        HttpStatusCode expectedHttp)
+    {
+        using var intent = await client.PostAsJsonAsync("/api/v1/media/upload-url",
+            new { fileName = "untrusted.jpg", mimeType = ImageType, size = bytes.Length });
+        intent.StatusCode.Should().Be(HttpStatusCode.Created);
+        using var json = JsonDocument.Parse(await intent.Content.ReadAsStringAsync());
+        var id = json.RootElement.GetProperty("mediaAssetId").GetString()!;
+        var asset = await host.Database.GetCollection<BsonDocument>("mediaAssets")
+            .Find(Builders<BsonDocument>.Filter.Eq("_id", ObjectId.Parse(id))).FirstAsync();
+        using var content = new MemoryStream(bytes);
+        await s3.PutObjectAsync(new PutObjectRequest
+        {
+            BucketName = Bucket,
+            Key = asset["objectKey"].AsString,
+            InputStream = content,
+            ContentType = actualMime
+        });
+        using var confirmation = await client.PostAsJsonAsync("/api/v1/media/confirm",
+            new { mediaAssetId = id });
+        confirmation.StatusCode.Should().Be(expectedHttp);
+        using var read = await client.GetAsync($"/api/v1/media/{id}");
+        using var state = JsonDocument.Parse(await read.Content.ReadAsStringAsync());
+        state.RootElement.GetProperty("status").GetString().Should()
+            .Be(expectedHttp == HttpStatusCode.OK ? MediaStatus.Rejected : MediaStatus.PendingUpload);
+        state.RootElement.GetProperty("imageUrl").ValueKind.Should().Be(JsonValueKind.Null);
     }
 
     private static async Task PatchImage(HttpClient client, string id, string json, string? expected)
@@ -238,7 +359,7 @@ public sealed class MediaCatalogJourneyTests : IAsyncLifetime
     {
         public Task<IReadOnlyDictionary<string, int>> AnalyzeAsync(byte[] image, CancellationToken ct)
         {
-            Encoding.ASCII.GetString(image).Should().Be("0123456789");
+            image.Should().Equal(new byte[] { 0xff, 0xd8, 0xff, 0, 0, 0, 0, 0, 0xff, 0xd9 });
             return Task.FromResult<IReadOnlyDictionary<string, int>>(new Dictionary<string, int>
             {
                 ["Hate"] = 0,
@@ -269,8 +390,15 @@ public sealed class MediaCatalogJourneyTests : IAsyncLifetime
         }
         public async Task<(long Length, string Mime)?> HeadAsync(string key, CancellationToken ct)
         {
-            var head = await client.GetObjectMetadataAsync(Bucket, key, ct);
-            return (head.ContentLength, head.Headers.ContentType);
+            try
+            {
+                var head = await client.GetObjectMetadataAsync(Bucket, key, ct);
+                return (head.ContentLength, head.Headers.ContentType);
+            }
+            catch (AmazonS3Exception exception) when (exception.StatusCode == HttpStatusCode.NotFound)
+            {
+                return null;
+            }
         }
         public Task<MediaReadUrl> SignGetAsync(string key, CancellationToken ct)
         {
@@ -287,7 +415,7 @@ public sealed class MediaCatalogJourneyTests : IAsyncLifetime
         public Task DeleteAsync(string key, CancellationToken ct) =>
             client.DeleteObjectAsync(Bucket, key, ct);
 
-        public async Task<byte[]> ReadForModerationAsync(string key, CancellationToken ct)
+        public async Task<byte[]> ReadForModerationAsync(string key, string mime, long size, CancellationToken ct)
         {
             using var response = await client.GetObjectAsync(Bucket, key, ct);
             await using var buffer = new MemoryStream();

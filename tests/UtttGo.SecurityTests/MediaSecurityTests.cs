@@ -89,6 +89,22 @@ public sealed class MediaSecurityTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task OnlyOwnApprovedAssetReceivesTemporaryReadUrl()
+    {
+        var repo = new Repository { Value = Asset() with { Status = MediaStatus.Approved } };
+        var store = new Store();
+        using var factory = Factory(repo, store, Profile());
+        using var client = Client(factory);
+        using var response = await client.GetAsync($"/api/v1/media/{Id}");
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var json = System.Text.Json.JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        json.RootElement.GetProperty("imageUrl").GetString().Should().Be("https://local.invalid/get");
+        json.RootElement.GetProperty("imageUrlExpiresAt").GetDateTime()
+            .Should().BeOnOrBefore(DateTime.UtcNow.AddMinutes(5));
+        store.SignGetCalls.Should().Be(1);
+    }
+
+    [Fact]
     public async Task MissingModeratorCannotApproveAndRepeatConfirmationIsStable()
     {
         var repo = new Repository { Value = Asset() };
@@ -153,6 +169,7 @@ public sealed class MediaSecurityTests : IAsyncLifetime
                     services.AddSingleton(analyzer);
                     services.AddSingleton<IOptions<ContentSafetyOptions>>(Options.Create(new ContentSafetyOptions
                     {
+                        AllowControlledTestPolicy = true,
                         MaxHateSeverity = 0,
                         MaxSelfHarmSeverity = 0,
                         MaxSexualSeverity = 0,
@@ -217,8 +234,8 @@ public sealed class MediaSecurityTests : IAsyncLifetime
 
     private sealed class ImageSource : IMediaImageSource
     {
-        public Task<byte[]> ReadForModerationAsync(string key, CancellationToken ct) =>
-            Task.FromResult(new byte[10]);
+        public Task<byte[]> ReadForModerationAsync(string key, string mime, long size, CancellationToken ct) =>
+            Task.FromResult(new byte[] { 0xff, 0xd8, 0xff, 0, 0, 0, 0, 0, 0xff, 0xd9 });
     }
 
     private sealed class FailingAnalyzer : IContentSafetyAnalyzer

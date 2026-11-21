@@ -21,6 +21,10 @@ public sealed class MediaCatalogOpenApiSnapshotTests
         response.StatusCode.Should().Be(HttpStatusCode.OK);
 
         using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var sizeSchema = document.RootElement.GetProperty("components").GetProperty("schemas")
+            .GetProperty("PresignedUrlRequest").GetProperty("properties").GetProperty("size");
+        sizeSchema.GetProperty("maximum").GetInt64().Should().Be(4_000_000);
+        sizeSchema.GetProperty("minimum").GetInt64().Should().Be(1);
         var generated = JsonSerializer.Serialize(document.RootElement, new JsonSerializerOptions
         {
             WriteIndented = true

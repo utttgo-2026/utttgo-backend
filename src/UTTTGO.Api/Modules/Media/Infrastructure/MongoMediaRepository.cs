@@ -21,6 +21,9 @@ public sealed class MediaDocument
     [BsonElement("confirmedAt")]
     [BsonDateTimeOptions(Kind = DateTimeKind.Utc)]
     public DateTime? ConfirmedAt { get; set; }
+    [BsonElement("moderationStartedAt")]
+    [BsonDateTimeOptions(Kind = DateTimeKind.Utc)]
+    public DateTime? ModerationStartedAt { get; set; }
 }
 
 public sealed class MongoMediaRepository(MongoStore store) : IMediaRepository
@@ -45,7 +48,7 @@ public sealed class MongoMediaRepository(MongoStore store) : IMediaRepository
         if (!ObjectId.TryParse(id, out var objectId)) return null;
         var doc = await Assets.Find(asset => asset.Id == objectId).FirstOrDefaultAsync(cancellationToken);
         return doc is null ? null : new(doc.Id.ToString(), doc.OwnerUserId, doc.ObjectKey, doc.MimeType,
-            doc.Size, doc.Status, doc.CreatedAt, doc.ConfirmedAt, doc.Version);
+            doc.Size, doc.Status, doc.CreatedAt, doc.ConfirmedAt, doc.Version, doc.ModerationStartedAt);
     }
 
     public async Task<bool> TransitionAsync(string id, string ownerId, long version, string from,
@@ -57,6 +60,8 @@ public sealed class MongoMediaRepository(MongoStore store) : IMediaRepository
             Builders<MediaDocument>.Filter.Eq(x => x.Version, version) &
             Builders<MediaDocument>.Filter.Eq(x => x.Status, from);
         var update = Builders<MediaDocument>.Update.Set(x => x.Status, to).Inc(x => x.Version, 1);
+        if (to == MediaStatus.PendingModeration)
+            update = update.Set(x => x.ModerationStartedAt, DateTime.UtcNow);
         if (to is MediaStatus.Approved or MediaStatus.Rejected)
             update = update.Set(x => x.ConfirmedAt, DateTime.UtcNow);
         return (await Assets.UpdateOneAsync(filter, update, cancellationToken: cancellationToken)).ModifiedCount == 1;

@@ -18,7 +18,7 @@ public sealed class ContentSafetyModeratorTests
         var moderator = new ContentSafetyImageModerator(images, analyzer, Options.Create(
             new ContentSafetyOptions { MaxHateSeverity = 0 }));
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            moderator.IsSafeAsync("staging/asset", default));
+            moderator.IsSafeAsync("staging/asset", "image/png", 12, default));
         images.Reads.Should().Be(0);
         analyzer.Calls.Should().Be(0);
     }
@@ -31,7 +31,7 @@ public sealed class ContentSafetyModeratorTests
         policy.MaxHateSeverity = 1;
         var moderator = new ContentSafetyImageModerator(images, new Analyzer(), Options.Create(policy));
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            moderator.IsSafeAsync("staging/asset", default));
+            moderator.IsSafeAsync("staging/asset", "image/png", 12, default));
         images.Reads.Should().Be(0);
     }
 
@@ -44,7 +44,7 @@ public sealed class ContentSafetyModeratorTests
         var analyzer = new Analyzer { HateSeverity = severity };
         var moderator = new ContentSafetyImageModerator(new Images(), analyzer,
             Options.Create(TestPolicy()));
-        (await moderator.IsSafeAsync("staging/asset", default)).Should().Be(expected);
+        (await moderator.IsSafeAsync("staging/asset", "image/png", 12, default)).Should().Be(expected);
         analyzer.Calls.Should().Be(1);
     }
 
@@ -58,7 +58,7 @@ public sealed class ContentSafetyModeratorTests
         var moderator = new ContentSafetyImageModerator(new Images(), analyzer,
             Options.Create(TestPolicy()));
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            moderator.IsSafeAsync("staging/asset", default));
+            moderator.IsSafeAsync("staging/asset", "image/png", 12, default));
     }
 
     [Fact]
@@ -119,6 +119,7 @@ public sealed class ContentSafetyModeratorTests
 
     private static ContentSafetyOptions TestPolicy() => new()
     {
+        AllowControlledTestPolicy = true,
         MaxHateSeverity = 0,
         MaxSelfHarmSeverity = 0,
         MaxSexualSeverity = 0,
@@ -128,10 +129,10 @@ public sealed class ContentSafetyModeratorTests
     private sealed class Images : IMediaImageSource
     {
         public int Reads;
-        public Task<byte[]> ReadForModerationAsync(string objectKey, CancellationToken ct)
+        public Task<byte[]> ReadForModerationAsync(string objectKey, string mime, long size, CancellationToken ct)
         {
             Reads++;
-            return Task.FromResult(new byte[] { 1, 2, 3 });
+            return Task.FromResult(new byte[] { 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0 });
         }
     }
 
