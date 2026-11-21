@@ -79,6 +79,15 @@ public sealed class CatalogWriteServiceTests
         public Task<MediaReadUrl?> GetApprovedReadUrlAsync(string id, CancellationToken ct) =>
             Task.FromResult<MediaReadUrl?>(Approved && id == MediaId
                 ? new("https://local.invalid/get", DateTime.UtcNow.AddMinutes(5)) : null);
+
+        public Task<IReadOnlyDictionary<string, MediaReadUrl>> GetApprovedReadUrlsAsync(
+            IEnumerable<string> ids, CancellationToken ct) =>
+            Task.FromResult<IReadOnlyDictionary<string, MediaReadUrl>>(
+                ids.Where(id => Approved && id == MediaId)
+                    .Distinct(StringComparer.Ordinal)
+                    .ToDictionary(id => id,
+                        _ => new MediaReadUrl("https://local.invalid/get", DateTime.UtcNow.AddMinutes(5)),
+                        StringComparer.Ordinal));
     }
     private static readonly CreateProductRequest ValidRequest = new()
     {

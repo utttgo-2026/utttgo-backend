@@ -135,6 +135,29 @@ public sealed class MediaServiceTests
             await Assert.ThrowsAsync<ArgumentException>(() => service.StartAsync(Owner, request, default));
     }
 
+    [Fact]
+    public async Task BatchReadSignsOnlyApprovedAssetsWithoutPersistingUrls()
+    {
+        var repo = new Repository { Value = Asset() with { Status = MediaStatus.Approved } };
+        var service = new MediaService(repo, new ObjectStore(), new Moderator());
+
+        var urls = await service.GetApprovedReadUrlsAsync([Id, Id, "missing"], default);
+
+        urls.Should().ContainKey(Id);
+        urls[Id].Url.Should().StartWith("https://local.invalid/");
+        typeof(UTTTGO.Api.Modules.Catalog.Infrastructure.ProductDocument)
+            .GetProperties().Select(property => property.Name).Should()
+            .NotContain(name => name.Contains("Url", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void S3ConfigurationDoesNotExposeExplicitCredentials()
+    {
+        typeof(UTTTGO.Api.Shared.Contracts.S3Config).GetProperties()
+            .Select(property => property.Name).Should()
+            .NotContain(name => name == "AccessKey" || name == "SecretKey");
+    }
+
     [Theory]
     [InlineData("image/jpeg", true)]
     [InlineData("image/png", false)]

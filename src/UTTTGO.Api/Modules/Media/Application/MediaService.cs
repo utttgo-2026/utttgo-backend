@@ -120,4 +120,13 @@ public sealed class MediaService(IMediaRepository repository, IMediaObjectStore 
         return record is { Status: MediaStatus.Approved }
             ? await objects.SignGetAsync(record.ObjectKey, ct) : null;
     }
+
+    public async Task<IReadOnlyDictionary<string, MediaReadUrl>> GetApprovedReadUrlsAsync(
+        IEnumerable<string> ids, CancellationToken ct)
+    {
+        var results = await Task.WhenAll(ids.Distinct(StringComparer.Ordinal)
+            .Select(async id => (Id: id, Url: await GetApprovedReadUrlAsync(id, ct))));
+        return results.Where(item => item.Url is not null)
+            .ToDictionary(item => item.Id, item => item.Url!, StringComparer.Ordinal);
+    }
 }

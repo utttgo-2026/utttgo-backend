@@ -29,6 +29,15 @@ public interface IProductMediaAccess
     Task<bool> IsApprovedForOwnerAsync(string mediaAssetId, string ownerUserId,
         CancellationToken cancellationToken);
     Task<MediaReadUrl?> GetApprovedReadUrlAsync(string mediaAssetId, CancellationToken cancellationToken);
+
+    async Task<IReadOnlyDictionary<string, MediaReadUrl>> GetApprovedReadUrlsAsync(
+        IEnumerable<string> mediaAssetIds, CancellationToken cancellationToken)
+    {
+        var results = await Task.WhenAll(mediaAssetIds.Distinct(StringComparer.Ordinal)
+            .Select(async id => (Id: id, Url: await GetApprovedReadUrlAsync(id, cancellationToken))));
+        return results.Where(item => item.Url is not null)
+            .ToDictionary(item => item.Id, item => item.Url!, StringComparer.Ordinal);
+    }
 }
 
 public interface IMediaObjectStore

@@ -36,13 +36,18 @@ public sealed class ListProductsService(ICatalogRateLimitGate rateLimit, IProduc
                 item => item.Name, StringComparer.Ordinal);
             var sellerIds = page.Items.Select(item => item.SellerId).Distinct(StringComparer.Ordinal).ToList();
             var sellerNames = await sellers.FindDisplayNamesAsync(sellerIds, cancellationToken);
+            var mediaIds = page.Items.Where(item => item.MediaAssetId is not null)
+                .Select(item => item.MediaAssetId!).Distinct(StringComparer.Ordinal).ToList();
+            var imageUrls = media is null
+                ? new Dictionary<string, MediaReadUrl>(StringComparer.Ordinal)
+                : await media.GetApprovedReadUrlsAsync(mediaIds, cancellationToken);
 
             var items = new List<ProductResponse>(page.Items.Count);
             foreach (var product in page.Items)
             {
                 var rating = await ReadRatingsAsync(product.ProductId, cancellationToken);
-                var image = product.MediaAssetId is { } id && media is not null
-                    ? await media.GetApprovedReadUrlAsync(id, cancellationToken) : null;
+                var image = product.MediaAssetId is { } id && imageUrls.TryGetValue(id, out var signed)
+                    ? signed : null;
                 items.Add(ProductProjection.ToResponse(product,
                     sellerNames.TryGetValue(product.SellerId, out var displayName) ? displayName : null,
                     categoryNames.TryGetValue(product.CategoryId, out var categoryName) ? categoryName : null,
