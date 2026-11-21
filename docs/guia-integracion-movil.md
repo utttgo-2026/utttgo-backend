@@ -228,7 +228,7 @@ El cliente **no** envía `sellerId`, `status`, `version` ni `categoryName`: el b
 ### 4.5 `PATCH /api/v1/products/{productId}` → `200` (Bearer, dueño)
 
 ```json
-{ "name": "Tacos de pastor (4 pza)", "price": 59.50, "stock": 8, "ingredients": ["Piña"], "description": "Tacos con piña", "imageUrl": "https://utttgo-images-2427dbc8.s3.amazonaws.com/media-assets/tacos_1.jpg" }
+{ "name": "Tacos de pastor (4 pza)", "price": 59.50, "stock": 8, "ingredients": ["Piña"], "description": "Tacos con piña", "imageUrl": "https://utttgo-images-2427dbc8.s3.amazonaws.com/staging/seller/asset-1" }
 ```
 
 Solo el dueño (verificado por recurso). `409 PRODUCT_CONFLICT` si el `version` quedó desactualizado: releer y reintentar.
@@ -260,9 +260,9 @@ Content-Type: application/json
 ```json
 {
   "assetId": "3f1c…",
-  "uploadUrl": "https://utttgo-images-2427dbc8.s3.amazonaws.com/media-assets/tacos_3f1c….jpg?X-Amz-…",
+  "uploadUrl": "https://utttgo-images-2427dbc8.s3.amazonaws.com/staging/seller/asset-1?X-Amz-…",
   "expiresAt": "2026-11-19T18:15:00Z",
-  "objectKey": "media-assets/tacos_3f1c….jpg"
+  "objectKey": "staging/seller/asset-1"
 }
 ```
 
@@ -284,7 +284,7 @@ Authorization: Bearer <token>
 ```
 
 ```json
-{ "publicUrl": "https://utttgo-images-2427dbc8.s3.amazonaws.com/media-assets/tacos_3f1c….jpg", "assetId": "3f1c…", "status": "Ready" }
+{ "publicUrl": "https://utttgo-images-2427dbc8.s3.amazonaws.com/staging/seller/asset-1", "assetId": "asset-1", "status": "Ready" }
 ```
 
 `200`. Transiciona `PendingUpload → Ready` (idempotente) y devuelve la URL pública. Un asset **de otro usuario** se reporta como no encontrado (`400 VALIDATION_ERROR` con `assetId`), sin revelar que existe. Errores: `400 VALIDATION_ERROR`, `401`, `429`, `503`.

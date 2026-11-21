@@ -19,7 +19,7 @@ public interface IMediaAssetService
 
 public interface IS3MediaAssetService
 {
-    Task<PresignedPutUrlResult> GetPresignedPutUrlAsync(string objectKey, string contentType, CancellationToken cancellationToken = default);
+    Task<PresignedPutUrlResult> GetPresignedPutUrlAsync(string assetId, string objectKey, string contentType, CancellationToken cancellationToken = default);
     Task<string> GetPresignedGetUrlAsync(string objectKey, CancellationToken cancellationToken = default);
     Task DeleteObjectAsync(string objectKey, CancellationToken cancellationToken = default);
 }

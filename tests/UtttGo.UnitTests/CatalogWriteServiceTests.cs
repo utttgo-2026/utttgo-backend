@@ -46,7 +46,7 @@ public sealed class CatalogWriteServiceTests
             CategoryId = ValidRequest.CategoryId,
             Price = ValidRequest.Price,
             Stock = ValidRequest.Stock,
-            ImageUrl = "https://utttgo-images-2427dbc8.s3.amazonaws.com/media-assets/photo.jpg"
+            ImageUrl = "https://utttgo-images-2427dbc8.s3.amazonaws.com/staging/seller/photo"
         };
 
         var result = await CreateService(SellerProfile(), products, ActiveCategories(),
@@ -61,7 +61,7 @@ public sealed class CatalogWriteServiceTests
     public async Task AnImageUrlConfirmedByMediaIsStoredOnTheProduct()
     {
         var products = new CatalogProductRepository();
-        const string imageUrl = "https://utttgo-images-2427dbc8.s3.amazonaws.com/media-assets/photo.jpg";
+        const string imageUrl = "https://utttgo-images-2427dbc8.s3.amazonaws.com/staging/seller/photo";
         var request = new CreateProductRequest
         {
             Name = ValidRequest.Name,
@@ -90,7 +90,7 @@ public sealed class CatalogWriteServiceTests
         var products = new CatalogProductRepository();
         products.Products[CatalogFixtures.ProductId] = CatalogFixtures.Product();
         var request = new UpdateProductRequest(false, null, false, null, false, null, false, null,
-            false, null, true, "https://utttgo-images-2427dbc8.s3.amazonaws.com/media-assets/photo.jpg");
+            false, null, true, "https://utttgo-images-2427dbc8.s3.amazonaws.com/staging/seller/photo");
 
         var result = await UpdateService(SellerProfile(), products, ActiveCategories(),
             images: new CatalogImageGuard { Attachable = false })

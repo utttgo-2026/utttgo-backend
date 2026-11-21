@@ -129,7 +129,7 @@ public sealed class CatalogEndpointTests
             Content = JsonContent("""
                 {"name":"Tacos de pastor","description":"Tacos con piña","ingredients":["Piña"],
                  "categoryId":"507f1f77bcf86cd799439031","price":55.50,"stock":10,
-                 "imageUrl":"https://utttgo-images-2427dbc8.s3.amazonaws.com/media-assets/photo.jpg"}
+                 "imageUrl":"https://utttgo-images-2427dbc8.s3.amazonaws.com/staging/seller/photo"}
                 """)
         };
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", Token);

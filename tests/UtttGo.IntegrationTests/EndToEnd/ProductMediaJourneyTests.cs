@@ -128,7 +128,7 @@ public sealed class ProductMediaJourneyTests : IAsyncLifetime
             categoryId,
             price = 40m,
             stock = 5,
-            imageUrl = "https://evil.example.com/media-assets/photo.jpg"
+            imageUrl = "https://evil.example.com/staging/seller/photo"
         });
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);

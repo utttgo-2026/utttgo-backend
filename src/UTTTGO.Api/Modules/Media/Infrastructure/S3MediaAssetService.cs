@@ -19,8 +19,11 @@ public class S3MediaAssetService : IS3MediaAssetService
                      && !string.IsNullOrWhiteSpace(_config.BucketName);
     }
 
-    public async Task<PresignedPutUrlResult> GetPresignedPutUrlAsync(string objectKey, string contentType, CancellationToken cancellationToken = default)
+    public async Task<PresignedPutUrlResult> GetPresignedPutUrlAsync(string assetId, string objectKey, string contentType, CancellationToken cancellationToken = default)
     {
+        if (string.IsNullOrWhiteSpace(assetId))
+            throw new ArgumentException("El identificador del asset es obligatorio", nameof(assetId));
+
         if (string.IsNullOrWhiteSpace(objectKey))
             throw new ArgumentException("El nombre de objeto S3 es obligatorio", nameof(objectKey));
 
@@ -32,7 +35,7 @@ public class S3MediaAssetService : IS3MediaAssetService
             // Fallback for test environments: return a mock presigned URL
             var mockUrl = $"https://mock-s3-bucket.s3.amazonaws.com/{objectKey}?mock=true&expires={DateTime.UtcNow.AddMinutes(_config.PresignedUrlExpirationMinutes):yyyy-MM-ddTHH:mm:ss}";
             return new PresignedPutUrlResult(
-                AssetId: Guid.NewGuid().ToString(),
+                AssetId: assetId,
                 UploadUrl: mockUrl,
                 ExpiresAt: DateTime.UtcNow.AddMinutes(_config.PresignedUrlExpirationMinutes),
                 ObjectKey: objectKey
@@ -51,7 +54,7 @@ public class S3MediaAssetService : IS3MediaAssetService
         });
 
         return new PresignedPutUrlResult(
-            AssetId: Guid.NewGuid().ToString(),
+            AssetId: assetId,
             UploadUrl: url,
             ExpiresAt: DateTime.UtcNow.AddMinutes(_config.PresignedUrlExpirationMinutes),
             ObjectKey: objectKey

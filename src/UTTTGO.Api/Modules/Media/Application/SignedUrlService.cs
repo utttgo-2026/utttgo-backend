@@ -39,10 +39,10 @@ public class SignedUrlService(IS3MediaAssetService s3Service, IOptions<S3Config>
             });
         }
 
-        // Generar clave única para el objeto S3
-        var objectKey = $"media-assets/{request.FileName}_{Guid.NewGuid():N}.{GetExtensionFromMime(request.MimeType)}";
+        var assetId = Guid.NewGuid().ToString("N");
+        var objectKey = $"staging/{ownerId}/{assetId}";
 
-        var result = await _s3Service.GetPresignedPutUrlAsync(objectKey, request.MimeType, cancellationToken);
+        var result = await _s3Service.GetPresignedPutUrlAsync(assetId, objectKey, request.MimeType, cancellationToken);
 
         // The asset is registered with the presigned intent, before the upload happens: the
         // owner is recorded here so Catalog can later prove the image belongs to this seller.
