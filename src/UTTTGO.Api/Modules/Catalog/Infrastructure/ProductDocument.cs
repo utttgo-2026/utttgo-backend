@@ -27,6 +27,9 @@ public sealed class ProductDocument
     [BsonElement("categoryId")]
     public string CategoryId { get; set; } = string.Empty;
 
+    [BsonElement("mediaAssetId")]
+    public string? MediaAssetId { get; set; }
+
     // Money is stored as Decimal128; the API never converts it to a floating point number.
     [BsonElement("price")]
     [BsonRepresentation(BsonType.Decimal128)]

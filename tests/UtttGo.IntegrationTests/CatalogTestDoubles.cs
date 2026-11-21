@@ -39,7 +39,7 @@ internal sealed class CatalogProductRepository : IProductRepository
         CreateCalls++;
         var record = new ProductRecord(CatalogFixtures.ProductId, product.SellerId, product.Name,
             product.Description, product.Ingredients, product.CategoryId, product.Price, product.Stock,
-            ProductAvailability.Active, 0, DateTime.UtcNow, DateTime.UtcNow);
+            ProductAvailability.Active, 0, DateTime.UtcNow, DateTime.UtcNow, product.MediaAssetId);
         Products[record.ProductId] = record;
         return Task.FromResult(record);
     }
@@ -61,6 +61,7 @@ internal sealed class CatalogProductRepository : IProductRepository
             Ingredients = changes.HasIngredients ? changes.Ingredients! : product.Ingredients,
             Price = changes.HasPrice ? changes.Price!.Value : product.Price,
             Stock = changes.HasStock ? changes.Stock!.Value : product.Stock,
+            MediaAssetId = changes.HasMediaAssetId ? changes.MediaAssetId : product.MediaAssetId,
             Version = product.Version + 1,
             UpdatedAt = DateTime.UtcNow
         };

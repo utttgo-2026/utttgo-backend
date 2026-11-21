@@ -9,6 +9,25 @@ namespace UtttGo.IntegrationTests;
 public sealed class OpenApiContractTests
 {
     [Fact]
+    public async Task MediaAndCatalogImageContractsAppearInGeneratedDocument()
+    {
+        using var document = await LoadDocumentAsync();
+        ResponseSchema(document, "/api/v1/media/upload-url", "post", 201, "PresignedUrlResponse");
+        ResponseSchema(document, "/api/v1/media/confirm", "post", 200, "ConfirmResponse");
+        RequestSchemaProperties(document, "/api/v1/media/confirm", "post").Should()
+            .Contain("mediaAssetId");
+        ResponseSchema(document, "/api/v1/media/{mediaAssetId}/complete", "post", 200, "ConfirmResponse");
+        ResponseSchema(document, "/api/v1/media/{mediaAssetId}", "get", 200, "MediaAssetResponse");
+        ComponentProperties(document, "PresignedUrlResponse").Should()
+            .Contain(["mediaAssetId", "uploadUrl", "headers", "expiresAt"]);
+        ComponentProperties(document, "ConfirmResponse").Should().Contain(["mediaAssetId", "status"]);
+        ComponentProperties(document, "ProductResponse").Should()
+            .Contain(["imageUrl", "imageUrlExpiresAt"]);
+        RequestSchemaProperties(document, "/api/v1/products", "post").Should().Contain("mediaAssetId");
+        ResponseSchema(document, "/api/v1/products", "post", 422, "ApiError");
+        ResponseSchema(document, "/api/v1/products/{productId}", "patch", 422, "ApiError");
+    }
+    [Fact]
     public async Task TheDocumentAdvertisesThePublicHttpsServer()
     {
         using var factory = new WebApplicationFactory<Program>();

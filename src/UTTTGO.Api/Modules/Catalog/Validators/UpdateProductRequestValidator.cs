@@ -18,5 +18,7 @@ public sealed class UpdateProductRequestValidator : AbstractValidator<UpdateProd
             value is not null && value > 0m && value <= 1_000_000m);
         RuleFor(request => request.Stock).Must((request, value) => !request.HasStock ||
             value is not null && value >= 0 && value <= 1_000_000);
+        RuleFor(request => request.MediaAssetId).Must((request, value) => !request.HasMediaAssetId ||
+            value is null || value.Length == 24 && value.All(Uri.IsHexDigit));
     }
 }

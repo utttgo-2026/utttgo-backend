@@ -1,50 +1,20 @@
+using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
+
 namespace UTTTGO.Api.Modules.Media.Contracts;
 
-public class PresignedUrlRequest
+public sealed class PresignedUrlRequest
 {
-    [System.Text.Json.Serialization.JsonRequired]
-    [System.Text.Json.Serialization.JsonPropertyName("fileName")]
-    public string FileName { get; set; } = string.Empty;
-
-    [System.Text.Json.Serialization.JsonRequired]
-    [System.Text.Json.Serialization.JsonPropertyName("mimeType")]
-    public string MimeType { get; set; } = string.Empty;
-
-    [System.Text.Json.Serialization.JsonRequired]
-    [System.Text.Json.Serialization.JsonPropertyName("size")]
-    public long Size { get; set; }
+    [JsonRequired] public string FileName { get; init; } = "";
+    [JsonRequired] public string MimeType { get; init; } = "";
+    [JsonRequired]
+    [Range(1, 4_000_000)]
+    public long Size { get; init; }
 }
 
-public class PresignedUrlResponse
-{
-    [System.Text.Json.Serialization.JsonPropertyName("assetId")]
-    public string AssetId { get; set; } = string.Empty;
-
-    [System.Text.Json.Serialization.JsonPropertyName("uploadUrl")]
-    public string UploadUrl { get; set; } = string.Empty;
-
-    [System.Text.Json.Serialization.JsonPropertyName("expiresAt")]
-    public DateTime ExpiresAt { get; set; }
-
-    [System.Text.Json.Serialization.JsonPropertyName("objectKey")]
-    public string ObjectKey { get; set; } = string.Empty;
-}
-
-public class ConfirmRequest
-{
-    [System.Text.Json.Serialization.JsonRequired]
-    [System.Text.Json.Serialization.JsonPropertyName("assetId")]
-    public string AssetId { get; set; } = string.Empty;
-}
-
-public class ConfirmResponse
-{
-    [System.Text.Json.Serialization.JsonPropertyName("publicUrl")]
-    public string PublicUrl { get; set; } = string.Empty;
-
-    [System.Text.Json.Serialization.JsonPropertyName("assetId")]
-    public string AssetId { get; set; } = string.Empty;
-
-    [System.Text.Json.Serialization.JsonPropertyName("status")]
-    public string Status { get; set; } = string.Empty;
-}
+public sealed record PresignedUrlResponse(string MediaAssetId, string UploadUrl, DateTime ExpiresAt,
+    IReadOnlyDictionary<string, string> Headers);
+public sealed record ConfirmRequest(string MediaAssetId);
+public sealed record ConfirmResponse(string MediaAssetId, string Status);
+public sealed record MediaAssetResponse(string MediaAssetId, string Status, string? ImageUrl,
+    DateTime? ImageUrlExpiresAt);

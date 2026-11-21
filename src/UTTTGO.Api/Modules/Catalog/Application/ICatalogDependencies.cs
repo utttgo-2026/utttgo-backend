@@ -24,16 +24,16 @@ public interface ICategoryRepository
 
 public sealed record ProductRecord(string ProductId, string SellerId, string Name, string Description,
     IReadOnlyList<string> Ingredients, string CategoryId, decimal Price, int Stock, string Status,
-    long Version, DateTime CreatedAt, DateTime UpdatedAt);
+    long Version, DateTime CreatedAt, DateTime UpdatedAt, string? MediaAssetId = null);
 
 public sealed record ProductPage(IReadOnlyList<ProductRecord> Items, long Total);
 
 public sealed record NewProduct(string SellerId, string Name, string Description,
-    IReadOnlyList<string> Ingredients, string CategoryId, decimal Price, int Stock);
+    IReadOnlyList<string> Ingredients, string CategoryId, decimal Price, int Stock, string? MediaAssetId = null);
 
 public sealed record ProductChanges(bool HasName, string? Name, bool HasDescription, string? Description,
     bool HasIngredients, IReadOnlyList<string>? Ingredients, bool HasPrice, decimal? Price, bool HasStock,
-    int? Stock);
+    int? Stock, bool HasMediaAssetId = false, string? MediaAssetId = null);
 
 public enum ProductUpdateOutcome { Updated, Missing, Conflict }
 
