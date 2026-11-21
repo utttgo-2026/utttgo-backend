@@ -179,9 +179,29 @@ builder.Services.Configure<S3Config>(options =>
     options.BucketName = builder.Configuration["S3_BUCKET_IMAGES"] ?? "";
     options.Region = builder.Configuration["AWS_REGION"] ?? "us-east-2";
 });
-builder.Services.AddSingleton<IMediaObjectStore, S3MediaObjectStore>();
+builder.Services.AddSingleton<S3MediaObjectStore>();
+builder.Services.AddSingleton<IMediaObjectStore>(services => services.GetRequiredService<S3MediaObjectStore>());
+builder.Services.AddSingleton<IMediaImageSource>(services => services.GetRequiredService<S3MediaObjectStore>());
 builder.Services.AddSingleton<IMediaRepository, MongoMediaRepository>();
-builder.Services.AddSingleton<IImageModerator, UnconfiguredImageModerator>();
+builder.Services.Configure<ContentSafetyOptions>(options =>
+{
+    options.Endpoint = builder.Configuration["CONTENT_SAFETY_ENDPOINT"];
+    options.SubscriptionKey = builder.Configuration["CONTENT_SAFETY_KEY"];
+    if (int.TryParse(builder.Configuration["CONTENT_SAFETY_MAX_HATE_SEVERITY"], out var hate))
+        options.MaxHateSeverity = hate;
+    if (int.TryParse(builder.Configuration["CONTENT_SAFETY_MAX_SELF_HARM_SEVERITY"], out var selfHarm))
+        options.MaxSelfHarmSeverity = selfHarm;
+    if (int.TryParse(builder.Configuration["CONTENT_SAFETY_MAX_SEXUAL_SEVERITY"], out var sexual))
+        options.MaxSexualSeverity = sexual;
+    if (int.TryParse(builder.Configuration["CONTENT_SAFETY_MAX_VIOLENCE_SEVERITY"], out var violence))
+        options.MaxViolenceSeverity = violence;
+});
+builder.Services.AddHttpClient<IContentSafetyAnalyzer, AzureContentSafetyAnalyzer>()
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+    {
+        AllowAutoRedirect = false
+    });
+builder.Services.AddScoped<IImageModerator, ContentSafetyImageModerator>();
 builder.Services.AddScoped<MediaService>();
 builder.Services.AddScoped<IProductMediaAccess>(services => services.GetRequiredService<MediaService>());
 builder.Services.AddScoped<IValidator<PresignedUrlRequest>, PresignedUrlRequestValidator>();

@@ -8,7 +8,7 @@ using UTTTGO.Api.Shared.Contracts;
 namespace UTTTGO.Api.Modules.Media.Infrastructure;
 
 // Credentials are resolved by the AWS SDK provider chain; never from request data.
-public sealed class S3MediaObjectStore(IOptions<S3Config> options) : IMediaObjectStore
+public sealed class S3MediaObjectStore(IOptions<S3Config> options) : IMediaObjectStore, IMediaImageSource
 {
     private S3Config Configuration => options.Value;
     private (AmazonS3Client Client, string Bucket) Open()
@@ -82,5 +82,32 @@ public sealed class S3MediaObjectStore(IOptions<S3Config> options) : IMediaObjec
         using (client)
             await client.DeleteObjectAsync(new DeleteObjectRequest { BucketName = bucket, Key = key },
                 cancellationToken);
+    }
+
+    public async Task<byte[]> ReadForModerationAsync(string objectKey, CancellationToken cancellationToken)
+    {
+        var (client, bucket) = Open();
+        using (client)
+        using (var response = await client.GetObjectAsync(new GetObjectRequest
+        {
+            BucketName = bucket,
+            Key = objectKey
+        }, cancellationToken))
+        {
+            if (response.ContentLength is <= 0 or > 5_242_880)
+                throw new InvalidOperationException("Invalid moderation image size.");
+            await using var result = new MemoryStream();
+            var buffer = new byte[81920];
+            int length;
+            while ((length = await response.ResponseStream.ReadAsync(buffer, cancellationToken)) > 0)
+            {
+                if (result.Length + length > 5_242_880)
+                    throw new InvalidOperationException("Invalid moderation image size.");
+                await result.WriteAsync(buffer.AsMemory(0, length), cancellationToken);
+            }
+            if (result.Length != response.ContentLength)
+                throw new InvalidOperationException("Incomplete moderation image.");
+            return result.ToArray();
+        }
     }
 }

@@ -68,6 +68,21 @@ public sealed class MediaServiceTests
         (await service.IsApprovedForOwnerAsync(Id, Owner, default)).Should().BeFalse();
     }
 
+    [Fact]
+    public async Task PendingModerationRemainsVisibleUntilTheProviderReturns()
+    {
+        var repo = new Repository { Value = Asset() };
+        var moderator = new DelayedModerator();
+        var service = new MediaService(repo, new ObjectStore { Head = (10, "image/jpeg") }, moderator);
+        var confirmation = service.ConfirmAsync(Id, Owner, default);
+        await moderator.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        (await service.ReadOwnedAsync(Id, Owner, default))!.Status.Should()
+            .Be(MediaStatus.PendingModeration);
+        confirmation.IsCompleted.Should().BeFalse();
+        moderator.Complete(false);
+        (await confirmation)!.Status.Should().Be(MediaStatus.Rejected);
+    }
+
     private static MediaRecord Asset() =>
         new(Id, Owner, "staging/owner/" + Id, "image/jpeg", 10,
             MediaStatus.PendingUpload, DateTime.UtcNow);
@@ -121,5 +136,17 @@ public sealed class MediaServiceTests
             Calls++;
             return Task.FromResult(Safe);
         }
+    }
+
+    private sealed class DelayedModerator : IImageModerator
+    {
+        public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource<bool> result = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public Task<bool> IsSafeAsync(string key, CancellationToken ct)
+        {
+            Started.SetResult();
+            return result.Task;
+        }
+        public void Complete(bool safe) => result.SetResult(safe);
     }
 }

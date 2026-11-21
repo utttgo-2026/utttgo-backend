@@ -11,6 +11,7 @@ using DotNet.Testcontainers.Containers;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using UTTTGO.Api.Modules.Media.Application;
@@ -26,6 +27,7 @@ public sealed class MediaCatalogJourneyTests : IAsyncLifetime
     private IContainer localstack = null!;
     private AmazonS3Client s3 = null!;
     private EndToEndHost host = null!;
+    private readonly LocalAnalyzer analyzer = new();
 
     public async Task InitializeAsync()
     {
@@ -44,10 +46,21 @@ public sealed class MediaCatalogJourneyTests : IAsyncLifetime
         host = await EndToEndHost.StartWithCatalogSeedAsync(services =>
         {
             services.RemoveAll<IMediaObjectStore>();
-            services.RemoveAll<IImageModerator>();
-            services.AddSingleton<IMediaObjectStore>(new LocalS3Store(s3));
-            // Approval is controlled only by this test; application default remains fail-closed.
-            services.AddSingleton<IImageModerator>(new LocalModerator());
+            services.RemoveAll<IMediaImageSource>();
+            services.RemoveAll<IContentSafetyAnalyzer>();
+            services.RemoveAll<IOptions<ContentSafetyOptions>>();
+            var localStore = new LocalS3Store(s3);
+            services.AddSingleton<IMediaObjectStore>(localStore);
+            services.AddSingleton<IMediaImageSource>(localStore);
+            services.AddSingleton<IContentSafetyAnalyzer>(analyzer);
+            // Deliberate test-only policy; no values are configured as production defaults.
+            services.AddSingleton<IOptions<ContentSafetyOptions>>(Options.Create(new ContentSafetyOptions
+            {
+                MaxHateSeverity = 0,
+                MaxSelfHarmSeverity = 0,
+                MaxSexualSeverity = 0,
+                MaxViolenceSeverity = 0
+            }));
         });
     }
 
@@ -94,6 +107,7 @@ public sealed class MediaCatalogJourneyTests : IAsyncLifetime
 
         var firstId = await UploadAndApprove(client, "one.jpg");
         var secondId = await UploadAndApprove(client, "two.jpg");
+        await CheckRejectedUploadsAndUnapprovedRead(client, categoryId!);
         using var withImage = await client.PostAsJsonAsync("/api/v1/products",
             new
             {
@@ -135,6 +149,11 @@ public sealed class MediaCatalogJourneyTests : IAsyncLifetime
         using var json = JsonDocument.Parse(await intent.Content.ReadAsStringAsync());
         var id = json.RootElement.GetProperty("mediaAssetId").GetString()!;
         var upload = json.RootElement.GetProperty("uploadUrl").GetString()!;
+        var expires = json.RootElement.GetProperty("expiresAt").GetDateTime();
+        expires.Should().BeAfter(DateTime.UtcNow);
+        expires.Should().BeOnOrBefore(DateTime.UtcNow.AddMinutes(5));
+        var parameters = System.Web.HttpUtility.ParseQueryString(new Uri(upload).Query);
+        int.Parse(parameters["X-Amz-Expires"]!).Should().BeLessThanOrEqualTo(300);
         json.RootElement.GetProperty("headers").GetProperty("Content-Type").GetString().Should().Be(ImageType);
         using var body = new ByteArrayContent(Encoding.ASCII.GetBytes("0123456789"));
         body.Headers.ContentType = new MediaTypeHeaderValue(ImageType);
@@ -147,6 +166,46 @@ public sealed class MediaCatalogJourneyTests : IAsyncLifetime
         using var repeat = await client.PostAsJsonAsync($"/api/v1/media/{id}/complete", new { });
         (await repeat.Content.ReadAsStringAsync()).Should().Contain(MediaStatus.Approved);
         return id;
+    }
+
+    private async Task CheckRejectedUploadsAndUnapprovedRead(HttpClient client, string categoryId)
+    {
+        using var invalid = await client.PostAsJsonAsync("/api/v1/media/upload-url",
+            new { fileName = "invalid.jpg", mimeType = "image/jpeg", size = 5_242_881 });
+        invalid.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        using var wrongMime = await client.PostAsJsonAsync("/api/v1/media/upload-url",
+            new { fileName = "invalid.png", mimeType = "image/jpeg", size = 10 });
+        wrongMime.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+
+        using var intent = await client.PostAsJsonAsync("/api/v1/media/upload-url",
+            new { fileName = "pending.jpg", mimeType = ImageType, size = 10 });
+        intent.StatusCode.Should().Be(HttpStatusCode.Created);
+        using var json = JsonDocument.Parse(await intent.Content.ReadAsStringAsync());
+        var id = json.RootElement.GetProperty("mediaAssetId").GetString()!;
+        var upload = json.RootElement.GetProperty("uploadUrl").GetString()!;
+
+        using var before = await client.GetAsync($"/api/v1/media/{id}");
+        using var beforeJson = JsonDocument.Parse(await before.Content.ReadAsStringAsync());
+        beforeJson.RootElement.GetProperty("imageUrl").ValueKind.Should().Be(JsonValueKind.Null);
+        using var premature = await client.PostAsJsonAsync("/api/v1/products",
+            new { name = "Pendiente", description = "No publicar", categoryId, price = 10m, stock = 1, mediaAssetId = id });
+        premature.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+
+        using var body = new ByteArrayContent(Encoding.ASCII.GetBytes("short"));
+        body.Headers.ContentType = new MediaTypeHeaderValue(ImageType);
+        using var put = await new HttpClient().PutAsync(upload, body);
+        put.StatusCode.Should().Be(HttpStatusCode.OK);
+        var asset = await host.Database.GetCollection<BsonDocument>("mediaAssets")
+            .Find(Builders<BsonDocument>.Filter.Eq("_id", ObjectId.Parse(id))).FirstAsync();
+        var head = await s3.GetObjectMetadataAsync(Bucket, asset["objectKey"].AsString);
+        head.ContentLength.Should().Be(5);
+        using var mismatch = await client.PostAsJsonAsync("/api/v1/media/confirm",
+            new { mediaAssetId = id });
+        mismatch.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        using var after = await client.GetAsync($"/api/v1/media/{id}");
+        using var afterJson = JsonDocument.Parse(await after.Content.ReadAsStringAsync());
+        afterJson.RootElement.GetProperty("status").GetString().Should().Be(MediaStatus.PendingUpload);
+        afterJson.RootElement.GetProperty("imageUrl").ValueKind.Should().Be(JsonValueKind.Null);
     }
 
     private static async Task PatchImage(HttpClient client, string id, string json, string? expected)
@@ -165,18 +224,32 @@ public sealed class MediaCatalogJourneyTests : IAsyncLifetime
     {
         var url = product.GetProperty("imageUrl").GetString();
         url.Should().Contain("X-Amz-Signature").And.Contain(Bucket);
-        product.GetProperty("imageUrlExpiresAt").GetDateTime().Should().BeAfter(DateTime.UtcNow);
+        var expires = product.GetProperty("imageUrlExpiresAt").GetDateTime();
+        expires.Should().BeAfter(DateTime.UtcNow);
+        expires.Should().BeOnOrBefore(DateTime.UtcNow.AddMinutes(5));
+        int.Parse(System.Web.HttpUtility.ParseQueryString(new Uri(url!).Query)["X-Amz-Expires"]!)
+            .Should().BeLessThanOrEqualTo(300);
         using var response = await new HttpClient().GetAsync(url);
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         (await response.Content.ReadAsByteArrayAsync()).Should().HaveCount(10);
     }
 
-    private sealed class LocalModerator : IImageModerator
+    private sealed class LocalAnalyzer : IContentSafetyAnalyzer
     {
-        public Task<bool> IsSafeAsync(string objectKey, CancellationToken ct) => Task.FromResult(true);
+        public Task<IReadOnlyDictionary<string, int>> AnalyzeAsync(byte[] image, CancellationToken ct)
+        {
+            Encoding.ASCII.GetString(image).Should().Be("0123456789");
+            return Task.FromResult<IReadOnlyDictionary<string, int>>(new Dictionary<string, int>
+            {
+                ["Hate"] = 0,
+                ["SelfHarm"] = 0,
+                ["Sexual"] = 0,
+                ["Violence"] = 0
+            });
+        }
     }
 
-    private sealed class LocalS3Store(AmazonS3Client client) : IMediaObjectStore
+    private sealed class LocalS3Store(AmazonS3Client client) : IMediaObjectStore, IMediaImageSource
     {
         public Task<(string Url, DateTime ExpiresAt, IReadOnlyDictionary<string, string> Headers)>
             SignPutAsync(string key, string mime, CancellationToken ct)
@@ -213,5 +286,13 @@ public sealed class MediaCatalogJourneyTests : IAsyncLifetime
         }
         public Task DeleteAsync(string key, CancellationToken ct) =>
             client.DeleteObjectAsync(Bucket, key, ct);
+
+        public async Task<byte[]> ReadForModerationAsync(string key, CancellationToken ct)
+        {
+            using var response = await client.GetObjectAsync(Bucket, key, ct);
+            await using var buffer = new MemoryStream();
+            await response.ResponseStream.CopyToAsync(buffer, ct);
+            return buffer.ToArray();
+        }
     }
 }

@@ -5,6 +5,7 @@ using FluentAssertions;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 using MongoDB.Bson;
 using StackExchange.Redis;
 using Testcontainers.Redis;
@@ -104,6 +105,24 @@ public sealed class MediaSecurityTests : IAsyncLifetime
         store.SignGetCalls.Should().Be(0);
     }
 
+    [Fact]
+    public async Task ProviderFailureWithExplicitTestPolicyCannotApproveOrSignReadUrl()
+    {
+        var repo = new Repository { Value = Asset() };
+        var store = new Store { Head = (10, "image/jpeg") };
+        var analyzer = new FailingAnalyzer();
+        using var factory = Factory(repo, store, Profile(), analyzer);
+        using var client = Client(factory);
+        using var confirm = await client.PostAsJsonAsync("/api/v1/media/confirm",
+            new { mediaAssetId = Id });
+        confirm.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await confirm.Content.ReadAsStringAsync()).Should().Contain(MediaStatus.ProcessingFailed);
+        analyzer.Calls.Should().Be(1);
+        using var read = await client.GetAsync($"/api/v1/media/{Id}");
+        (await read.Content.ReadAsStringAsync()).Should().Contain("\"imageUrl\":null");
+        store.SignGetCalls.Should().Be(0);
+    }
+
     private static AuthenticatedProfileDouble Profile(string? owner = null) =>
         new()
         {
@@ -113,7 +132,7 @@ public sealed class MediaSecurityTests : IAsyncLifetime
         };
 
     private WebApplicationFactory<Program> Factory(Repository repository, Store store,
-        AuthenticatedProfileDouble profile) =>
+        AuthenticatedProfileDouble profile, IContentSafetyAnalyzer? analyzer = null) =>
         new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
             builder.ConfigureTestServices(services =>
             {
@@ -125,6 +144,21 @@ public sealed class MediaSecurityTests : IAsyncLifetime
                 services.AddSingleton<IMediaObjectStore>(store);
                 services.AddSingleton<IAuthenticatedLocalProfileReader>(profile);
                 services.AddSingleton(connection);
+                if (analyzer is not null)
+                {
+                    services.RemoveAll<IMediaImageSource>();
+                    services.RemoveAll<IContentSafetyAnalyzer>();
+                    services.RemoveAll<IOptions<ContentSafetyOptions>>();
+                    services.AddSingleton<IMediaImageSource>(new ImageSource());
+                    services.AddSingleton(analyzer);
+                    services.AddSingleton<IOptions<ContentSafetyOptions>>(Options.Create(new ContentSafetyOptions
+                    {
+                        MaxHateSeverity = 0,
+                        MaxSelfHarmSeverity = 0,
+                        MaxSexualSeverity = 0,
+                        MaxViolenceSeverity = 0
+                    }));
+                }
             }));
 
     private static HttpClient Client(WebApplicationFactory<Program> factory)
@@ -179,5 +213,21 @@ public sealed class MediaSecurityTests : IAsyncLifetime
             return Task.FromResult(new MediaReadUrl("https://local.invalid/get", DateTime.UtcNow.AddMinutes(4)));
         }
         public Task DeleteAsync(string key, CancellationToken ct) => Task.CompletedTask;
+    }
+
+    private sealed class ImageSource : IMediaImageSource
+    {
+        public Task<byte[]> ReadForModerationAsync(string key, CancellationToken ct) =>
+            Task.FromResult(new byte[10]);
+    }
+
+    private sealed class FailingAnalyzer : IContentSafetyAnalyzer
+    {
+        public int Calls;
+        public Task<IReadOnlyDictionary<string, int>> AnalyzeAsync(byte[] image, CancellationToken ct)
+        {
+            Calls++;
+            throw new InvalidOperationException("test-only provider failure");
+        }
     }
 }

@@ -39,6 +39,17 @@ public interface IMediaObjectStore
     Task DeleteAsync(string key, CancellationToken cancellationToken);
 }
 
+// Moderation reads the staging object server-side; the client never supplies bytes or a URL.
+public interface IMediaImageSource
+{
+    Task<byte[]> ReadForModerationAsync(string objectKey, CancellationToken cancellationToken);
+}
+
+public interface IContentSafetyAnalyzer
+{
+    Task<IReadOnlyDictionary<string, int>> AnalyzeAsync(byte[] image, CancellationToken cancellationToken);
+}
+
 public interface IImageModerator
 {
     // No configured provider or provider error must never yield true.
