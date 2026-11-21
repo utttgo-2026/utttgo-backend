@@ -17,7 +17,7 @@ public enum CreateProductOutcome
     AccountNotActive,
     NotSeller,
     CategoryNotFound,
-    ImageNotAvailable,
+    InvalidImage,
     RateLimited,
     Unavailable
 }
@@ -26,7 +26,7 @@ public sealed record CreateProductResult(CreateProductOutcome Outcome, ProductRe
 
 public sealed class CreateProductService(IAuthenticatedLocalProfileReader profiles,
     ICatalogRateLimitGate rateLimit, ICategoryRepository categories, IProductRepository products,
-    ISellerDisplayNames sellers) : ICreateProductService
+    ISellerDisplayNames sellers, IProductImageGuard images) : ICreateProductService
 {
     public async Task<CreateProductResult> CreateAsync(string token, CreateProductRequest request,
         CancellationToken cancellationToken)
@@ -50,10 +50,12 @@ public sealed class CreateProductService(IAuthenticatedLocalProfileReader profil
             if (!await rateLimit.IsAllowedForWriteAsync(profile.SellerId, cancellationToken))
                 return new(CreateProductOutcome.RateLimited);
 
-            // Fail-closed on images: Media does not exist yet, so no URL can be presigned by the
-            // backend nor moderated by Azure AI Content Safety (BR-007, DEC-019.f, RF-V11).
-            if (!string.IsNullOrWhiteSpace(request.ImageUrl))
-                return new(CreateProductOutcome.ImageNotAvailable);
+            // A photo is accepted only when Media proves the asset exists, is Ready and belongs
+            // to this seller, and the URL is served from the configured S3 host
+            // (BR-007, DEC-019.f, RF-V11). Everything else fails closed.
+            var imageUrl = string.IsNullOrWhiteSpace(request.ImageUrl) ? null : request.ImageUrl.Trim();
+            if (imageUrl is not null && !await images.IsAttachableAsync(imageUrl, profile.Id, cancellationToken))
+                return new(CreateProductOutcome.InvalidImage);
 
             var category = await categories.FindByIdAsync(request.CategoryId!, cancellationToken);
             if (category is null || !category.IsActive)
@@ -65,7 +67,7 @@ public sealed class CreateProductService(IAuthenticatedLocalProfileReader profil
                 .ToList();
             var product = await products.CreateAsync(new NewProduct(profile.SellerId,
                 request.Name!.Trim(), request.Description!.Trim(), ingredients, category.CategoryId,
-                request.Price!.Value, request.Stock!.Value), cancellationToken);
+                request.Price!.Value, request.Stock!.Value, imageUrl), cancellationToken);
 
             // Never trust a repository response that changed ownership or privileged fields.
             if (product.SellerId != profile.SellerId || product.Status != ProductAvailability.Active ||

@@ -37,6 +37,7 @@ public sealed class OpenApiContractTests
         ResponseSchema(document, "/api/v1/products/{productId}", "get", 404, "ApiError");
 
         ResponseSchema(document, "/api/v1/products", "post", 201, "ProductResponse");
+        ResponseSchema(document, "/api/v1/products", "post", 400, "ApiError");
         ResponseSchema(document, "/api/v1/products", "post", 401, "ApiError");
         ResponseSchema(document, "/api/v1/products", "post", 403, "ApiError");
         ResponseSchema(document, "/api/v1/products", "post", 404, "ApiError");
@@ -82,7 +83,10 @@ public sealed class OpenApiContractTests
         availability.Should().NotContain("availability");
 
         RequestSchemaProperties(document, "/api/v1/products", "post").Should().Contain("imageUrl");
+        // The PATCH body is a strict whitelist parsed from a raw JsonElement, so OpenAPI exposes
+        // it as an untyped schema; the typed side of the contract is ProductResponse.
         RequestSchemaProperties(document, "/api/v1/orders", "post").Should().Contain("notes");
+        ComponentProperties(document, "ProductResponse").Should().Contain("imageUrl");
         ComponentProperties(document, "OrderResponse").Should().Contain("notes");
     }
 

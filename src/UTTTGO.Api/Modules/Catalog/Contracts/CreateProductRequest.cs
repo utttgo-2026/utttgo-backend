@@ -3,12 +3,12 @@ using System.Text.Json.Serialization;
 
 namespace UTTTGO.Api.Modules.Catalog.Contracts;
 
-// A seller publishes its own product. The client never sends sellerId, status, version,
-// timestamps or media references: the backend derives them from the authenticated session.
-// imageUrl is accepted as an optional reference so the mobile contract stays stable, but it is
-// never stored: while Media (S3 presigned + Azure AI Content Safety, phase 05) does not exist,
-// an image can neither be uploaded nor moderated, so the backend answers 422 IMAGE_NOT_AVAILABLE
-// and the product is published without a photo (BR-007, DEC-019.f, RF-V11).
+// A seller publishes its own product. The client never sends sellerId, status, version or
+// timestamps: the backend derives them from the authenticated session.
+// imageUrl is an optional reference to a Media asset that this seller already confirmed. The
+// backend resolves it through the Media read contract and rejects it with 400 VALIDATION_ERROR
+// unless the asset exists, is Ready, belongs to the caller and is served from the configured
+// S3 host (BR-007, DEC-019.f, RF-V11).
 public sealed class CreateProductRequest
 {
     public string? Name { get; init; }

@@ -119,7 +119,7 @@ public sealed class CatalogEndpointTests
     }
 
     [Fact]
-    public async Task PublishingWithAnImageUrlIsRejectedBecauseMediaDoesNotExistYet()
+    public async Task PublishingWithAnImageUrlThatMediaDoesNotConfirmIsRejected()
     {
         var products = new CatalogProductRepository();
         using var factory = Factory(products: products);
@@ -129,15 +129,16 @@ public sealed class CatalogEndpointTests
             Content = JsonContent("""
                 {"name":"Tacos de pastor","description":"Tacos con piña","ingredients":["Piña"],
                  "categoryId":"507f1f77bcf86cd799439031","price":55.50,"stock":10,
-                 "imageUrl":"https://example.test/photo.jpg"}
+                 "imageUrl":"https://utttgo-images-2427dbc8.s3.amazonaws.com/media-assets/photo.jpg"}
                 """)
         };
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", Token);
 
         using var response = await client.SendAsync(request);
 
-        response.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
-        (await response.Content.ReadAsStringAsync()).Should().Contain("IMAGE_NOT_AVAILABLE");
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await response.Content.ReadAsStringAsync()).Should().Contain("VALIDATION_ERROR")
+            .And.NotContain("IMAGE_NOT_AVAILABLE");
         products.CreateCalls.Should().Be(0);
     }
 

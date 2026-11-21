@@ -35,7 +35,7 @@ public sealed class CatalogWriteServiceTests
     }
 
     [Fact]
-    public async Task AProductWithAnImageUrlIsRejectedBecauseMediaDoesNotExistYet()
+    public async Task AnImageUrlThatMediaDoesNotConfirmIsRejected()
     {
         var products = new CatalogProductRepository();
         var request = new CreateProductRequest
@@ -46,14 +46,58 @@ public sealed class CatalogWriteServiceTests
             CategoryId = ValidRequest.CategoryId,
             Price = ValidRequest.Price,
             Stock = ValidRequest.Stock,
-            ImageUrl = "https://example.test/photo.jpg"
+            ImageUrl = "https://utttgo-images-2427dbc8.s3.amazonaws.com/media-assets/photo.jpg"
         };
 
-        var result = await CreateService(SellerProfile(), products, ActiveCategories())
+        var result = await CreateService(SellerProfile(), products, ActiveCategories(),
+            images: new CatalogImageGuard { Attachable = false })
             .CreateAsync("token", request, default);
 
-        result.Outcome.Should().Be(CreateProductOutcome.ImageNotAvailable);
+        result.Outcome.Should().Be(CreateProductOutcome.InvalidImage);
         products.CreateCalls.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task AnImageUrlConfirmedByMediaIsStoredOnTheProduct()
+    {
+        var products = new CatalogProductRepository();
+        const string imageUrl = "https://utttgo-images-2427dbc8.s3.amazonaws.com/media-assets/photo.jpg";
+        var request = new CreateProductRequest
+        {
+            Name = ValidRequest.Name,
+            Description = ValidRequest.Description,
+            Ingredients = ValidRequest.Ingredients,
+            CategoryId = ValidRequest.CategoryId,
+            Price = ValidRequest.Price,
+            Stock = ValidRequest.Stock,
+            ImageUrl = imageUrl
+        };
+        var images = new CatalogImageGuard { Attachable = true };
+
+        var result = await CreateService(SellerProfile(), products, ActiveCategories(), images: images)
+            .CreateAsync("token", request, default);
+
+        result.Outcome.Should().Be(CreateProductOutcome.Created);
+        result.Response!.ImageUrl.Should().Be(imageUrl);
+        images.LastImageUrl.Should().Be(imageUrl);
+        images.LastOwnerUserId.Should().NotBeNullOrWhiteSpace();
+        products.Products[CatalogFixtures.ProductId].ImageUrl.Should().Be(imageUrl);
+    }
+
+    [Fact]
+    public async Task AnImageUrlThatMediaRejectsIsNotAppliedByUpdate()
+    {
+        var products = new CatalogProductRepository();
+        products.Products[CatalogFixtures.ProductId] = CatalogFixtures.Product();
+        var request = new UpdateProductRequest(false, null, false, null, false, null, false, null,
+            false, null, true, "https://utttgo-images-2427dbc8.s3.amazonaws.com/media-assets/photo.jpg");
+
+        var result = await UpdateService(SellerProfile(), products, ActiveCategories(),
+            images: new CatalogImageGuard { Attachable = false })
+            .UpdateAsync("token", CatalogFixtures.ProductId, request, default);
+
+        result.Outcome.Should().Be(UpdateProductOutcome.InvalidImage);
+        products.UpdateCalls.Should().Be(0);
     }
 
     [Fact]
@@ -229,13 +273,15 @@ public sealed class CatalogWriteServiceTests
 
     private static CreateProductService CreateService(AuthenticatedProfileDouble profiles,
         CatalogProductRepository products, CatalogCategoryRepository categories,
-        CatalogRateLimitGate? rateLimit = null) =>
-        new(profiles, rateLimit ?? new CatalogRateLimitGate(), categories, products, new CatalogSellerNames());
+        CatalogRateLimitGate? rateLimit = null, CatalogImageGuard? images = null) =>
+        new(profiles, rateLimit ?? new CatalogRateLimitGate(), categories, products,
+            new CatalogSellerNames(), images ?? new CatalogImageGuard());
 
     private static UpdateProductService UpdateService(AuthenticatedProfileDouble profiles,
         CatalogProductRepository products, CatalogCategoryRepository categories,
-        CatalogRateLimitGate? rateLimit = null) =>
-        new(profiles, rateLimit ?? new CatalogRateLimitGate(), products, categories);
+        CatalogRateLimitGate? rateLimit = null, CatalogImageGuard? images = null) =>
+        new(profiles, rateLimit ?? new CatalogRateLimitGate(), products, categories,
+            images ?? new CatalogImageGuard());
 
     private static UpdateProductAvailabilityService AvailabilityService(AuthenticatedProfileDouble profiles,
         CatalogProductRepository products, CatalogCategoryRepository categories,

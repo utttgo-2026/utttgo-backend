@@ -46,7 +46,7 @@ internal sealed class CatalogProductRepository : IProductRepository
         LastSellerId = product.SellerId;
         var record = new ProductRecord(CatalogFixtures.ProductId, product.SellerId, product.Name,
             product.Description, product.Ingredients, product.CategoryId, product.Price, product.Stock,
-            ProductAvailability.Active, 0, DateTime.UtcNow, DateTime.UtcNow);
+            ProductAvailability.Active, 0, DateTime.UtcNow, DateTime.UtcNow, product.ImageUrl);
         if (ForceTampered) record = record with { SellerId = "other-seller" };
         Products[record.ProductId] = record;
         return Task.FromResult(record);
@@ -152,6 +152,23 @@ internal sealed class CatalogRateLimitGate : ICatalogRateLimitGate
         Calls++;
         if (Fail) throw new InvalidOperationException("internal-secret");
         return Task.FromResult(Allowed);
+    }
+}
+
+internal sealed class CatalogImageGuard : IProductImageGuard
+{
+    public bool Attachable { get; set; }
+    public int Calls { get; private set; }
+    public string? LastImageUrl { get; private set; }
+    public string? LastOwnerUserId { get; private set; }
+
+    public Task<bool> IsAttachableAsync(string imageUrl, string ownerUserId,
+        CancellationToken cancellationToken)
+    {
+        Calls++;
+        LastImageUrl = imageUrl;
+        LastOwnerUserId = ownerUserId;
+        return Task.FromResult(Attachable);
     }
 }
 

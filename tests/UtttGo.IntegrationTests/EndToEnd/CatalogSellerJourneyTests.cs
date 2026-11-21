@@ -124,7 +124,7 @@ public sealed class CatalogSellerJourneyTests : IAsyncLifetime
         createdDocument.RootElement.EnumerateObject().Select(property => property.Name).Should()
             .BeEquivalentTo(["id", "sellerId", "sellerDisplayName", "name", "description", "ingredients",
                 "categoryId", "categoryName", "price", "stock", "status", "isAvailable", "ratingAverage",
-                "ratingCount", "createdAt", "updatedAt"]);
+                "ratingCount", "createdAt", "updatedAt", "imageUrl"]);
         var productId = createdDocument.RootElement.GetProperty("id").GetString()!;
         productId.Should().MatchRegex("^[0-9a-fA-F]{24}$");
         createdDocument.RootElement.GetProperty("sellerId").GetString().Should().Be(sellerId);

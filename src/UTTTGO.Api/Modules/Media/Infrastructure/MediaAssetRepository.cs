@@ -20,6 +20,9 @@ public interface IMediaAssetRepository
     Task<MediaAssetRecord> UpdateAsync(MediaAssetRecord record, CancellationToken cancellationToken = default);
 }
 
+// Registered as a singleton: the presigned intent and the confirmation arrive in different
+// requests, so the store must survive the request scope. Access is serialized because the
+// shared dictionary is not thread safe.
 public class InMemoryMediaAssetRepository : IMediaAssetRepository
 {
     private readonly Dictionary<string, MediaAssetRecord> _store = new();
@@ -28,28 +31,40 @@ public class InMemoryMediaAssetRepository : IMediaAssetRepository
     public async Task<MediaAssetRecord?> GetByIdAsync(string assetId, CancellationToken cancellationToken = default)
     {
         await Task.Yield();
-        return _store.TryGetValue(assetId, out var record) ? record : null;
+        lock (_lock)
+        {
+            return _store.TryGetValue(assetId, out var record) ? record : null;
+        }
     }
 
     public async Task<MediaAssetRecord?> GetByObjectKeyAsync(string objectKey, CancellationToken cancellationToken = default)
     {
         await Task.Yield();
-        return _store.Values.FirstOrDefault(r => r.ObjectKey == objectKey);
+        lock (_lock)
+        {
+            return _store.Values.FirstOrDefault(r => r.ObjectKey == objectKey);
+        }
     }
 
     public async Task<MediaAssetRecord> AddAsync(MediaAssetRecord record, CancellationToken cancellationToken = default)
     {
         await Task.Yield();
-        _store[record.AssetId] = record;
+        lock (_lock)
+        {
+            _store[record.AssetId] = record;
+        }
         return record;
     }
 
     public async Task<MediaAssetRecord> UpdateAsync(MediaAssetRecord record, CancellationToken cancellationToken = default)
     {
         await Task.Yield();
-        if (_store.TryGetValue(record.AssetId, out var existing))
+        lock (_lock)
         {
-            _store[record.AssetId] = record;
+            if (_store.TryGetValue(record.AssetId, out _))
+            {
+                _store[record.AssetId] = record;
+            }
         }
         return record;
     }

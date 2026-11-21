@@ -21,9 +21,14 @@ public class MediaController : ControllerBase
     [HttpPost("presigned-url")]
     [ProducesResponseType(typeof(PresignedUrlResponse), 201)]
     [ProducesResponseType(typeof(ApiError), 400)]
+    [ProducesResponseType(typeof(ApiError), 401)]
     [ProducesResponseType(typeof(ApiError), 429)]
     public async Task<IActionResult> GetPresignedUrl([FromBody] PresignedUrlRequest request, CancellationToken cancellationToken = default)
     {
+        var token = BearerTokenReader.Read(Request);
+        if (token is null)
+            return Unauthorized(ApiError.Create(HttpContext, 401, "UNAUTHORIZED", "Sesión no autorizada."));
+
         if (!ModelState.IsValid)
         {
             return BadRequest(ApiError.Create(HttpContext, 400, "VALIDATION_ERROR", "Datos de solicitud inválidos"));
@@ -31,8 +36,12 @@ public class MediaController : ControllerBase
 
         try
         {
-            var response = await _signedUrlService.GeneratePresignedUrlAsync(request, cancellationToken);
+            var response = await _signedUrlService.GeneratePresignedUrlAsync(token, request, cancellationToken);
             return Created("", response);
+        }
+        catch (MediaUnauthorizedException)
+        {
+            return Unauthorized(ApiError.Create(HttpContext, 401, "UNAUTHORIZED", "Sesión no autorizada."));
         }
         catch (FluentValidation.ValidationException ex)
         {
@@ -47,10 +56,15 @@ public class MediaController : ControllerBase
     [HttpPost("confirm")]
     [ProducesResponseType(typeof(ConfirmResponse), 200)]
     [ProducesResponseType(typeof(ApiError), 400)]
+    [ProducesResponseType(typeof(ApiError), 401)]
     [ProducesResponseType(typeof(ApiError), 404)]
     [ProducesResponseType(typeof(ApiError), 429)]
     public async Task<IActionResult> ConfirmAsset([FromBody] ConfirmRequest request, CancellationToken cancellationToken = default)
     {
+        var token = BearerTokenReader.Read(Request);
+        if (token is null)
+            return Unauthorized(ApiError.Create(HttpContext, 401, "UNAUTHORIZED", "Sesión no autorizada."));
+
         if (!ModelState.IsValid)
         {
             return BadRequest(ApiError.Create(HttpContext, 400, "VALIDATION_ERROR", "Datos de solicitud inválidos"));
@@ -58,8 +72,12 @@ public class MediaController : ControllerBase
 
         try
         {
-            var response = await _mediaAssetService.ConfirmAssetAsync(request, cancellationToken);
+            var response = await _mediaAssetService.ConfirmAssetAsync(token, request, cancellationToken);
             return Ok(response);
+        }
+        catch (MediaUnauthorizedException)
+        {
+            return Unauthorized(ApiError.Create(HttpContext, 401, "UNAUTHORIZED", "Sesión no autorizada."));
         }
         catch (FluentValidation.ValidationException ex)
         {

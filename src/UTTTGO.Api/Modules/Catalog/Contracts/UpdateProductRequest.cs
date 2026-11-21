@@ -3,10 +3,11 @@ using System.Text.Json;
 namespace UTTTGO.Api.Modules.Catalog.Contracts;
 
 // Explicit presence flags preserve PATCH omission; null is rejected until deletion rules are
-// approved. The whitelist never accepts sellerId, status, version, categoryId or media.
+// approved. The whitelist never accepts sellerId, status, version or categoryId. imageUrl is an
+// optional Media reference: a string replaces the photo, null clears it, an absent field keeps it.
 public sealed record UpdateProductRequest(bool HasName, string? Name, bool HasDescription,
     string? Description, bool HasIngredients, IReadOnlyList<string>? Ingredients, bool HasPrice,
-    decimal? Price, bool HasStock, int? Stock)
+    decimal? Price, bool HasStock, int? Stock, bool HasImageUrl = false, string? ImageUrl = null)
 {
     public static bool TryParse(JsonElement json, out UpdateProductRequest? request)
     {
@@ -18,11 +19,13 @@ public sealed record UpdateProductRequest(bool HasName, string? Name, bool HasDe
         IReadOnlyList<string>? ingredients = null;
         decimal? price = null;
         int? stock = null;
+        string? imageUrl = null;
         var hasName = false;
         var hasDescription = false;
         var hasIngredients = false;
         var hasPrice = false;
         var hasStock = false;
+        var hasImageUrl = false;
 
         foreach (var field in json.EnumerateObject())
         {
@@ -63,12 +66,20 @@ public sealed record UpdateProductRequest(bool HasName, string? Name, bool HasDe
                 hasStock = true;
                 stock = parsedStock;
             }
+            else if (field.Name.Equals("imageUrl", StringComparison.Ordinal))
+            {
+                if (hasImageUrl || field.Value.ValueKind is not (JsonValueKind.String or JsonValueKind.Null))
+                    return false;
+                hasImageUrl = true;
+                imageUrl = field.Value.ValueKind == JsonValueKind.String ? field.Value.GetString() : null;
+            }
             else return false; // Strict whitelist: ownership and privileged fields are never accepted.
         }
 
-        if (!hasName && !hasDescription && !hasIngredients && !hasPrice && !hasStock) return false;
+        if (!hasName && !hasDescription && !hasIngredients && !hasPrice && !hasStock && !hasImageUrl)
+            return false;
         request = new(hasName, name, hasDescription, description, hasIngredients, ingredients, hasPrice,
-            price, hasStock, stock);
+            price, hasStock, stock, hasImageUrl, imageUrl);
         return true;
     }
 }

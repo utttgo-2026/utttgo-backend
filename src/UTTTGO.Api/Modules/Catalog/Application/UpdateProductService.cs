@@ -17,6 +17,7 @@ public enum UpdateProductOutcome
     NotSeller,
     NotFound,
     Conflict,
+    InvalidImage,
     RateLimited,
     Unavailable
 }
@@ -24,7 +25,8 @@ public enum UpdateProductOutcome
 public sealed record UpdateProductResult(UpdateProductOutcome Outcome, ProductResponse? Response = null);
 
 public sealed class UpdateProductService(IAuthenticatedLocalProfileReader profiles,
-    ICatalogRateLimitGate rateLimit, IProductRepository products, ICategoryRepository categories)
+    ICatalogRateLimitGate rateLimit, IProductRepository products, ICategoryRepository categories,
+    IProductImageGuard images)
     : IUpdateProductService
 {
     public async Task<UpdateProductResult> UpdateAsync(string token, string productId,
@@ -55,13 +57,23 @@ public sealed class UpdateProductService(IAuthenticatedLocalProfileReader profil
                 current.Status == ProductAvailability.Deleted)
                 return new(UpdateProductOutcome.NotFound);
 
+            // Same rule as create: a new photo must be a Ready asset of this seller served from
+            // the configured S3 host. An explicit null clears the photo and needs no asset.
+            var imageUrl = request.HasImageUrl && !string.IsNullOrWhiteSpace(request.ImageUrl)
+                ? request.ImageUrl.Trim()
+                : null;
+            if (request.HasImageUrl && imageUrl is not null &&
+                !await images.IsAttachableAsync(imageUrl, profile.Id, cancellationToken))
+                return new(UpdateProductOutcome.InvalidImage);
+
             var changes = new ProductChanges(request.HasName, request.HasName ? request.Name!.Trim() : null,
                 request.HasDescription, request.HasDescription ? request.Description!.Trim() : null,
                 request.HasIngredients, request.HasIngredients
                     ? request.Ingredients!.Select(item => item.Trim()).Where(item => item.Length > 0).ToList()
                     : null,
                 request.HasPrice, request.HasPrice ? request.Price : null,
-                request.HasStock, request.HasStock ? request.Stock : null);
+                request.HasStock, request.HasStock ? request.Stock : null,
+                request.HasImageUrl, imageUrl);
 
             var result = await products.UpdateOwnAsync(profile.SellerId, productId, current.Version,
                 changes, cancellationToken);

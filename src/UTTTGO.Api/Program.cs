@@ -178,7 +178,11 @@ builder.Services.Configure<S3Config>(builder.Configuration.GetSection("S3"));
 builder.Services.AddSingleton<IS3MediaAssetService, S3MediaAssetService>();
 builder.Services.AddScoped<ISignedUrlService, SignedUrlService>();
 builder.Services.AddScoped<IMediaAssetService, MediaAssetService>();
-builder.Services.AddScoped<IMediaAssetRepository, InMemoryMediaAssetRepository>();
+// Singleton: the presigned intent and its confirmation arrive in different requests.
+builder.Services.AddSingleton<IMediaAssetRepository, InMemoryMediaAssetRepository>();
+builder.Services.AddScoped<IMediaAssetReader, MediaAssetReader>();
+// Catalog depends on the Media read contract, never on the Media collections.
+builder.Services.AddScoped<IProductImageGuard, ProductImageGuard>();
 builder.Services.AddScoped<IValidator<PresignedUrlRequest>, PresignedUrlRequestValidator>();
 builder.Services.AddScoped<IValidator<ConfirmRequest>, ConfirmRequestValidator>();
 builder.Services.AddScoped<IValidator<OrderListQuery>, OrderListQueryValidator>();

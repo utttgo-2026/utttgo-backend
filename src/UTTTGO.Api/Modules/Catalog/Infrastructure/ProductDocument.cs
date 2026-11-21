@@ -41,6 +41,10 @@ public sealed class ProductDocument
     [BsonElement("status")]
     public string Status { get; set; } = string.Empty;
 
+    // Public URL of the Moderated Media asset owned by this seller; null when there is no photo.
+    [BsonElement("imageUrl")]
+    public string? ImageUrl { get; set; }
+
     // Normalized name, description and ingredients joined, used by the bounded text search.
     [BsonElement("searchText")]
     public string SearchText { get; set; } = string.Empty;

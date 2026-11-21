@@ -74,7 +74,6 @@ public sealed class ProductsController(IListProductsService list, IGetProductSer
     [ProducesResponseType(typeof(ApiError), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ApiError), StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(ApiError), StatusCodes.Status404NotFound)]
-    [ProducesResponseType(typeof(ApiError), StatusCodes.Status422UnprocessableEntity)]
     [ProducesResponseType(typeof(ApiError), StatusCodes.Status429TooManyRequests)]
     [ProducesResponseType(typeof(ApiError), StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> Create([FromBody] CreateProductRequest request,
@@ -99,8 +98,9 @@ public sealed class ProductsController(IListProductsService list, IGetProductSer
                 "SELLER_ROLE_REQUIRED", "Se requiere rol de vendedor.")),
             CreateProductOutcome.CategoryNotFound => NotFound(ApiError.Create(HttpContext, 404,
                 "CATEGORY_NOT_FOUND", "Categoría no disponible.")),
-            CreateProductOutcome.ImageNotAvailable => StatusCode(422, ApiError.Create(HttpContext, 422,
-                "IMAGE_NOT_AVAILABLE", "Las imágenes aún no están disponibles; publica el producto sin foto.")),
+            CreateProductOutcome.InvalidImage => BadRequest(ApiError.Create(HttpContext, 400,
+                "VALIDATION_ERROR",
+                "imageUrl no referencia una imagen propia y lista en Media.")),
             CreateProductOutcome.RateLimited => StatusCode(429,
                 ApiError.Create(HttpContext, 429, "RATE_LIMITED", "Intenta de nuevo más tarde.")),
             _ => StatusCode(503,
@@ -145,6 +145,9 @@ public sealed class ProductsController(IListProductsService list, IGetProductSer
                 "PRODUCT_NOT_FOUND", "Producto no disponible.")),
             UpdateProductOutcome.Conflict => Conflict(ApiError.Create(HttpContext, 409,
                 "PRODUCT_CONFLICT", "El producto cambió; vuelve a intentarlo.")),
+            UpdateProductOutcome.InvalidImage => BadRequest(ApiError.Create(HttpContext, 400,
+                "VALIDATION_ERROR",
+                "imageUrl no referencia una imagen propia y lista en Media.")),
             UpdateProductOutcome.RateLimited => StatusCode(429,
                 ApiError.Create(HttpContext, 429, "RATE_LIMITED", "Intenta de nuevo más tarde.")),
             _ => StatusCode(503,
