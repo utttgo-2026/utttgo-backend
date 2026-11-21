@@ -135,6 +135,71 @@ jobs:
           echo "Instancia objetivo: $instance_id"
           echo "instance_id=$instance_id" >> "$GITHUB_OUTPUT"
 
+      - name: Resumen S3 de la EC2 (solo lectura)
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          INSTANCE_ID: ${{ steps.target.outputs.instance_id }}
+        run: |
+          set -euo pipefail
+
+          python3 - <<'PY' > /tmp/s3-config.json
+          import json
+
+          commands = [
+              "set -eu",
+              "container=$(docker ps --filter 'label=com.docker.compose.service=api' --format '{{.ID}}' | head -n 1 || true)",
+              "if [ -z \"$container\" ]; then echo 'S3__BucketName == utttgo-images-2427dbc8 -> NO'; echo 'Región us-east-2 -> NO'; echo 'S3__AccessKey -> AUSENTE'; echo 'S3__SecretKey -> AUSENTE'; echo 'S3__PublicBaseUrl -> AUSENTE'; echo 'Mock warnings -> UNAVAILABLE'; exit 0; fi",
+              "envs=$(docker inspect \"$container\" --format '{{range .Config.Env}}{{println .}}{{end}}')",
+              "value() { printf '%s\\n' \"$envs\" | awk -F= -v key=\"$1\" '$1 == key {sub(/^[^=]*=/,\"\"); print; exit}'; }",
+              "bucket=$(value S3__BucketName)",
+              "region=$(value S3__Region); [ -n \"$region\" ] || region=$(value AWS_REGION)",
+              "access_key=$(value S3__AccessKey)",
+              "secret_key=$(value S3__SecretKey)",
+              "public_base_url=$(value S3__PublicBaseUrl)",
+              "[ \"$bucket\" = 'utttgo-images-2427dbc8' ] && echo 'S3__BucketName == utttgo-images-2427dbc8 -> SI' || echo 'S3__BucketName == utttgo-images-2427dbc8 -> NO'",
+              "[ \"$region\" = 'us-east-2' ] && echo 'Región us-east-2 -> SI' || echo 'Región us-east-2 -> NO'",
+              "[ -n \"$access_key\" ] && echo 'S3__AccessKey -> PRESENTE' || echo 'S3__AccessKey -> AUSENTE'",
+              "[ -n \"$secret_key\" ] && echo 'S3__SecretKey -> PRESENTE' || echo 'S3__SecretKey -> AUSENTE'",
+              "[ -n \"$public_base_url\" ] && echo 'S3__PublicBaseUrl -> PRESENTE' || echo 'S3__PublicBaseUrl -> AUSENTE'",
+              "mock_count=$(docker logs --since 30m \"$container\" 2>&1 | grep -Eic 'mock|mock-s3-bucket' || true); echo \"Mock warnings (30m) -> $mock_count\"",
+          ]
+          print(json.dumps({"commands": commands}))
+          PY
+
+          command_id="$(aws ssm send-command \
+            --document-name AWS-RunShellScript \
+            --targets "Key=instanceids,Values=$INSTANCE_ID" \
+            --parameters file:///tmp/s3-config.json \
+            --timeout-seconds 120 \
+            --query 'Command.CommandId' \
+            --output text)"
+          rm -f /tmp/s3-config.json
+
+          status="Pending"
+          for _ in $(seq 1 12); do
+            status="$(aws ssm get-command-invocation \
+              --command-id "$command_id" \
+              --instance-id "$INSTANCE_ID" \
+              --query 'Status' \
+              --output text)"
+            case "$status" in
+              Success|Cancelled|Failed|TimedOut|AccessDenied|InvalidCommand) break ;;
+            esac
+            sleep 10
+          done
+
+          aws ssm get-command-invocation \
+            --command-id "$command_id" \
+            --instance-id "$INSTANCE_ID" \
+            --query 'StandardOutputContent' \
+            --output text
+
+          if [ "$status" != "Success" ]; then
+            echo "El diagnóstico S3 terminó con estado no exitoso: $status" >&2
+            exit 1
+          fi
+
       - name: Estado de la instancia por API (sin entrega SSM)
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
