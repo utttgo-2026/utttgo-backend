@@ -81,7 +81,8 @@ public sealed class CatalogWriteServiceTests
         result.Response!.ImageUrl.Should().Be(imageUrl);
         images.LastImageUrl.Should().Be(imageUrl);
         images.LastOwnerUserId.Should().NotBeNullOrWhiteSpace();
-        products.Products[CatalogFixtures.ProductId].ImageUrl.Should().Be(imageUrl);
+        products.Products[CatalogFixtures.ProductId].ImageAssetId.Should().Be("asset-test");
+        products.Products[CatalogFixtures.ProductId].ImageObjectKey.Should().Be("staging/local-id/asset-test");
     }
 
     [Fact]

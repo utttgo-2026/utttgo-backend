@@ -4,7 +4,8 @@ namespace UTTTGO.Api.Modules.Catalog.Contracts;
 
 // Explicit presence flags preserve PATCH omission; null is rejected until deletion rules are
 // approved. The whitelist never accepts sellerId, status, version or categoryId. imageUrl is an
-// optional Media reference: a string replaces the photo, null clears it, an absent field keeps it.
+// optional Media reference (assetId or confirmation publicUrl): a string replaces the photo,
+// null clears it, an absent field keeps it. The database stores no signed URL.
 public sealed record UpdateProductRequest(bool HasName, string? Name, bool HasDescription,
     string? Description, bool HasIngredients, IReadOnlyList<string>? Ingredients, bool HasPrice,
     decimal? Price, bool HasStock, int? Stock, bool HasImageUrl = false, string? ImageUrl = null)

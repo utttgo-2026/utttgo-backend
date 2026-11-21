@@ -1,4 +1,5 @@
 using UTTTGO.Api.Modules.Catalog.Contracts;
+using UTTTGO.Api.Modules.Media.Application;
 using UTTTGO.Api.Modules.Sellers.Application;
 
 namespace UTTTGO.Api.Modules.Catalog.Application;
@@ -13,7 +14,8 @@ public enum ProductListOutcome { Success, RateLimited, Unavailable }
 public sealed record ProductListResult(ProductListOutcome Outcome, ProductListResponse? Response = null);
 
 public sealed class ListProductsService(ICatalogRateLimitGate rateLimit, IProductRepository products,
-    ICategoryRepository categories, IProductRatingsReader ratings, ISellerDisplayNames sellers)
+    ICategoryRepository categories, IProductRatingsReader ratings, ISellerDisplayNames sellers,
+    IProductImageGuard images)
     : IListProductsService
 {
     public async Task<ProductListResult> ListAsync(ProductListQuery query,
@@ -34,6 +36,11 @@ public sealed class ListProductsService(ICatalogRateLimitGate rateLimit, IProduc
                 item => item.Name, StringComparer.Ordinal);
             var sellerIds = page.Items.Select(item => item.SellerId).Distinct(StringComparer.Ordinal).ToList();
             var sellerNames = await sellers.FindDisplayNamesAsync(sellerIds, cancellationToken);
+            var imageReferences = page.Items
+                .Where(item => item.ImageAssetId is not null && item.ImageObjectKey is not null)
+                .Select(item => new MediaAssetReference(item.ImageAssetId!, item.ImageObjectKey!))
+                .ToList();
+            var imageUrls = await images.GetReadUrlsAsync(imageReferences, cancellationToken);
 
             var items = new List<ProductResponse>(page.Items.Count);
             foreach (var product in page.Items)
@@ -42,7 +49,9 @@ public sealed class ListProductsService(ICatalogRateLimitGate rateLimit, IProduc
                 items.Add(ProductProjection.ToResponse(product,
                     sellerNames.TryGetValue(product.SellerId, out var displayName) ? displayName : null,
                     categoryNames.TryGetValue(product.CategoryId, out var categoryName) ? categoryName : null,
-                    rating));
+                    rating,
+                    product.ImageAssetId is not null && imageUrls.TryGetValue(product.ImageAssetId, out var imageUrl)
+                        ? imageUrl : null));
             }
 
             return new(ProductListOutcome.Success, ProductProjection.ToListResponse(items, query, page.Total));

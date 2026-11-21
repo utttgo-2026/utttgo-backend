@@ -1,4 +1,5 @@
 using UTTTGO.Api.Modules.Catalog.Contracts;
+using UTTTGO.Api.Modules.Media.Application;
 using UTTTGO.Api.Modules.Sellers.Application;
 
 namespace UTTTGO.Api.Modules.Catalog.Application;
@@ -13,7 +14,8 @@ public enum GetProductOutcome { Found, NotFound, RateLimited, Unavailable }
 public sealed record GetProductResult(GetProductOutcome Outcome, ProductResponse? Response = null);
 
 public sealed class GetProductService(ICatalogRateLimitGate rateLimit, IProductRepository products,
-    ICategoryRepository categories, IProductRatingsReader ratings, ISellerDisplayNames sellers)
+    ICategoryRepository categories, IProductRatingsReader ratings, ISellerDisplayNames sellers,
+    IProductImageGuard images)
     : IGetProductService
 {
     public async Task<GetProductResult> GetAsync(string productId, CancellationToken cancellationToken)
@@ -32,9 +34,13 @@ public sealed class GetProductService(ICatalogRateLimitGate rateLimit, IProductR
 
             var sellerNames = await sellers.FindDisplayNamesAsync([product.SellerId], cancellationToken);
             var rating = await ReadRatingsAsync(product.ProductId, cancellationToken);
+            var imageUrl = await images.GetReadUrlAsync(
+                product.ImageAssetId is not null && product.ImageObjectKey is not null
+                    ? new MediaAssetReference(product.ImageAssetId, product.ImageObjectKey) : null,
+                cancellationToken);
             var response = ProductProjection.ToResponse(product,
                 sellerNames.TryGetValue(product.SellerId, out var displayName) ? displayName : null,
-                category.Name, rating);
+                category.Name, rating, imageUrl);
             return new(GetProductOutcome.Found, response);
         }
         catch (Exception) when (!cancellationToken.IsCancellationRequested)

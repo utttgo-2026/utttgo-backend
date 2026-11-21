@@ -201,7 +201,7 @@ Parámetros: `search`, `categoryId`, `minPrice`, `maxPrice`, `page` (≥1), `pag
 }
 ```
 
-Solo se listan productos `Active` de vendedores `Active` con categoría activa. `ratingAverage`/`ratingCount` son `null` (no existe Reviews). `imageUrl` es la URL pública de la foto que su vendedor confirmó en Media, o `null` si el producto no tiene foto. Errores: `400 VALIDATION_ERROR`, `429`, `503 CATALOG_UNAVAILABLE`.
+Solo se listan productos `Active` de vendedores `Active` con categoría activa. `ratingAverage`/`ratingCount` son `null` (no existe Reviews). `imageUrl` es una URL GET presignada de S3, válida durante 15 minutos, o `null` si el producto no tiene una imagen `Ready`/`Approved`. La app debe volver a consultar el producto para refrescarla. Errores: `400 VALIDATION_ERROR`, `429`, `503 CATALOG_UNAVAILABLE`.
 
 ### 4.3 `GET /api/v1/products/{productId}` → `200` (público)
 
@@ -223,17 +223,17 @@ Mismo objeto `ProductResponse`. `404 PRODUCT_NOT_FOUND` si el producto no existe
 
 El cliente **no** envía `sellerId`, `status`, `version` ni `categoryName`: el backend los deduce (el vendedor del token, la categoría enviada). Errores: `400 VALIDATION_ERROR`, `401`, `403 SELLER_ROLE_REQUIRED` / `SELLER_ACCOUNT_NOT_ACTIVE`, `404 CATEGORY_NOT_FOUND`, `429`, `503`.
 
-`imageUrl` es **opcional**: puede omitirse o enviarse en `null` para publicar sin foto. Si llega con un valor no vacío, el backend lo resuelve contra Media y **solo lo acepta** si el asset existe, está en `Ready`, pertenece al vendedor del token y su host coincide con `S3:PublicBaseUrl`; en cualquier otro caso responde `400 VALIDATION_ERROR` y no crea el producto (antes respondía `422 IMAGE_NOT_AVAILABLE`; ver § 9). El flujo completo está en § 4.7.
+`imageUrl` es **opcional**: puede omitirse o enviarse en `null` para publicar sin foto. Si llega con un valor no vacío, puede ser el `assetId` o el `publicUrl` devuelto por Media. El backend solo lo acepta si el asset existe, está en `Ready`/`Approved`, pertenece al vendedor y su clave usa `staging/`; persiste el asset y la clave, nunca la URL firmada. En cualquier otro caso responde `400 VALIDATION_ERROR` y no crea el producto (antes respondía `422 IMAGE_NOT_AVAILABLE`; ver § 9). El flujo completo está en § 4.7.
 
 ### 4.5 `PATCH /api/v1/products/{productId}` → `200` (Bearer, dueño)
 
 ```json
-{ "name": "Tacos de pastor (4 pza)", "price": 59.50, "stock": 8, "ingredients": ["Piña"], "description": "Tacos con piña", "imageUrl": "https://utttgo-images-2427dbc8.s3.amazonaws.com/staging/seller/asset-1" }
+{ "name": "Tacos de pastor (4 pza)", "price": 59.50, "stock": 8, "ingredients": ["Piña"], "description": "Tacos con piña", "imageUrl": "asset-1" }
 ```
 
 Solo el dueño (verificado por recurso). `409 PRODUCT_CONFLICT` si el `version` quedó desactualizado: releer y reintentar.
 
-`imageUrl` es un campo más del whitelist: una **cadena** la reemplaza, un **`null` explícito** la borra y **ausente** la deja como estaba. Una cadena pasa por la misma validación que en `POST` y responde `400 VALIDATION_ERROR` si Media no la confirma.
+`imageUrl` es un campo más del whitelist: una **cadena** con `assetId` o `publicUrl` la reemplaza, un **`null` explícito** la borra y **ausente** la deja como estaba. Una cadena pasa por la misma validación que en `POST` y responde `400 VALIDATION_ERROR` si Media no la confirma.
 
 ### 4.6 `PATCH /api/v1/products/{productId}/availability` → `200` (Bearer, dueño)
 
@@ -243,7 +243,7 @@ Solo el dueño (verificado por recurso). `409 PRODUCT_CONFLICT` si el `version` 
 
 `Active` publica y `Paused` pausa la publicación. Pausar **nunca** altera el stock.
 
-### 4.7 Imágenes de producto — Media (presigned → confirm → `imageUrl`)
+### 4.7 Imágenes de producto — Media (presigned → confirm → URL GET temporal)
 
 Rutas nuevas (Bearer obligatorio en ambas). El cliente **nunca** habla con S3 directamente: solo con el backend.
 
@@ -287,18 +287,19 @@ Authorization: Bearer <token>
 { "publicUrl": "https://utttgo-images-2427dbc8.s3.amazonaws.com/staging/seller/asset-1", "assetId": "asset-1", "status": "Ready" }
 ```
 
-`200`. Transiciona `PendingUpload → Ready` (idempotente) y devuelve la URL pública. Un asset **de otro usuario** se reporta como no encontrado (`400 VALIDATION_ERROR` con `assetId`), sin revelar que existe. Errores: `400 VALIDATION_ERROR`, `401`, `429`, `503`.
+`200`. Transiciona `PendingUpload → Ready` (idempotente) y devuelve un `publicUrl` canónico del objeto (no es una lectura pública ni una URL firmada). Un asset **de otro usuario** se reporta como no encontrado (`400 VALIDATION_ERROR` con `assetId`), sin revelar que existe. Errores: `400 VALIDATION_ERROR`, `401`, `429`, `503`.
 
 **Paso 4 — publicar el producto con esa URL**
 
-`publicUrl` es exactamente lo que se envía como `imageUrl` en `POST /api/v1/products` o `PATCH /api/v1/products/{productId}` (§ 4.4 / § 4.5). El backend lo valida contra Media y responde `400 VALIDATION_ERROR` si:
+El `assetId` o el `publicUrl` de confirmación se puede enviar como `imageUrl` en `POST /api/v1/products` o `PATCH /api/v1/products/{productId}` (§ 4.4 / § 4.5). El backend valida la referencia y responde `400 VALIDATION_ERROR` si:
 
-- el host de la URL no coincide con `S3:PublicBaseUrl`;
+- la URL no coincide con `S3:PublicBaseUrl`;
 - el asset no existe;
-- el asset todavía no está en `Ready` (se confirmó tarde o nunca);
+- la clave no usa el prefijo `staging/`;
+- el asset todavía no está en `Ready`/`Approved` (se confirmó tarde o nunca);
 - el asset pertenece a **otro** usuario.
 
-`GET /api/v1/products` y `GET /api/v1/products/{productId}` devuelven ese valor en `imageUrl` (o `null` si no hay foto).
+`GET /api/v1/products`, `GET /api/v1/products/{productId}`, `POST /api/v1/products` y `PATCH /api/v1/products/{productId}` devuelven en `imageUrl` una URL GET presignada con TTL de 15 minutos. En listados se firman las imágenes en lote; no se consulta Mongo una vez por producto. La app debe volver a consultar el producto cuando la URL caduque.
 
 **Estado actual de la moderación:** el asset pasa a `Ready` en la confirmación; la moderación con Azure AI Content Safety (BR-007) todavía no está conectada, así que `Ready` hoy significa «confirmado por su dueño», no «moderado». Ningún otro endpoint cambia por esto.
 

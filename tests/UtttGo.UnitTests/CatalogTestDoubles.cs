@@ -1,5 +1,6 @@
 using UTTTGO.Api.Modules.Catalog.Application;
 using UTTTGO.Api.Modules.Catalog.Contracts;
+using UTTTGO.Api.Modules.Media.Application;
 using UTTTGO.Api.Modules.Sellers.Application;
 
 namespace UtttGo.UnitTests;
@@ -46,7 +47,8 @@ internal sealed class CatalogProductRepository : IProductRepository
         LastSellerId = product.SellerId;
         var record = new ProductRecord(CatalogFixtures.ProductId, product.SellerId, product.Name,
             product.Description, product.Ingredients, product.CategoryId, product.Price, product.Stock,
-            ProductAvailability.Active, 0, DateTime.UtcNow, DateTime.UtcNow, product.ImageUrl);
+            ProductAvailability.Active, 0, DateTime.UtcNow, DateTime.UtcNow, product.ImageAssetId,
+            product.ImageObjectKey);
         if (ForceTampered) record = record with { SellerId = "other-seller" };
         Products[record.ProductId] = record;
         return Task.FromResult(record);
@@ -71,6 +73,8 @@ internal sealed class CatalogProductRepository : IProductRepository
             Ingredients = changes.HasIngredients ? changes.Ingredients! : product.Ingredients,
             Price = changes.HasPrice ? changes.Price!.Value : product.Price,
             Stock = changes.HasStock ? changes.Stock!.Value : product.Stock,
+            ImageAssetId = changes.HasImageUrl ? changes.ImageAssetId : product.ImageAssetId,
+            ImageObjectKey = changes.HasImageUrl ? changes.ImageObjectKey : product.ImageObjectKey,
             Version = product.Version + 1,
             UpdatedAt = DateTime.UtcNow
         };
@@ -162,14 +166,24 @@ internal sealed class CatalogImageGuard : IProductImageGuard
     public string? LastImageUrl { get; private set; }
     public string? LastOwnerUserId { get; private set; }
 
-    public Task<bool> IsAttachableAsync(string imageUrl, string ownerUserId,
+    public Task<MediaAssetSnapshot?> ResolveAttachableAsync(string imageUrl, string ownerUserId,
         CancellationToken cancellationToken)
     {
         Calls++;
         LastImageUrl = imageUrl;
         LastOwnerUserId = ownerUserId;
-        return Task.FromResult(Attachable);
+        return Task.FromResult<MediaAssetSnapshot?>(Attachable
+            ? new("asset-test", "Ready", ownerUserId, "staging/" + ownerUserId + "/asset-test")
+            : null);
     }
+
+    public Task<string?> GetReadUrlAsync(MediaAssetReference? reference,
+        CancellationToken cancellationToken) => Task.FromResult(reference is null ? null : LastImageUrl);
+
+    public Task<IReadOnlyDictionary<string, string>> GetReadUrlsAsync(
+        IReadOnlyCollection<MediaAssetReference> references, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyDictionary<string, string>>(references.ToDictionary(
+            reference => reference.AssetId, _ => LastImageUrl ?? "https://signed.example/image"));
 }
 
 internal sealed class CatalogRatingsReader : IProductRatingsReader

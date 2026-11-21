@@ -15,6 +15,8 @@ public class MediaAssetRecord
 public interface IMediaAssetRepository
 {
     Task<MediaAssetRecord?> GetByIdAsync(string assetId, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<MediaAssetRecord>> GetByIdsAsync(IReadOnlyCollection<string> assetIds,
+        CancellationToken cancellationToken = default);
     Task<MediaAssetRecord?> GetByObjectKeyAsync(string objectKey, CancellationToken cancellationToken = default);
     Task<MediaAssetRecord> AddAsync(MediaAssetRecord record, CancellationToken cancellationToken = default);
     Task<MediaAssetRecord> UpdateAsync(MediaAssetRecord record, CancellationToken cancellationToken = default);
@@ -43,6 +45,17 @@ public class InMemoryMediaAssetRepository : IMediaAssetRepository
         lock (_lock)
         {
             return _store.Values.FirstOrDefault(r => r.ObjectKey == objectKey);
+        }
+    }
+
+    public async Task<IReadOnlyList<MediaAssetRecord>> GetByIdsAsync(
+        IReadOnlyCollection<string> assetIds, CancellationToken cancellationToken = default)
+    {
+        await Task.Yield();
+        lock (_lock)
+        {
+            var ids = assetIds.ToHashSet(StringComparer.Ordinal);
+            return _store.Values.Where(record => ids.Contains(record.AssetId)).ToList();
         }
     }
 

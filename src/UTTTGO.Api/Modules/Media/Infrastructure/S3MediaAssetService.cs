@@ -64,7 +64,7 @@ public class S3MediaAssetService : IS3MediaAssetService
     {
         if (!_isConfigured)
         {
-            return $"https://mock-s3-bucket.s3.amazonaws.com/{objectKey}?mock=true";
+            return $"https://mock-s3-bucket.s3.amazonaws.com/{objectKey}?mock=true&expires={DateTime.UtcNow.AddMinutes(_config.PresignedReadUrlExpirationMinutes):yyyy-MM-ddTHH:mm:ss}";
         }
 
         var s3Client = CreateS3Client();
@@ -74,7 +74,7 @@ public class S3MediaAssetService : IS3MediaAssetService
             BucketName = _config.BucketName,
             Key = objectKey,
             Verb = HttpVerb.GET,
-            Expires = DateTime.UtcNow.AddMinutes(_config.PresignedUrlExpirationMinutes)
+            Expires = DateTime.UtcNow.AddMinutes(_config.PresignedReadUrlExpirationMinutes)
         });
 
         return url;

@@ -55,7 +55,7 @@ public sealed class CatalogReadServiceTests
     {
         var products = new CatalogProductRepository();
         var result = await new ListProductsService(new CatalogRateLimitGate { Allowed = false }, products,
-            new CatalogCategoryRepository(), new CatalogRatingsReader(), new CatalogSellerNames())
+            new CatalogCategoryRepository(), new CatalogRatingsReader(), new CatalogSellerNames(), new CatalogImageGuard())
             .ListAsync(CatalogFixtures.Query(), default);
 
         result.Outcome.Should().Be(ProductListOutcome.RateLimited);
@@ -67,7 +67,7 @@ public sealed class CatalogReadServiceTests
     {
         var result = await new ListProductsService(new CatalogRateLimitGate(),
             new CatalogProductRepository { Fail = true }, new CatalogCategoryRepository(),
-            new CatalogRatingsReader(), new CatalogSellerNames())
+            new CatalogRatingsReader(), new CatalogSellerNames(), new CatalogImageGuard())
             .ListAsync(CatalogFixtures.Query(), default);
 
         result.Outcome.Should().Be(ProductListOutcome.Unavailable);
@@ -83,7 +83,7 @@ public sealed class CatalogReadServiceTests
         categories.Categories[CatalogFixtures.CategoryId] = CatalogFixtures.Category();
 
         var result = await new ListProductsService(new CatalogRateLimitGate(), products, categories,
-            new CatalogRatingsReader { Fail = true }, new CatalogSellerNames())
+            new CatalogRatingsReader { Fail = true }, new CatalogSellerNames(), new CatalogImageGuard())
             .ListAsync(CatalogFixtures.Query(), default);
 
         result.Outcome.Should().Be(ProductListOutcome.Success);
@@ -99,7 +99,7 @@ public sealed class CatalogReadServiceTests
         categories.Categories[CatalogFixtures.CategoryId] = CatalogFixtures.Category();
 
         var result = await new ListProductsService(new CatalogRateLimitGate(), products, categories,
-            new CatalogRatingsReader { Snapshot = new(4.5m, 12) }, new CatalogSellerNames())
+            new CatalogRatingsReader { Snapshot = new(4.5m, 12) }, new CatalogSellerNames(), new CatalogImageGuard())
             .ListAsync(CatalogFixtures.Query(), default);
 
         result.Response!.Items[0].RatingAverage.Should().Be(4.5m);
@@ -114,7 +114,7 @@ public sealed class CatalogReadServiceTests
         var categories = new CatalogCategoryRepository();
         categories.Categories[CatalogFixtures.CategoryId] = CatalogFixtures.Category();
         var service = new GetProductService(new CatalogRateLimitGate(), products, categories,
-            new CatalogRatingsReader(), new CatalogSellerNames());
+            new CatalogRatingsReader(), new CatalogSellerNames(), new CatalogImageGuard());
 
         var found = await service.GetAsync(CatalogFixtures.ProductId, default);
         found.Outcome.Should().Be(GetProductOutcome.Found);
@@ -136,7 +136,7 @@ public sealed class CatalogReadServiceTests
         categories.Categories[CatalogFixtures.CategoryId] = CatalogFixtures.Category(isActive: false);
 
         var result = await new GetProductService(new CatalogRateLimitGate(), products, categories,
-            new CatalogRatingsReader(), new CatalogSellerNames())
+            new CatalogRatingsReader(), new CatalogSellerNames(), new CatalogImageGuard())
             .GetAsync(CatalogFixtures.ProductId, default);
 
         result.Outcome.Should().Be(GetProductOutcome.NotFound);
@@ -170,5 +170,6 @@ public sealed class CatalogReadServiceTests
 
     private static ListProductsService Service(CatalogProductRepository products,
         CatalogCategoryRepository categories, CatalogSellerNames sellers) =>
-        new(new CatalogRateLimitGate(), products, categories, new CatalogRatingsReader(), sellers);
+        new(new CatalogRateLimitGate(), products, categories, new CatalogRatingsReader(), sellers,
+            new CatalogImageGuard());
 }

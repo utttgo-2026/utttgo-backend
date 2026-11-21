@@ -1,5 +1,6 @@
 using UTTTGO.Api.Modules.Catalog.Contracts;
 using UTTTGO.Api.Modules.Identity.Application;
+using UTTTGO.Api.Modules.Media.Application;
 
 namespace UTTTGO.Api.Modules.Catalog.Application;
 
@@ -59,11 +60,13 @@ public sealed class UpdateProductService(IAuthenticatedLocalProfileReader profil
 
             // Same rule as create: a new photo must be a Ready asset of this seller served from
             // the configured S3 host. An explicit null clears the photo and needs no asset.
-            var imageUrl = request.HasImageUrl && !string.IsNullOrWhiteSpace(request.ImageUrl)
+            var imageReference = request.HasImageUrl && !string.IsNullOrWhiteSpace(request.ImageUrl)
                 ? request.ImageUrl.Trim()
                 : null;
-            if (request.HasImageUrl && imageUrl is not null &&
-                !await images.IsAttachableAsync(imageUrl, profile.Id, cancellationToken))
+            var image = imageReference is null
+                ? null
+                : await images.ResolveAttachableAsync(imageReference, profile.Id, cancellationToken);
+            if (request.HasImageUrl && imageReference is not null && image is null)
                 return new(UpdateProductOutcome.InvalidImage);
 
             var changes = new ProductChanges(request.HasName, request.HasName ? request.Name!.Trim() : null,
@@ -73,7 +76,7 @@ public sealed class UpdateProductService(IAuthenticatedLocalProfileReader profil
                     : null,
                 request.HasPrice, request.HasPrice ? request.Price : null,
                 request.HasStock, request.HasStock ? request.Stock : null,
-                request.HasImageUrl, imageUrl);
+                 request.HasImageUrl, image?.AssetId, image?.ObjectKey);
 
             var result = await products.UpdateOwnAsync(profile.SellerId, productId, current.Version,
                 changes, cancellationToken);
@@ -87,8 +90,12 @@ public sealed class UpdateProductService(IAuthenticatedLocalProfileReader profil
                 return new(UpdateProductOutcome.Unavailable);
 
             var category = await categories.FindByIdAsync(updated.CategoryId, cancellationToken);
+            var imageUrl = await images.GetReadUrlAsync(
+                updated.ImageAssetId is not null && updated.ImageObjectKey is not null
+                    ? new MediaAssetReference(updated.ImageAssetId, updated.ImageObjectKey) : null,
+                cancellationToken);
             return new(UpdateProductOutcome.Updated,
-                ProductProjection.ToResponse(updated, null, category?.Name, null));
+                ProductProjection.ToResponse(updated, null, category?.Name, null, imageUrl));
         }
         catch (Exception) when (!cancellationToken.IsCancellationRequested)
         {

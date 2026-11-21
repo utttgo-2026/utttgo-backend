@@ -72,7 +72,8 @@ public sealed class MongoProductRepository(MongoStore store) : IProductRepositor
             Price = product.Price,
             Stock = product.Stock,
             Status = ProductAvailability.Active,
-            ImageUrl = product.ImageUrl,
+            ImageAssetId = product.ImageAssetId,
+            ImageObjectKey = product.ImageObjectKey,
             SearchText = BuildSearchText(product.Name, product.Description, product.Ingredients),
             Version = 0,
             CreatedAt = now,
@@ -109,7 +110,12 @@ public sealed class MongoProductRepository(MongoStore store) : IProductRepositor
         if (changes.HasStock)
             updates.Add(Builders<ProductDocument>.Update.Set(product => product.Stock, changes.Stock!.Value));
         if (changes.HasImageUrl)
-            updates.Add(Builders<ProductDocument>.Update.Set(product => product.ImageUrl, changes.ImageUrl));
+        {
+            updates.Add(Builders<ProductDocument>.Update.Set(product => product.ImageAssetId,
+                changes.ImageAssetId));
+            updates.Add(Builders<ProductDocument>.Update.Set(product => product.ImageObjectKey,
+                changes.ImageObjectKey));
+        }
 
         var updated = await Products.FindOneAndUpdateAsync(filter,
             Builders<ProductDocument>.Update.Combine(updates),
@@ -160,5 +166,6 @@ public sealed class MongoProductRepository(MongoStore store) : IProductRepositor
     private static ProductRecord ToRecord(ProductDocument product) =>
         new(product.Id.ToString(), product.SellerId, product.Name, product.Description,
             product.Ingredients, product.CategoryId, product.Price, product.Stock, product.Status,
-            product.Version, product.CreatedAt, product.UpdatedAt, product.ImageUrl);
+            product.Version, product.CreatedAt, product.UpdatedAt, product.ImageAssetId,
+            product.ImageObjectKey);
 }

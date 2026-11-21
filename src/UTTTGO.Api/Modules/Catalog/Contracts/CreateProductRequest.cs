@@ -5,10 +5,9 @@ namespace UTTTGO.Api.Modules.Catalog.Contracts;
 
 // A seller publishes its own product. The client never sends sellerId, status, version or
 // timestamps: the backend derives them from the authenticated session.
-// imageUrl is an optional reference to a Media asset that this seller already confirmed. The
-// backend resolves it through the Media read contract and rejects it with 400 VALIDATION_ERROR
-// unless the asset exists, is Ready, belongs to the caller and is served from the configured
-// S3 host (BR-007, DEC-019.f, RF-V11).
+// imageUrl is an optional Media reference: the assetId or canonical publicUrl returned by
+// confirmation. The backend stores only the asset identity/key and rejects it with 400
+// VALIDATION_ERROR unless it is Ready/Approved, belongs to the caller and uses staging/.
 public sealed class CreateProductRequest
 {
     public string? Name { get; init; }
