@@ -2,7 +2,7 @@ namespace UTTTGO.Api.Modules.Media.Application;
 
 public static class MediaImagePolicy
 {
-    // Azure states 4 MB; decimal bytes are intentionally conservative.
+    // The moderation provider accepts images up to the approved 4 MB limit.
     public const int MaxBytes = 4_000_000;
 
     public static bool MatchesFormat(ReadOnlySpan<byte> image, string mime) => mime switch

@@ -16,6 +16,39 @@ public sealed class PublicApiServerTransformer(IConfiguration configuration) : I
         if (!string.IsNullOrWhiteSpace(baseUrl))
             document.Servers = [new OpenApiServer { Url = baseUrl.Trim().TrimEnd('/') }];
 
+        if (document.Paths.TryGetValue("/api/v1/products/{productId}", out var productPath) &&
+            productPath is OpenApiPathItem openApiProductPath &&
+            openApiProductPath.Operations is { } operations &&
+            operations.TryGetValue(HttpMethod.Patch, out var patch) &&
+            patch.RequestBody is OpenApiRequestBody requestBody)
+        {
+            var schema = new OpenApiSchema
+            {
+                Type = JsonSchemaType.Object,
+                AdditionalPropertiesAllowed = false,
+                Properties = new Dictionary<string, IOpenApiSchema>
+                {
+                    ["name"] = new OpenApiSchema { Type = JsonSchemaType.String },
+                    ["description"] = new OpenApiSchema { Type = JsonSchemaType.String },
+                    ["ingredients"] = new OpenApiSchema
+                    {
+                        Type = JsonSchemaType.Array,
+                        Items = new OpenApiSchema { Type = JsonSchemaType.String }
+                    },
+                    ["price"] = new OpenApiSchema { Type = JsonSchemaType.Number },
+                    ["stock"] = new OpenApiSchema { Type = JsonSchemaType.Integer },
+                    ["mediaAssetId"] = new OpenApiSchema
+                    {
+                        Type = JsonSchemaType.String | JsonSchemaType.Null,
+                        Description = "Approved Media asset id; null explicitly removes the image."
+                    }
+                }
+            };
+            foreach (var content in requestBody.Content is { } contentMap ? contentMap.Values : [])
+                if (content is not null)
+                    content.Schema = schema;
+        }
+
         return Task.CompletedTask;
     }
 }

@@ -222,7 +222,7 @@ Mismo objeto `ProductResponse`. `404 PRODUCT_NOT_FOUND` si el producto no existe
 
 El cliente **no** envía `sellerId`, `status`, `version` ni `categoryName`: el backend los deduce (el vendedor del token, la categoría enviada). Errores: `400 VALIDATION_ERROR`, `401`, `403 SELLER_ROLE_REQUIRED` / `SELLER_ACCOUNT_NOT_ACTIVE`, `404 CATEGORY_NOT_FOUND`, `422 IMAGE_NOT_AVAILABLE`, `429`, `503`.
 
-`imageUrl` es **opcional** y puede omitirse o enviarse en `null`. Mientras no exista el módulo Media (S3 presigned + moderación con Azure AI Content Safety, fase 05), el backend **no almacena** ninguna imagen: si llega con valor no vacío responde `422 IMAGE_NOT_AVAILABLE` y el producto se publica sin foto. La app móvil debe enviarlo en `null` u omitirlo.
+`imageUrl` es **opcional** y puede omitirse o enviarse en `null`. Mientras no exista el módulo Media (S3 presigned + moderación con Amazon Rekognition, fase 05), el backend **no almacena** ninguna imagen: si llega con valor no vacío responde `422 IMAGE_NOT_AVAILABLE` y el producto se publica sin foto. La app móvil debe enviarlo en `null` u omitirlo.
 
 ### 4.5 `PATCH /api/v1/products/{productId}` → `200` (Bearer, dueño)
 

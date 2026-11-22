@@ -16,7 +16,7 @@ Alcance:
 - Backend API de UTTT-GO para venta de alimentos en la UTTT.
 - Arquitectura de monolito modular sobre .NET 10.
 - Reglas de negocio: compra directa, pago exclusivo en efectivo y opciones comparativas de compra.
-- Integraciones oficiales: AWS (EC2, S3, IAM, CloudWatch), MongoDB Atlas, Supabase Auth, Redis contenerizado, Azure AI Content Safety y Firebase Cloud Messaging (DEC-018).
+- Integraciones oficiales: AWS (EC2, S3, IAM, CloudWatch, Rekognition), MongoDB Atlas, Supabase Auth, Redis contenerizado y Firebase Cloud Messaging (DEC-018).
 
 Referencias:
 
@@ -39,7 +39,7 @@ Referencias:
 | REQ-006 | La autenticación es **Supabase Auth**; los roles se leen del perfil local en MongoDB, nunca del JWT. | Obligatorio | `constitution.md` § 6, § 12 |
 | REQ-007 | El logout revoca el JWT agregando su `jti` a la blacklist de **Redis** (`revoked:{jti}`) con TTL hasta `exp`. | Obligatorio | `constitution.md` § 6 |
 | REQ-008 | **Redis** se usa para caché, rate limiting distribuido y blacklist JWT, con namespaces separados y comportamiento fail-closed donde corresponde. | Obligatorio | `constitution.md` § 6 |
-| REQ-009 | Las imágenes se suben **solo** a un **bucket S3 privado** mediante URLs presignadas generadas por el backend y se moderan antes de publicarse con **Azure AI Content Safety**. | Obligatorio | `constitution.md` § 7 |
+| REQ-009 | Las imágenes se suben **solo** a un **bucket S3 privado** mediante URLs presignadas generadas por el backend y se moderan antes de publicarse con **Amazon Rekognition**. | Obligatorio | `constitution.md` § 7 |
 | REQ-010 | Las notificaciones push se envían **solo** desde el backend con **Firebase Cloud Messaging (FCM Admin SDK)**. El cliente nunca conoce el service account. | Obligatorio | `constitution.md` § 8 |
 | REQ-011 | **No existe carrito de compras**: la compra es directa e individual. Cada pedido corresponde a un producto de un vendedor con su cantidad. | Obligatorio | `constitution.md` § 3 |
 | REQ-012 | El **único método de pago es efectivo presencial** en el campus UTTT. No se integra pasarela de pago ni se almacenan datos financieros. | Obligatorio | `constitution.md` § 3 |
@@ -75,7 +75,7 @@ Referencias:
 | **Cache/Rate Limit** | Redis (contenedor Docker; local y en la EC2) + `StackExchange.Redis` | Redis 7.x; namespaces `revoked:{jti}`, `cache:{recurso}:{clave}`, `ratelimit:{policy}:{partición}` | Rate limit distribuido obligatorio; prohibido rate limit en memoria en producción; sin ElastiCache por costo $0 (DEC-018) |
 | **Auth/Identity** | Supabase Auth | JWT validado por firma, issuer, audience y expiración; roles desde MongoDB local | Prohibido Argon2id/BCrypt local, lockout o 2FA propio; roles nunca desde el JWT |
 | **Storage/CDN** | Amazon S3 + URLs presignadas | Bucket privado (Block Public Access); presigned de un solo objeto, TTL ≤ 5 min; lectura por presigned GET del backend | Presigned solo backend; prohibido bucket/objeto público o access keys en el cliente |
-| **IA Moderación** | Azure AI Content Safety API | Moderación previa a la publicación de cada imagen | Prohibido publicar imágenes sin resultado aprobado; error = no publicación |
+| **IA Moderación** | Amazon Rekognition API | Moderación previa a la publicación de cada imagen | Prohibido publicar imágenes sin resultado aprobado; error = no publicación |
 | **Push** | Firebase Cloud Messaging (FCM Admin SDK) | Service account en variables de entorno de la instancia; `deviceTokens` por usuario; depuración de tokens inválidos | El cliente no envía push ni conoce credenciales; envíos idempotentes |
 | **Tests** | xUnit, FluentAssertions, Moq/NSubstitute, `WebApplicationFactory`, Testcontainers (MongoDB/Redis), dobles o emulación S3 | Unitarias, integración y seguridad; Content Safety y FCM mockeados en CI | Prohibido Pact, NBomber, Stryker, ChaosTest y pruebas contra producción |
 | **IaC/Nube** | AWS (`us-east-2`): EC2 t3.micro + EIP + Security Group + S3 privado + IAM/Instance Profile + CloudWatch + Budget, con Terraform | Terraform 1.9+; estado local fuera de Git en el MVP, backend remoto (S3 + DynamoDB) antes de producción | Prohibido CloudFormation, cambios manuales y estado Terraform en Git; sin ALB/ASG/ElastiCache/RDS |

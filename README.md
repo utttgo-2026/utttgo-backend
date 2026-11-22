@@ -14,7 +14,7 @@ UTTT-GO conecta a estudiantes, docentes y personal de la UTTT con vendedores de 
 - Permite buscar/filtrar opciones de distintos vendedores por datos y calificaciones disponibles; API-016 de ofertas compartidas **queda retirada** por DEC-019 (no se implementa ni se redirige; la cubre API-011).
 - Reserva stock de forma **atómica** al crear un pedido y lo libera al rechazar o cancelar.
 - Autentica con **Supabase Auth** y autoriza por rol y por recurso.
-- Modera las imágenes de producto con **Azure AI Content Safety**.
+- Modera las imágenes de producto con **Amazon Rekognition**.
 - Notifica cambios de pedido con **Firebase Cloud Messaging**.
 
 Reglas de negocio del MVP:
@@ -38,7 +38,7 @@ Reglas de negocio del MVP:
 | Autenticación | Supabase Auth (JWT) + roles y revocación en Redis |
 | Caché | Redis 7 (contenedor local y en la EC2; sin ElastiCache por costo $0, DEC-018) |
 | Almacenamiento de imágenes | Amazon S3 bucket privado con URLs presignadas del backend |
-| Moderación de contenido | Azure AI Content Safety (servicio externo conservado; DEC-018) |
+| Moderación de contenido | Amazon Rekognition |
 | Notificaciones push | Firebase Cloud Messaging (FCM) |
 | Tiempo real | SignalR con backplane de Redis |
 | Infraestructura | AWS: EC2 t3.micro + Elastic IP + Nginx (2 réplicas Docker Compose) · Terraform |
@@ -164,10 +164,9 @@ SUPABASE_JWKS_URL=
 SUPABASE_JWT_SECRET=<desde-el-gestor-de-secretos>
 SUPABASE_JWT_ISSUER=
 SUPABASE_JWT_AUDIENCE=
-AZURE_CONTENT_SAFETY_ENDPOINT=
-AZURE_CONTENT_SAFETY_KEY=
 S3_BUCKET_IMAGES=utttgo-images-local
 AWS_REGION=us-east-2
+MODERATION_MIN_CONFIDENCE=75
 FIREBASE_PROJECT_ID=
 ```
 
@@ -322,7 +321,7 @@ dotnet clean
 - `.env`, certificados, credenciales de Firebase/AWS/Azure y estados de Terraform están excluidos por `.gitignore`.
 - Los JWT se validan contra Supabase y se revocan por `jti` en Redis.
 - Las URLs presignadas de S3 son de corta duración, de un solo objeto y se generan solo en el backend; el bucket es privado (Block Public Access).
-- Toda imagen de producto pasa por Azure AI Content Safety antes de publicarse.
+- Toda imagen de producto pasa por Amazon Rekognition antes de publicarse.
 - El rate limiting del catálogo público es distribuido y fail-closed.
 - No se almacenan datos financieros: el pago es en efectivo presencial (BR-003).
 

@@ -16,14 +16,14 @@ Media impiden que tal objeto alcance `Approved`; verificar PUT alterada,
 caducada y posible reemplazo de un objeto ya aprobado durante el TTL en AWS
 controlado y definir mitigación de inmutabilidad antes de despliegue.
 
-**Cambio de contrato Media/Expo Go identificado antes de implementarlo (corte controlado, 2026-11-20):** el contrato anterior `POST /api/v1/media/upload-url` admitía `size <= 5_242_880` (5 MiB) con validación HEAD equivalente; la guía [Azure Content Safety, imágenes](https://learn.microsoft.com/en-us/azure/ai-services/content-safety/quickstart-image) indica máximo **4 MB**. Se eligió de forma conservadora `<= 4_000_000 bytes` **de archivo binario** tanto en la intención (`400 VALIDATION_ERROR`) como en HEAD, lectura S3 y petición Azure; `4_000_001` se rechaza. Expo Go debe bloquear/avisar **antes de solicitar URL** y no seguir anunciando 5 MB; el cliente no comprime ni transforma imágenes sin decisión del equipo. PUT presignada por sí sola no impone tope: cotejar HEAD con tamaño declarado y comprobar límite real durante lectura antes de enviar bytes a Azure. La ficha original y el snapshot OpenAPI se concilian antes de fusionar; no activar política de producción por este cambio de contrato.
+**Cambio de contrato Media/Expo Go identificado antes de implementarlo (corte controlado, 2026-11-20):** el contrato anterior `POST /api/v1/media/upload-url` admitía `size <= 5_242_880` (5 MiB) con validación HEAD equivalente; el límite aprobado para el flujo de moderación es **4 MB**. Se eligió de forma conservadora `<= 4_000_000 bytes` **de archivo binario** tanto en la intención (`400 VALIDATION_ERROR`) como en HEAD, lectura S3 y petición Rekognition; `4_000_001` se rechaza. Expo Go debe bloquear/avisar **antes de solicitar URL** y no seguir anunciando 5 MB; el cliente no comprime ni transforma imágenes sin decisión del equipo. PUT presignada por sí sola no impone tope: cotejar HEAD con tamaño declarado y comprobar límite real durante lectura antes de enviar bytes a Rekognition. La ficha original y el snapshot OpenAPI se concilian antes de fusionar; no activar política de producción por este cambio de contrato.
 
 **Compatibilidad de assets preexistentes:** una intención `PendingUpload` creada con el máximo anterior y `size > 4_000_000` ya no se puede confirmar: HEAD devuelve `400 INVALID_OBJECT`, sin moderar ni publicar; el vendedor debe pedir **una nueva intención** con una foto válida. El backend no migra ni reduce imágenes automáticamente. La limpieza de objetos staging huérfanos y la aceptación de este cambio por Expo Go son decisiones operativas pendientes.
 
 | Aspecto | Propuesta mínima | Decisión pendiente |
 |---|---|---|
 | Identificador persistente | `mediaAssetId` opaco en JSON; en Mongo `products` se guarda solo la referencia, no la URL ni los bytes. Media es dueño de `mediaAssets`. | Aprobar formato del ID, unicidad de uso y posible reutilización entre productos del mismo vendedor. |
-| Publicación | Únicamente `Approved`, tras verificar en S3 objeto/tipo/tamaño y moderación **aprobada** por Azure AI Content Safety; `Ready` no autoriza publicación. Fallo de proveedor = no publicar. | Aprobar umbrales, política de reintentos y compensación si S3/Mongo/Content Safety fallan parcialmente. |
+| Publicación | Únicamente `Approved`, tras verificar en S3 objeto/tipo/tamaño y moderación **aprobada** por Amazon Rekognition; `Ready` no autoriza publicación. Fallo de proveedor = no publicar. | Aprobar umbral, política de reintentos y compensación si S3/Mongo/Rekognition fallan parcialmente. |
 | Propiedad | Media registra `ownerUserId` del perfil local autenticado, nunca del body. Para POST/PATCH Catalog resuelve el vendedor autenticado y solicita a Media comprobación del asset `Approved` perteneciente al usuario dueño de ese vendedor; Catalog nunca consulta la colección `mediaAssets`. | Aprobar relación exacta `users._id` ↔ `sellers.ownerUserId` e identidad utilizada por la interfaz; confirmar tratamiento de cuentas/vendedores inactivos. |
 | Lectura | `imageUrl: string|null` en POST/PATCH/GET/listado; Media entrega presigned GET de duración corta para objeto aprobado de S3 privado. Ausencia de imagen → `null`. No se almacena URL ni se construye `publicUrl` permanente. | Aprobar TTL, política de fallo de presigner para lecturas y si la URL se renueva en cada GET. |
 | Expo Go | La aplicación conserva `mediaAssetId` para POST/PATCH y usa `imageUrl` solo hasta `expiresAt` o solicita un GET nuevo al vencer. PUT directo a URL firmada con los headers exactos indicados por backend; sin credenciales S3 en el cliente. | Ratificar si se expone también `imageUrlExpiresAt` y compatibilidad/migración del `imageUrl` de entrada ya anunciado por POST. |
@@ -37,26 +37,20 @@ Se aprueban `PendingUpload`, `PendingModeration`, `Approved`, `Rejected`, `Proce
 ## Requisitos y escenarios verificables propuestos
 
 - **IMG-01:** dado un usuario autenticado, solicitar intención crea asset propio `PendingUpload` persistido en Mongo; backend firma PUT de **un objeto staging** con tipo/tamaño acotados y TTL ≤ 5 min. Sin configuración real S3 o Redis/Mongo disponibles se falla cerrado; jamás devolver URL mock en la API.
-- **IMG-02:** completar una intención propia hace HEAD/cotejo de objeto y metadatos; Content Safety seguro → CAS a `Approved`; inseguro → borrar objeto y registrar `Rejected`. Repetición segura e idempotente del mismo resultado sin aprobar otra vez ni permitir actor ajeno.
+ - **IMG-02:** completar una intención propia hace HEAD/cotejo de objeto y metadatos; Rekognition sin etiquetas sobre el umbral → CAS a `Approved`; inseguro → borrar objeto y registrar `Rejected`. Repetición segura e idempotente del mismo resultado sin aprobar otra vez ni permitir actor ajeno.
 - **IMG-03:** POST de producto sin imagen conserva el comportamiento actual; con ID inexistente, ajeno, `PendingUpload` o `Rejected` no escribe producto; con ID propio `Approved`, guarda referencia después de validar vendedor y categoría.
 - **IMG-04:** PATCH de producto ajeno no muta ni revela su existencia; PATCH propio añade/reemplaza/quita referencia con control de versión. Media ajena o no aprobada nunca aparece en proyección pública.
 - **IMG-05:** respuestas de producto sin imagen contienen `imageUrl:null`; con imagen aprobada solo una presigned GET temporal del backend. Si no puede acreditarse aprobación, no se expone URL. Probar ausencia de URL pública y que caducidad no se persiste como dato de producto.
 
 ## Política provisional para prueba controlada (NO aprobada para producción)
 
-**No activar en producción.** El equipo autoriza provisionalmente 0/0/0/0 **solo para
-validación en entorno aislado**; no implica aprobación de despliegue ni cambio en Terraform.
-No escribir estos valores en `.env` versionado, variables de la EC2 productiva,
-Terraform ni `appsettings`. El runtime exige simultáneamente
-`ASPNETCORE_ENVIRONMENT=ModerationValidation`, `CONTENT_SAFETY_TEST_ENABLED=true` y
-cuatro umbrales explícitos 0; en cualquier otro entorno el moderador falla cerrado
-**incluso si hay credenciales y umbrales configurados**. El adaptador continúa fail-closed cuando faltan
-configuración/umbral o proveedor. Esta política cubre **daño visual detectado por Azure**;
-no certifica que la imagen sea comida, genuina, legal, apta para consumo, ni modera textos
-superpuestos de forma independiente (OCR/multimodal requeriría otra decisión).
-
-**Correspondencia oficial (versión REST `2024-09-01`):** [especificación de
-Azure](https://github.com/Azure/azure-rest-api-specs/blob/main/specification/cognitiveservices/data-plane/ContentSafety/stable/2024-09-01/contentsafety.json)
+**No activar en producción sin aprobación operativa.** Amazon Rekognition usa
+`MODERATION_MIN_CONFIDENCE`, con valor por defecto `75`, solo entre `0` y `100`.
+No escribir credenciales ni valores sensibles en `.env` versionado, variables de la
+EC2 productiva, Terraform ni `appsettings`. Un fallo de configuración, proveedor o
+respuesta produce `ProcessingFailed`; nunca se aprueba por degradación. Esta
+política cubre las etiquetas visuales devueltas por Rekognition; no certifica que
+la imagen sea comida, genuina, legal o apta para consumo.
 (`AnalyzeImageOptions`, `ImageCategory`, `ImageCategoriesAnalysis`) y
 [quickstart oficial de imagen](https://learn.microsoft.com/en-us/azure/ai-services/content-safety/quickstart-image)
 (`POST {endpoint}/contentsafety/image:analyze?api-version=2024-09-01`).
@@ -151,7 +145,7 @@ producción por este cambio.
 
 ## Brecha conocida y gates de aprobación
 
-El código candidato ya sustituyó el repositorio en memoria y las URL simuladas: `mediaAssets` en Mongo, PUT/GET firmados por S3, HEAD y CAS, con aprobación controlada **solo en pruebas aisladas**. El adaptador Azure `AzureContentSafetyAnalyzer` envía bytes leídos de staging S3 desde el backend a `contentsafety/image:analyze?api-version=2024-09-01`, solicita las cuatro categorías con `FourSeverityLevels` y rechaza fallos/respuestas incompletas. `ContentSafetyImageModerator` exige **test switch + entorno aislado + cuatro ceros explícitos**; cualquier entorno distinto falla cerrado aunque haya credenciales. La clave y URL Azure se suministran solo en variables de entorno de prueba, nunca en Git; ver `.env.example` sin valores reales. Revisión humana, apelaciones, recuperación operativa y compensación entre S3/Mongo siguen abiertas. La prueba local con LocalStack verifica subida/HEAD/GET firmado y Catalog, pero LocalStack devolvió `200` también a una GET sin firma y **no acredita privacidad real de S3**.
+El código candidato ya sustituyó el repositorio en memoria y las URL simuladas: `mediaAssets` en Mongo, PUT/GET firmados por S3, HEAD y CAS, con aprobación controlada **solo en pruebas aisladas**. Amazon Rekognition recibe los bytes leídos de staging S3 mediante `DetectModerationLabels`; las etiquetas devueltas con confianza igual o superior a `MODERATION_MIN_CONFIDENCE` producen rechazo. El valor por defecto es `75`; cualquier error del proveedor falla cerrado con `ProcessingFailed`. La identidad AWS se obtiene mediante la cadena por defecto del SDK y nunca se entrega al cliente. Revisión humana, apelaciones, recuperación operativa y compensación entre S3/Mongo siguen abiertas. La prueba local con LocalStack verifica subida/HEAD/GET firmado y Catalog, pero LocalStack devolvió `200` también a una GET sin firma y **no acredita privacidad real de S3**.
 
 Antes de desplegar se requieren revisión de seguridad e IAM/CORS, aceptación de Content Safety, registro formal de las dos rutas adicionales y verificación de bucket privado por su responsable; ninguna se presupone por la aprobación funcional ni por las pruebas locales. No consultar producción para aprobar la ficha ni modificar el Excel de 42 rutas.
 

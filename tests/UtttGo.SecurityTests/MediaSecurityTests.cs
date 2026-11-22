@@ -1,11 +1,12 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using Amazon.Rekognition;
+using Amazon.Rekognition.Model;
 using FluentAssertions;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using Microsoft.Extensions.Options;
 using MongoDB.Bson;
 using StackExchange.Redis;
 using Testcontainers.Redis;
@@ -126,14 +127,14 @@ public sealed class MediaSecurityTests : IAsyncLifetime
     {
         var repo = new Repository { Value = Asset() };
         var store = new Store { Head = (10, "image/jpeg") };
-        var analyzer = new FailingAnalyzer();
-        using var factory = Factory(repo, store, Profile(), analyzer);
+        var rekognition = new FailingRekognitionClient();
+        using var factory = Factory(repo, store, Profile(), rekognition);
         using var client = Client(factory);
         using var confirm = await client.PostAsJsonAsync("/api/v1/media/confirm",
             new { mediaAssetId = Id });
         confirm.StatusCode.Should().Be(HttpStatusCode.OK);
         (await confirm.Content.ReadAsStringAsync()).Should().Contain(MediaStatus.ProcessingFailed);
-        analyzer.Calls.Should().Be(1);
+        rekognition.Calls.Should().Be(1);
         using var read = await client.GetAsync($"/api/v1/media/{Id}");
         (await read.Content.ReadAsStringAsync()).Should().Contain("\"imageUrl\":null");
         store.SignGetCalls.Should().Be(0);
@@ -148,7 +149,7 @@ public sealed class MediaSecurityTests : IAsyncLifetime
         };
 
     private WebApplicationFactory<Program> Factory(Repository repository, Store store,
-        AuthenticatedProfileDouble profile, IContentSafetyAnalyzer? analyzer = null) =>
+        AuthenticatedProfileDouble profile, IAmazonRekognition? rekognition = null) =>
         new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
             builder.ConfigureTestServices(services =>
             {
@@ -160,21 +161,12 @@ public sealed class MediaSecurityTests : IAsyncLifetime
                 services.AddSingleton<IMediaObjectStore>(store);
                 services.AddSingleton<IAuthenticatedLocalProfileReader>(profile);
                 services.AddSingleton(connection);
-                if (analyzer is not null)
+                if (rekognition is not null)
                 {
                     services.RemoveAll<IMediaImageSource>();
-                    services.RemoveAll<IContentSafetyAnalyzer>();
-                    services.RemoveAll<IOptions<ContentSafetyOptions>>();
+                    services.RemoveAll<IAmazonRekognition>();
                     services.AddSingleton<IMediaImageSource>(new ImageSource());
-                    services.AddSingleton(analyzer);
-                    services.AddSingleton<IOptions<ContentSafetyOptions>>(Options.Create(new ContentSafetyOptions
-                    {
-                        AllowControlledTestPolicy = true,
-                        MaxHateSeverity = 0,
-                        MaxSelfHarmSeverity = 0,
-                        MaxSexualSeverity = 0,
-                        MaxViolenceSeverity = 0
-                    }));
+                    services.AddSingleton(rekognition);
                 }
             }));
 
@@ -238,10 +230,13 @@ public sealed class MediaSecurityTests : IAsyncLifetime
             Task.FromResult(new byte[] { 0xff, 0xd8, 0xff, 0, 0, 0, 0, 0, 0xff, 0xd9 });
     }
 
-    private sealed class FailingAnalyzer : IContentSafetyAnalyzer
+    private sealed class FailingRekognitionClient : AmazonRekognitionClient
     {
         public int Calls;
-        public Task<IReadOnlyDictionary<string, int>> AnalyzeAsync(byte[] image, CancellationToken ct)
+        public FailingRekognitionClient() : base(new AmazonRekognitionConfig()) { }
+
+        public override Task<DetectModerationLabelsResponse> DetectModerationLabelsAsync(
+            DetectModerationLabelsRequest request, CancellationToken ct)
         {
             Calls++;
             throw new InvalidOperationException("test-only provider failure");

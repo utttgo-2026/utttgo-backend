@@ -56,19 +56,13 @@ public interface IMediaImageSource
         CancellationToken cancellationToken);
 }
 
-public interface IContentSafetyAnalyzer
-{
-    Task<IReadOnlyDictionary<string, int>> AnalyzeAsync(byte[] image, CancellationToken cancellationToken);
-}
-
 public interface IImageModerator
 {
-    // No configured provider or provider error must never yield true.
     Task<bool> IsSafeAsync(string objectKey, string mime, long size, CancellationToken cancellationToken);
 }
 
 public sealed class UnconfiguredImageModerator : IImageModerator
 {
     public Task<bool> IsSafeAsync(string objectKey, string mime, long size, CancellationToken cancellationToken) =>
-        throw new InvalidOperationException("Content Safety is not configured.");
+        throw new InvalidOperationException("Image moderation is not configured.");
 }

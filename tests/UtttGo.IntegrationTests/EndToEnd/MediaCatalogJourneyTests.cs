@@ -4,6 +4,8 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using Amazon.Runtime;
+using Amazon.Rekognition;
+using Amazon.Rekognition.Model;
 using Amazon.S3;
 using Amazon.S3.Model;
 using DotNet.Testcontainers.Builders;
@@ -11,7 +13,6 @@ using DotNet.Testcontainers.Containers;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using Microsoft.Extensions.Options;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using UTTTGO.Api.Modules.Media.Application;
@@ -27,7 +28,7 @@ public sealed class MediaCatalogJourneyTests : IAsyncLifetime
     private IContainer localstack = null!;
     private AmazonS3Client s3 = null!;
     private EndToEndHost host = null!;
-    private readonly LocalAnalyzer analyzer = new();
+    private readonly LocalRekognitionClient rekognition = new();
 
     public async Task InitializeAsync()
     {
@@ -47,21 +48,11 @@ public sealed class MediaCatalogJourneyTests : IAsyncLifetime
         {
             services.RemoveAll<IMediaObjectStore>();
             services.RemoveAll<IMediaImageSource>();
-            services.RemoveAll<IContentSafetyAnalyzer>();
-            services.RemoveAll<IOptions<ContentSafetyOptions>>();
+            services.RemoveAll<IAmazonRekognition>();
             var localStore = new LocalS3Store(s3);
             services.AddSingleton<IMediaObjectStore>(localStore);
             services.AddSingleton<IMediaImageSource>(localStore);
-            services.AddSingleton<IContentSafetyAnalyzer>(analyzer);
-            // Deliberate test-only policy; no values are configured as production defaults.
-            services.AddSingleton<IOptions<ContentSafetyOptions>>(Options.Create(new ContentSafetyOptions
-            {
-                AllowControlledTestPolicy = true,
-                MaxHateSeverity = 0,
-                MaxSelfHarmSeverity = 0,
-                MaxSexualSeverity = 0,
-                MaxViolenceSeverity = 0
-            }));
+            services.AddSingleton<IAmazonRekognition>(rekognition);
         });
     }
 
@@ -355,18 +346,17 @@ public sealed class MediaCatalogJourneyTests : IAsyncLifetime
         (await response.Content.ReadAsByteArrayAsync()).Should().HaveCount(10);
     }
 
-    private sealed class LocalAnalyzer : IContentSafetyAnalyzer
+    private sealed class LocalRekognitionClient : AmazonRekognitionClient
     {
-        public Task<IReadOnlyDictionary<string, int>> AnalyzeAsync(byte[] image, CancellationToken ct)
+        public LocalRekognitionClient() : base(new AmazonRekognitionConfig()) { }
+
+        public override async Task<DetectModerationLabelsResponse> DetectModerationLabelsAsync(
+            DetectModerationLabelsRequest request, CancellationToken ct)
         {
-            image.Should().Equal(new byte[] { 0xff, 0xd8, 0xff, 0, 0, 0, 0, 0, 0xff, 0xd9 });
-            return Task.FromResult<IReadOnlyDictionary<string, int>>(new Dictionary<string, int>
-            {
-                ["Hate"] = 0,
-                ["SelfHarm"] = 0,
-                ["Sexual"] = 0,
-                ["Violence"] = 0
-            });
+            using var image = new MemoryStream();
+            await request.Image.Bytes!.CopyToAsync(image, ct);
+            image.ToArray().Should().Equal(new byte[] { 0xff, 0xd8, 0xff, 0, 0, 0, 0, 0, 0xff, 0xd9 });
+            return new DetectModerationLabelsResponse();
         }
     }
 

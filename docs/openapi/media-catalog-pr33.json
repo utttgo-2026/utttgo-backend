@@ -3228,17 +3228,101 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/JsonElement"
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "ingredients": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "price": {
+                    "type": "number"
+                  },
+                  "stock": {
+                    "type": "integer"
+                  },
+                  "mediaAssetId": {
+                    "type": [
+                      "null",
+                      "string"
+                    ],
+                    "description": "Approved Media asset id; null explicitly removes the image."
+                  }
+                },
+                "additionalProperties": false
               }
             },
             "text/json": {
               "schema": {
-                "$ref": "#/components/schemas/JsonElement"
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "ingredients": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "price": {
+                    "type": "number"
+                  },
+                  "stock": {
+                    "type": "integer"
+                  },
+                  "mediaAssetId": {
+                    "type": [
+                      "null",
+                      "string"
+                    ],
+                    "description": "Approved Media asset id; null explicitly removes the image."
+                  }
+                },
+                "additionalProperties": false
               }
             },
             "application/*\u002Bjson": {
               "schema": {
-                "$ref": "#/components/schemas/JsonElement"
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "ingredients": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "price": {
+                    "type": "number"
+                  },
+                  "stock": {
+                    "type": "integer"
+                  },
+                  "mediaAssetId": {
+                    "type": [
+                      "null",
+                      "string"
+                    ],
+                    "description": "Approved Media asset id; null explicitly removes the image."
+                  }
+                },
+                "additionalProperties": false
               }
             }
           },

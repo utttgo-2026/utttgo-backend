@@ -16,7 +16,7 @@ No existe `Modules/Media` ni tests; API-017 es dependencia de registro `PendingU
 |---|---|---|
 | API | `src/UTTTGO.Api/Modules/Media/Controllers/MediaController.cs`, `Contracts/CompleteUploadResponse.cs`, `Validators/AssetIdValidator.cs` | POST, ID, resultado/error aprobado. |
 | Aplicación | `src/UTTTGO.Api/Modules/Media/Application/CompleteUploadService.cs` | Verificar dueño/objeto, moderar y transicionar sin doble aprobación. |
-| Infraestructura | `src/UTTTGO.Api/Modules/Media/Infrastructure/MongoMediaAssetRepository.cs`, `S3MediaObjectStore.cs`, `AzureContentSafetyClient.cs` | CAS `mediaAssets`, HEAD/delete S3, HTTPS Content Safety. |
+| Infraestructura | `src/UTTTGO.Api/Modules/Media/Infrastructure/MongoMediaAssetRepository.cs`, `S3MediaObjectStore.cs`, `RekognitionImageModerator.cs` | CAS `mediaAssets`, HEAD/delete S3 y moderación Rekognition. |
 
 ## Secuencia técnica
 
@@ -31,7 +31,7 @@ Validar JWT y rate limit → buscar `PendingUpload` por assetId/propietario (API
 | Brecha | Archivo | Cambio condicionado |
 |---|---|---|
 | CMP-01/04 | `Modules/Media/Controllers/MediaController.cs`, `Contracts/CompleteUploadResponse.cs`, `Validators/AssetIdValidator.cs`, `Application/CompleteUploadService.cs` | Guard, propiedad y respuesta tras acta. |
-| CMP-01/02/03 | `Modules/Media/Infrastructure/MongoMediaAssetRepository.cs`, `S3MediaObjectStore.cs`, `AzureContentSafetyClient.cs`, `src/UTTTGO.Api/Program.cs` | HEAD/delete/CAS y moderación; DI sin reordenar middleware. |
+| CMP-01/02/03 | `Modules/Media/Infrastructure/MongoMediaAssetRepository.cs`, `S3MediaObjectStore.cs`, `RekognitionImageModerator.cs`, `src/UTTTGO.Api/Program.cs` | HEAD/delete/CAS y moderación; DI sin reordenar middleware. |
 | CMP-01..04 | `tests/UtttGo.UnitTests/CompleteUploadServiceTests.cs`, `tests/UtttGo.IntegrationTests/CompleteUploadEndpointTests.cs`, `tests/UtttGo.SecurityTests/CompleteUploadSecurityTests.cs` | Dobles Content Safety/S3, Mongo/Redis aislados. |
 
 ## Orden de implementación
