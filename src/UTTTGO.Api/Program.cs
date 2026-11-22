@@ -74,6 +74,8 @@ builder.Services.Configure<SupabaseOptions>(options =>
 });
 builder.Services.AddHttpClient<SupabaseAuthClient>(client => client.Timeout = TimeSpan.FromSeconds(10))
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddHttpClient("SupabaseLogout", client => client.Timeout = TimeSpan.FromSeconds(3))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
 builder.Services.AddSingleton<IConnectionMultiplexer>(services =>
 {
     var url = services.GetRequiredService<IOptions<RedisOptions>>().Value.Url;
@@ -129,6 +131,7 @@ builder.Services.AddScoped<ISupabaseLogin>(services => services.GetRequiredServi
 builder.Services.AddSingleton<ILoginProfileRepository>(services => services.GetRequiredService<MongoUserRepositories>());
 builder.Services.AddScoped<ILoginJwtGate, RedisJwtGate>();
 builder.Services.AddScoped<ILogoutService, LogoutService>();
+builder.Services.AddScoped<ISupabaseSessionRevoker, SupabaseSessionRevoker>();
 builder.Services.AddSingleton<IJwtRevocationStore, RedisJwtRevocationStore>();
 builder.Services.AddScoped<IValidatedJwtSubjectReader, ValidatedJwtSubjectReader>();
 builder.Services.AddScoped<ISupabaseSessionIdentity>(services => services.GetRequiredService<SupabaseAuthClient>());

@@ -5,7 +5,8 @@ namespace UTTTGO.Api.Modules.Identity.Application;
 
 public sealed class LogoutService(
     ILoginJwtGate jwtGate,
-    IJwtRevocationStore revocations) : ILogoutService
+    IJwtRevocationStore revocations,
+    ISupabaseSessionRevoker supabase) : ILogoutService
 {
     public async Task<LogoutResult> LogoutAsync(string token, CancellationToken cancellationToken)
     {
@@ -34,13 +35,15 @@ public sealed class LogoutService(
 
         try
         {
-            return await revocations.TryRevokeAsync(revocationId, ttl, cancellationToken)
-                ? new(LogoutOutcome.Success)
-                : new(LogoutOutcome.Unauthorized);
+            if (!await revocations.TryRevokeAsync(revocationId, ttl, cancellationToken))
+                return new(LogoutOutcome.Unauthorized);
         }
         catch (ExternalDependencyUnavailableException)
         {
             return new(LogoutOutcome.Unavailable);
         }
+
+        await supabase.RevokeGloballyAsync(token, cancellationToken);
+        return new(LogoutOutcome.Success);
     }
 }
