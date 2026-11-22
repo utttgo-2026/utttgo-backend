@@ -1,6 +1,6 @@
 # API-003 — Cerrar sesión · plan
 
-Estado de aprobación de la ficha: PENDIENTE
+Estado de aprobación de la ficha: APROBADA por instrucción del propietario, 2026-11-21
 
 ## Autoridad y alcance
 
@@ -21,7 +21,7 @@ Dueño Identity. Reutilizar gate JWT de API-002/004 y `RedisJwtGate`; falta escr
 
 ## Secuencia técnica
 
-Resolver DF02-04 y contrato → validar Bearer/JWT con gate compartido → decidir comportamiento de token repetido → escribir revocación Redis con TTL → coordinar refresh si procede → responder solo tras éxito; ante caída devolver error sin afirmar logout. No registrar tokens.
+Validar Bearer/JWT con gate compartido → escribir revocación Redis con `SET NX` y TTL hasta `exp` → responder `204` solo tras éxito; ante caída devolver `503` sin afirmar logout. No registrar tokens ni implementar refresh.
 
 ## Componentes reutilizables del Bloque 1
 
@@ -36,7 +36,7 @@ Resolver DF02-04 y contrato → validar Bearer/JWT con gate compartido → decid
 
 ## Orden de implementación
 
-DEV-API003-01 decide HTTP/refresh; DEV-API003-02 crea escritor y ruta; DEV-API003-03 verifica Redis y seguridad en contenedores no productivos; DEV-API003-04 implementa solo la coordinación de refresh que el acta seleccione. No crear alias.
+DEV-API003-01 queda resuelta por la aprobación del propietario; DEV-API003-02 crea escritor y ruta; DEV-API003-03 verifica Redis y seguridad en contenedores no productivos; DEV-API003-04 no aplica porque no se implementa refresh. No crear alias.
 
 ## Dependencias y bloqueos
 

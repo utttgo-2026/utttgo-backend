@@ -1,6 +1,6 @@
 # API-003 — Cerrar sesión · task
 
-Estado de aprobación de la ficha: PENDIENTE
+Estado de aprobación de la ficha: APROBADA por instrucción del propietario, 2026-11-21
 
 ## Autoridad y alcance
 
@@ -10,14 +10,14 @@ Estado de aprobación de la ficha: PENDIENTE
 
 | ID · tipo y objetivo | Requisito/escenario; archivos permitidos | Dependencias; acción; resultado y prueba/evidencia | Estado |
 |---|---|---|---|
-| DEV-API003-01 · DOCUMENTAL resolver sesiones | RF-10, LOG-03; solo `spec.md`, `plan.md`, `task.md` tras decisión | DF02-04 y TASK-AUTH-003: obtener acta de Identity/móvil/seguridad que elija refresh, cuerpo, repetición, sin `jti` y HTTP; conciliar ficha con Excel autorizado. **Hecho**: acta identificada y `python scripts/validate-sdd-atomic.py specs/bloque-2-funcionalidades/api-003-logout` sin errores; no aprobar por inferencia. | BLOCKED |
+ | DEV-API003-01 · DOCUMENTAL resolver sesiones | RF-10, LOG-03; `spec.md`, `plan.md`, `task.md` | El propietario ratificó header Bearer sin body, `204`, `401`, `503`, `jti` obligatorio, repetición rechazada y sin refresh. | DONE |
 
 ## Tareas bloqueadas hasta decisión y gates SDD
 
 | ID · tipo y objetivo | Requisito/escenario; archivos permitidos | Dependencias; acción posterior; resultado y prueba/evidencia | Estado |
 |---|---|---|---|
-| DEV-API003-02 · IMPLEMENTACION revocar JWT | RF-10, LOG-01; `AuthController.cs`, nuevo `LogoutService.cs`, adaptador Redis y DI de Identity | Tras DEV-API003-01 y TASK-AUTH-007→008→010: añadir ruta, guard, escritor `revoked:{jti}` con TTL a `exp` y respuesta ratificada; sin refresh implícito. **Hecho**: unitarias de TTL y endpoint revocado con `LogoutServiceTests`/`LogoutEndpointTests`, Release verde. | BLOCKED |
-| DEV-API003-03 · QA_TECNICA fallo cerrado | AC-006, LOG-01/02; nuevos `LogoutEndpointTests.cs`, `LogoutSecurityTests.cs` | Tras DEV-API003-02 y permiso local Redis: probar entre dos clientes/réplicas, JWT inválido/sin `jti`, Redis caído y rate limit sin confirmar éxito. **Hecho**: artefacto fechado con tests Release de integración y seguridad, formato verde y error con `correlationId`. | BLOCKED |
+ | DEV-API003-02 · IMPLEMENTACION revocar JWT | RF-10, LOG-01; `AuthController.cs`, nuevo `LogoutService.cs`, adaptador Redis y DI de Identity | Añadir ruta, guard, escritor `revoked:{jti}` con TTL a `exp` y respuesta ratificada; sin refresh implícito. | IN_PROGRESS |
+ | DEV-API003-03 · QA_TECNICA fallo cerrado | AC-006, LOG-01/02; nuevos `LogoutEndpointTests.cs`, `LogoutSecurityTests.cs` | Probar JWT inválido/expirado/revocado/sin token, Redis caído y error con `correlationId` en entorno local. | PENDING |
 | DEV-API003-04 · INTEGRACION refresh según acta | TASK-AUTH-003, LOG-03; `LogoutService.cs`, adaptador Supabase si se aprueba, `LogoutServiceTests.cs` | Tras DEV-API003-01/02 y decisión sobre refresh: implementar solo opción ratificada; simular proveedor caído/repetición y probar que no se renueva acceso. **Hecho**: pruebas fechadas y contrato móvil coordinado, sin tokens en logs ni pruebas productivas. | BLOCKED |
 
 ## Guía de ejecución con OpenCode

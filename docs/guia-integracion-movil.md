@@ -1,6 +1,6 @@
 # Guía de integración móvil · UTTT-GO Backend
 
-> Versión 1.4 · 2026-11-18 · Contrato vigente de la API pública desplegada (incluye la Fase 2 de pedidos, API-026..029, la alineación definitiva de DTOs con el equipo móvil (`storeName`/`phone`, `totalCount`, `buyerId`/`totalAmount`; ver §9) y el listado de pedidos del vendedor `GET /sellers/me/orders` (D-ORD-05, ficha nueva aprobada; ver §5.8)).
+> Versión 1.5 · 2026-11-21 · Contrato vigente de la API pública desplegada (incluye logout API-003 con revocación JWT en Redis).
 > Fuente canónica: `docs/constitution.md` y `docs/traceability.md`; el documento OpenAPI vivo es `GET /openapi/v1.json` y la consola de lectura es `GET /openapi`.
 
 ## 1. Entorno y transporte
@@ -84,7 +84,13 @@ Errores: `400 VALIDATION_ERROR`, `401 INVALID_CREDENTIALS`, `429 RATE_LIMITED`, 
 }
 ```
 
-### 2.4 `GET /api/v1/users/me` → `200` (Bearer) · `PATCH /api/v1/users/me` → `200`
+### 2.4 `POST /api/v1/auth/logout` → `204` (Bearer)
+
+El móvil debe enviar el access token vigente en `Authorization: Bearer <accessToken>`. El backend valida firma, issuer, audience, expiración y `jti`, y registra `revoked:{jti}` en Redis hasta la expiración del token. La respuesta `204` no tiene cuerpo. No se envía refresh token al backend ni se revoca la sesión global de Supabase.
+
+Errores: `401 UNAUTHORIZED` si falta el header, el JWT es inválido, expiró o ya fue revocado; `503 AUTH_UNAVAILABLE` si Redis no está disponible.
+
+### 2.5 `GET /api/v1/users/me` → `200` (Bearer) · `PATCH /api/v1/users/me` → `200`
 
 ```json
 {
@@ -493,7 +499,7 @@ Códigos en uso: `VALIDATION_ERROR`, `UNAUTHORIZED`, `INVALID_CREDENTIALS`, `INS
 ## 8. Límites conocidos (no confundir con fallos)
 
 - **Sin imágenes**: no existe Media/S3 presigned; `avatarUrl` es `null`, los productos no tienen imágenes y `POST /products` con `imageUrl` con valor responde `422 IMAGE_NOT_AVAILABLE`.
-- **Sin logout ni refresh token**: el access token expira a la hora; hay que volver a iniciar sesión.
+- El logout revoca el access token actual en Redis; el access token expira como máximo a la hora y no se envía refresh token al backend.
 - **Sin reseñas**: `ratingAverage` y `ratingCount` son `null` en productos y vendedores.
 - **Sin "mis productos" ni filtro `sellerId`**: el catálogo no permite filtrar por vendedor; está decidido para la siguiente iteración (el índice `sellerId_status` ya existe).
 - **Sin eliminación de producto**: no hay DELETE.

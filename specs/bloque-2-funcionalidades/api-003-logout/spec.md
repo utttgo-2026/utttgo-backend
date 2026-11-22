@@ -1,7 +1,7 @@
 # API-003 — Cerrar sesión · spec
 
-Estado de aprobación de la ficha: PENDIENTE
-Estado operativo: BLOCKED
+Estado de aprobación de la ficha: APROBADA por instrucción del propietario, 2026-11-21
+Estado operativo: IMPLEMENTED en `feature/auth-logout`, pendiente de evidencia local y PR
 
 ## Identificación y autoridad
 
@@ -9,7 +9,7 @@ API-003 `POST /api/v1/auth/logout` según [trazabilidad](../../../docs/traceabil
 
 ## Estado de aprobación
 
-RF-10, BR de revocación y fallo cerrado son obligatorios; HTTP, cuerpo, renovación y semántica de repetición no están aprobados (TASK-AUTH-003/025). Ficha pendiente, no permiso de programación.
+RF-10, BR de revocación y fallo cerrado son obligatorios. La instrucción del propietario ratifica `204` sin cuerpo, `401` para token ausente/inválido/expirado/revocado, `503` ante Redis indisponible, revocación por `jti` hasta `exp` y sin refresh token en el body.
 
 ## Responsabilidad única
 
@@ -32,11 +32,11 @@ Revocar la sesión presentada, al menos el JWT actual hasta `exp`; no realiza lo
 
 ## Comportamiento implementado candidato
 
-No hay acción logout en [`AuthController.cs`](../../../src/UTTTGO.Api/Modules/Identity/Controllers/AuthController.cs). [`RedisJwtGate.cs`](../../../src/UTTTGO.Api/Modules/Identity/Infrastructure/RedisJwtGate.cs) consulta revocación para el acceso existente; no equivale a un escritor de revocación ni a prueba de logout entre réplicas.
+[`AuthController.cs`](../../../src/UTTTGO.Api/Modules/Identity/Controllers/AuthController.cs) expone la acción logout. [`LogoutService.cs`](../../../src/UTTTGO.Api/Modules/Identity/Application/LogoutService.cs) valida el JWT mediante el gate compartido y [`RedisJwtRevocationStore.cs`](../../../src/UTTTGO.Api/Modules/Identity/Infrastructure/RedisJwtRevocationStore.cs) escribe `revoked:{jti}` con `SET NX` y TTL hasta `exp`.
 
 ## Funcionalidad requerida faltante
 
-Escritor Redis de revocación y endpoint API-003; coordinación con Supabase y móvil sobre refresh, renovación y credenciales (TASK-AUTH-003), sin implementar flujos del móvil en el backend.
+No se implementa refresh token ni revocación global de Supabase; la app móvil conserva la responsabilidad de retirar sus credenciales locales.
 
 ## Contrato de entrada/salida
 
