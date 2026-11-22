@@ -35,6 +35,8 @@ public sealed class RateLimitingOptions
     public RateLimitPolicy OrderCancel { get; set; } = new();
     public RateLimitPolicy OrderDeliveryToken { get; set; } = new();
     public RateLimitPolicy OrderDeliveryConfirm { get; set; } = new();
+    public RateLimitPolicy MediaUpload { get; set; } = new();
+    public RateLimitPolicy MediaConfirm { get; set; } = new();
 }
 
 public sealed class RedisRateLimiter(IServiceProvider services, IOptionsMonitor<RateLimitingOptions> options,
@@ -81,6 +83,8 @@ public sealed class RedisRateLimiter(IServiceProvider services, IOptionsMonitor<
                 "order-cancel" => policies.OrderCancel,
                 "order-delivery-token" => policies.OrderDeliveryToken,
                 "order-delivery-confirm" => policies.OrderDeliveryConfirm,
+                "media-upload" => policies.MediaUpload,
+                "media-confirm" => policies.MediaConfirm,
                 _ => throw new InvalidOperationException("Unknown rate limit policy.")
             };
             if (policy.Limit <= 0 || policy.WindowSeconds <= 0 || string.IsNullOrWhiteSpace(partition))

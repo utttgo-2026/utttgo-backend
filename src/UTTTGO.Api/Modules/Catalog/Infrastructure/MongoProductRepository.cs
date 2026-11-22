@@ -69,6 +69,7 @@ public sealed class MongoProductRepository(MongoStore store) : IProductRepositor
             Description = product.Description,
             Ingredients = product.Ingredients,
             CategoryId = product.CategoryId,
+            MediaAssetId = product.MediaAssetId,
             Price = product.Price,
             Stock = product.Stock,
             Status = ProductAvailability.Active,
@@ -107,6 +108,8 @@ public sealed class MongoProductRepository(MongoStore store) : IProductRepositor
             updates.Add(Builders<ProductDocument>.Update.Set(product => product.Price, changes.Price!.Value));
         if (changes.HasStock)
             updates.Add(Builders<ProductDocument>.Update.Set(product => product.Stock, changes.Stock!.Value));
+        if (changes.HasMediaAssetId)
+            updates.Add(Builders<ProductDocument>.Update.Set(product => product.MediaAssetId, changes.MediaAssetId));
 
         var updated = await Products.FindOneAndUpdateAsync(filter,
             Builders<ProductDocument>.Update.Combine(updates),
@@ -157,5 +160,5 @@ public sealed class MongoProductRepository(MongoStore store) : IProductRepositor
     private static ProductRecord ToRecord(ProductDocument product) =>
         new(product.Id.ToString(), product.SellerId, product.Name, product.Description,
             product.Ingredients, product.CategoryId, product.Price, product.Stock, product.Status,
-            product.Version, product.CreatedAt, product.UpdatedAt);
+            product.Version, product.CreatedAt, product.UpdatedAt, product.MediaAssetId);
 }

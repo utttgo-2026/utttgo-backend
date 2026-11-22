@@ -1,0 +1,74 @@
+namespace UTTTGO.Api.Modules.Media.Application;
+
+public static class MediaStatus
+{
+    public const string PendingUpload = "PendingUpload";
+    public const string PendingModeration = "PendingModeration";
+    public const string Approved = "Approved";
+    public const string Rejected = "Rejected";
+    public const string ProcessingFailed = "ProcessingFailed";
+}
+
+public sealed record MediaRecord(string Id, string OwnerUserId, string ObjectKey, string MimeType,
+    long Size, string Status, DateTime CreatedAt, DateTime? ConfirmedAt = null, long Version = 0,
+    DateTime? ModerationStartedAt = null);
+
+public interface IMediaRepository
+{
+    Task AddAsync(MediaRecord record, CancellationToken cancellationToken);
+    Task<MediaRecord?> FindAsync(string id, CancellationToken cancellationToken);
+    Task<bool> TransitionAsync(string id, string ownerId, long version, string from, string to,
+        CancellationToken cancellationToken);
+}
+
+public sealed record MediaReadUrl(string Url, DateTime ExpiresAt);
+
+// Owned by Media. Catalog must not access mediaAssets or construct S3 URLs.
+public interface IProductMediaAccess
+{
+    Task<bool> IsApprovedForOwnerAsync(string mediaAssetId, string ownerUserId,
+        CancellationToken cancellationToken);
+    Task<MediaReadUrl?> GetApprovedReadUrlAsync(string mediaAssetId, CancellationToken cancellationToken);
+
+    async Task<IReadOnlyDictionary<string, MediaReadUrl>> GetApprovedReadUrlsAsync(
+        IEnumerable<string> mediaAssetIds, CancellationToken cancellationToken)
+    {
+        var results = await Task.WhenAll(mediaAssetIds.Distinct(StringComparer.Ordinal)
+            .Select(async id => (Id: id, Url: await GetApprovedReadUrlAsync(id, cancellationToken))));
+        return results.Where(item => item.Url is not null)
+            .ToDictionary(item => item.Id, item => item.Url!, StringComparer.Ordinal);
+    }
+}
+
+public interface IMediaObjectStore
+{
+    Task<(string Url, DateTime ExpiresAt, IReadOnlyDictionary<string, string> Headers)> SignPutAsync(
+        string key, string mime, CancellationToken cancellationToken);
+    Task<(long Length, string Mime)?> HeadAsync(string key, CancellationToken cancellationToken);
+    Task<MediaReadUrl> SignGetAsync(string key, CancellationToken cancellationToken);
+    Task DeleteAsync(string key, CancellationToken cancellationToken);
+}
+
+// Moderation reads the staging object server-side; the client never supplies bytes or a URL.
+public interface IMediaImageSource
+{
+    Task<byte[]> ReadForModerationAsync(string objectKey, string expectedMime, long expectedSize,
+        CancellationToken cancellationToken);
+}
+
+public interface IContentSafetyAnalyzer
+{
+    Task<IReadOnlyDictionary<string, int>> AnalyzeAsync(byte[] image, CancellationToken cancellationToken);
+}
+
+public interface IImageModerator
+{
+    // No configured provider or provider error must never yield true.
+    Task<bool> IsSafeAsync(string objectKey, string mime, long size, CancellationToken cancellationToken);
+}
+
+public sealed class UnconfiguredImageModerator : IImageModerator
+{
+    public Task<bool> IsSafeAsync(string objectKey, string mime, long size, CancellationToken cancellationToken) =>
+        throw new InvalidOperationException("Content Safety is not configured.");
+}

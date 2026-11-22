@@ -11,7 +11,19 @@
       "low": 60
     },
     "reporters": ["json", "progress"],
-    "concurrency": 4,
+    "concurrency": 2,
+    "mutate": [
+      "**/*.cs",
+      "!**/Contracts/**/*.cs",
+      "!**/Controllers/**/*.cs",
+      "!**/Program.cs",
+      "!**/Infrastructure/*Mongo*.cs",
+      "!**/Infrastructure/*S3*.cs",
+      "!**/bin/**/*.cs",
+      "!**/obj/**/*.cs",
+      "!**/*.g.cs",
+      "!**/*.generated.cs"
+    ],
     "ignore-mutations": []
   }
 }

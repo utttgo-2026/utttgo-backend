@@ -85,6 +85,6 @@ public class PresignedUrlRequestValidatorTests
         // Assert
         result.IsValid.Should().BeFalse();
         result.Errors.Should().HaveCount(1);
-        result.Errors[0].ErrorMessage.Should().Contain("5 MB");
+        result.Errors[0].ErrorMessage.Should().Contain("4 MB");
     }
 }

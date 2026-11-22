@@ -42,10 +42,10 @@ internal sealed class EndToEndHost : IAsyncDisposable
 
     private readonly MongoDbContainer mongo;
     private readonly RedisContainer redis;
-    private readonly WebApplicationFactory<Program> factory;
+    private readonly Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactory<Program> factory;
 
     private EndToEndHost(MongoDbContainer mongo, RedisContainer redis,
-        WebApplicationFactory<Program> factory)
+        Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactory<Program> factory)
     {
         this.mongo = mongo;
         this.redis = redis;
@@ -64,13 +64,13 @@ internal sealed class EndToEndHost : IAsyncDisposable
 
     public IMongoDatabase Database { get; }
 
-    public static async Task<EndToEndHost> StartAsync()
+    public static async Task<EndToEndHost> StartAsync(Action<IServiceCollection>? configureServices = null)
     {
         for (var attempt = 1; attempt <= StartAttempts; attempt++)
         {
             try
             {
-                return await StartOnceAsync();
+                return await StartOnceAsync(configureServices);
             }
             catch (Exception) when (attempt < StartAttempts)
             {
@@ -81,9 +81,10 @@ internal sealed class EndToEndHost : IAsyncDisposable
         throw new InvalidOperationException("The end-to-end host could not be started.");
     }
 
-    public static async Task<EndToEndHost> StartWithCatalogSeedAsync()
+    public static async Task<EndToEndHost> StartWithCatalogSeedAsync(
+        Action<IServiceCollection>? configureServices = null)
     {
-        var host = await StartAsync();
+        var host = await StartAsync(configureServices);
         try
         {
             await SeedCatalogAsync(host);
@@ -104,7 +105,7 @@ internal sealed class EndToEndHost : IAsyncDisposable
         await mongo.DisposeAsync();
     }
 
-    private static async Task<EndToEndHost> StartOnceAsync()
+    private static async Task<EndToEndHost> StartOnceAsync(Action<IServiceCollection>? configureServices)
     {
         var mongo = BuildMongoContainer();
         var redis = BuildRedisContainer();
@@ -121,8 +122,8 @@ internal sealed class EndToEndHost : IAsyncDisposable
             await WaitForRedisAsync(redisHost, redisPort);
 
             var auth = new EndToEndAuthDoubles();
-            var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
-                builder.ConfigureTestServices(services =>
+            var factory = new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactory<Program>()
+                .WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
                 {
                     services.RemoveAll<IOptions<MongoOptions>>();
                     services.AddSingleton<IOptions<MongoOptions>>(Options.Create(new MongoOptions
@@ -143,6 +144,7 @@ internal sealed class EndToEndHost : IAsyncDisposable
                     services.AddSingleton<ILoginJwtGate>(auth);
                     services.RemoveAll<ISupabaseSessionIdentity>();
                     services.AddSingleton<ISupabaseSessionIdentity>(auth);
+                    configureServices?.Invoke(services);
                 }));
 
             return new EndToEndHost(mongo, redis, factory);
