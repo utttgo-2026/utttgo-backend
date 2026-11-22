@@ -22,7 +22,7 @@ public sealed record LocalLoginProfile(string Id, string SupabaseUserId, string 
     string AccountStatus, IReadOnlyList<string> Roles, string? DisplayName = null,
     string? Phone = null, string? AvatarMediaAssetId = null, long Version = 0, string? SellerId = null);
 
-// A real adapter must validate JWT signature, issuer, audience, expiry, jti/session_id and Redis blacklist.
+// A real adapter must validate JWT signature, issuer, audience, expiry and the shared Redis blacklist identifier.
 public interface ILoginJwtGate
 {
     Task<bool> IsValidAndNotRevokedAsync(string token, string subject, CancellationToken cancellationToken);

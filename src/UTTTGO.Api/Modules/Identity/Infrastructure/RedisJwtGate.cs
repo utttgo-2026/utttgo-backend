@@ -42,8 +42,7 @@ public sealed class RedisJwtGate(IServiceProvider services, IOptions<SupabaseJwt
 
         if (untrusted.Header.Alg != (jwks ? SecurityAlgorithms.RsaSha256 : SecurityAlgorithms.HmacSha256) &&
             !(jwks && untrusted.Header.Alg == SecurityAlgorithms.EcdsaSha256)) return false;
-        if (RevocationId(untrusted) is null ||
-            !untrusted.Payload.ContainsKey("exp") || string.IsNullOrWhiteSpace(untrusted.Payload.Sub)) return false;
+        if (!untrusted.Payload.ContainsKey("exp") || string.IsNullOrWhiteSpace(untrusted.Payload.Sub)) return false;
 
         IEnumerable<SecurityKey> signingKeys;
         if (jwks)
@@ -84,8 +83,8 @@ public sealed class RedisJwtGate(IServiceProvider services, IOptions<SupabaseJwt
             var principal = handler.ValidateToken(token, parameters, out var validated);
             if (validated is not JwtSecurityToken signed ||
                 !string.Equals(signed.Payload.Sub, subject, StringComparison.Ordinal) ||
-                !string.Equals(principal.FindFirst("sub")?.Value, subject, StringComparison.Ordinal) ||
-                RevocationId(signed) is not { } revocationId) return false;
+                !string.Equals(principal.FindFirst("sub")?.Value, subject, StringComparison.Ordinal)) return false;
+            var revocationId = JwtRevocationIdentifier.For(signed, token);
             try
             {
                 return !await services.GetRequiredService<IConnectionMultiplexer>().GetDatabase()
@@ -106,10 +105,4 @@ public sealed class RedisJwtGate(IServiceProvider services, IOptions<SupabaseJwt
         }
     }
 
-    private static string? RevocationId(JwtSecurityToken token)
-    {
-        if (!string.IsNullOrWhiteSpace(token.Payload.Jti)) return token.Payload.Jti;
-        return token.Payload.TryGetValue("session_id", out var value) &&
-            value is string sessionId && !string.IsNullOrWhiteSpace(sessionId) ? sessionId : null;
-    }
 }

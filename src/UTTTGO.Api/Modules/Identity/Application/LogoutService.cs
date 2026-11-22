@@ -20,10 +20,10 @@ public sealed class LogoutService(
         }
 
         var subject = parsed.Payload.Sub;
-        var jti = parsed.Payload.Jti;
-        if (string.IsNullOrWhiteSpace(subject) || string.IsNullOrWhiteSpace(jti) ||
-            parsed.Payload.Expiration is not { } expiration)
+        if (string.IsNullOrWhiteSpace(subject) || parsed.Payload.Expiration is not { } expiration)
             return new(LogoutOutcome.Unauthorized);
+
+        var revocationId = JwtRevocationIdentifier.For(parsed, token);
 
         if (!await jwtGate.IsValidAndNotRevokedAsync(token, subject, cancellationToken))
             return new(LogoutOutcome.Unauthorized);
@@ -34,7 +34,7 @@ public sealed class LogoutService(
 
         try
         {
-            return await revocations.TryRevokeAsync(jti, ttl, cancellationToken)
+            return await revocations.TryRevokeAsync(revocationId, ttl, cancellationToken)
                 ? new(LogoutOutcome.Success)
                 : new(LogoutOutcome.Unauthorized);
         }
