@@ -74,7 +74,12 @@ public sealed class RekognitionImageModeratorTests
         public DetectModerationLabelsRequest? Request { get; private set; }
         public DetectModerationLabelsResponse Response { get; set; } = new();
 
-        public FakeRekognitionClient() : base(new AmazonRekognitionConfig()) { }
+        public FakeRekognitionClient() : base(new AmazonRekognitionConfig
+        {
+            RegionEndpoint = Amazon.RegionEndpoint.USEast2
+        })
+        {
+        }
 
         public override Task<DetectModerationLabelsResponse> DetectModerationLabelsAsync(
             DetectModerationLabelsRequest request, CancellationToken cancellationToken)
