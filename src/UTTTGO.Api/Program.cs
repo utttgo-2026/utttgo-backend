@@ -166,7 +166,9 @@ builder.Services.AddScoped<IValidator<ProductListQuery>, ProductListQueryValidat
 builder.Services.AddScoped<IValidator<CreateProductRequest>, CreateProductRequestValidator>();
 builder.Services.AddScoped<IValidator<UpdateProductRequest>, UpdateProductRequestValidator>();
 builder.Services.AddScoped<IValidator<UpdateProductAvailabilityRequest>, UpdateProductAvailabilityRequestValidator>();
-builder.Services.AddSingleton<IProductRepository, MongoProductRepository>();
+builder.Services.AddSingleton<MongoProductRepository>();
+builder.Services.AddSingleton<IProductRepository>(services =>
+    services.GetRequiredService<MongoProductRepository>());
 builder.Services.AddSingleton<IAccountDeletionCatalog>(services =>
     services.GetRequiredService<MongoProductRepository>());
 builder.Services.AddSingleton<ICategoryRepository, MongoCategoryRepository>();
@@ -209,7 +211,9 @@ builder.Services.AddScoped<IValidator<ConfirmRequest>, ConfirmRequestValidator>(
 builder.Services.AddScoped<IValidator<OrderListQuery>, OrderListQueryValidator>();
 builder.Services.AddScoped<IValidator<UpdateOrderStatusRequest>, UpdateOrderStatusRequestValidator>();
 builder.Services.AddScoped<IValidator<DeliveryConfirmationRequest>, DeliveryConfirmationRequestValidator>();
-builder.Services.AddSingleton<IOrderRepository, MongoOrderRepository>();
+builder.Services.AddSingleton<MongoOrderRepository>();
+builder.Services.AddSingleton<IOrderRepository>(services =>
+    services.GetRequiredService<MongoOrderRepository>());
 builder.Services.AddSingleton<IActiveOrderReader>(services => services.GetRequiredService<MongoOrderRepository>());
 builder.Services.AddSingleton<IOrderAuditWriter, MongoOrderAuditWriter>();
 builder.Services.AddScoped<IOrdersRateLimitGate, RedisOrdersRateLimitGate>();
