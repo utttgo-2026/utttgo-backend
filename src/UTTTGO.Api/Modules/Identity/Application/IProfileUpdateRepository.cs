@@ -12,3 +12,12 @@ public interface IProfileUpdateRepository
 public enum ProfileUpdateOutcome { Updated, Conflict, Missing }
 
 public sealed record ProfileUpdateResult(ProfileUpdateOutcome Outcome, LocalLoginProfile? Profile = null);
+
+public interface IAccountDeletionRepository
+{
+    Task<AccountDeletionResult> DeleteOwnAsync(string subject, string localId, long expectedVersion,
+        string deletedUserRef, CancellationToken cancellationToken);
+}
+
+public enum AccountDeletionOutcome { Deleted, AlreadyDeleted, Missing, Conflict }
+public sealed record AccountDeletionResult(AccountDeletionOutcome Outcome, LocalLoginProfile? Profile = null);

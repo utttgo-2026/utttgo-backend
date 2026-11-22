@@ -36,6 +36,9 @@ public sealed class UserDocument
     [BsonElement("version")]
     public long Version { get; set; }
 
+    [BsonElement("deletedUserRef")]
+    public string? DeletedUserRef { get; set; }
+
     [BsonElement("createdAt")]
     [BsonDateTimeOptions(Kind = DateTimeKind.Utc)]
     public DateTime CreatedAt { get; set; }

@@ -1,6 +1,6 @@
 # API-005 — Eliminar cuenta propia · plan
 
-Estado de aprobación de la ficha: PENDIENTE DE APROBACIÓN
+Estado de aprobación de la ficha: APROBADA
 
 ## Autoridad y alcance
 
@@ -21,7 +21,7 @@ Estado de aprobación de la ficha: PENDIENTE DE APROBACIÓN
 
 ## Secuencia técnica
 
-Propuesta DEV-API005-01: resolver DEC-003 con baja lógica `Deleted`, anonimización de perfil, `deletedUserRef` para pedidos/reseñas, bloqueo por pedidos activos, productos del vendedor en `Paused`, revocación Redis compartida con API-003 y deshabilitación mediante Supabase Admin API. La propuesta queda bloqueada hasta aprobar secreto privilegiado, contratos de módulos dueños, consistencia/idempotencia y tratamiento de fallos parciales. Después: validar sujeto con gate Identity → preflight de contratos dueños → coordinar cambios idempotentes → revocar sesión → deshabilitar Supabase → confirmar solo con criterio aprobado.
+DEV-API005-01 queda aprobado el 2026-11-22 con baja lógica `Deleted`, anonimización de perfil, `deletedUserRef` UUID, bloqueo por pedidos activos, productos del vendedor no disponibles, revocación Redis compartida con API-003 y logout global de Supabase best-effort. La secuencia implementada es: validar sujeto con gate Identity → consultar pedidos activos → anonimizar en Mongo con CAS → pausar productos mediante Catalog → revocar sesión en Redis → llamar logout global de Supabase → confirmar `204`. Cada paso local es idempotente; un reintento con perfil `Deleted` continúa los pasos pendientes. Mongo o Redis fallidos devuelven `503` fail-closed.
 
 ## Componentes reutilizables del Bloque 1
 
@@ -43,9 +43,9 @@ DEV-API005-01 decide privacidad/orden y contrato; DEV-API005-02 crea coordinaci�
 
 | Gate | Tarea | Evidencia |
 |---|---|---|
-| DEC-003, AC-007 | DEV-API005-01/02/03/04 | Esta ficha contiene una propuesta; falta aprobación de privacidad/negocio sobre datos compartidos, pedidos activos, secretos, consistencia y fallos. |
-| Contratos de módulos dueños/API-003 | DEV-API005-03/04 | Interfaces versionadas y pruebas locales de borrado/revocación. |
-| TASK-AUTH-007→008→010 | DEV-API005-02/03/04 | Aprobación equipo/delegación y ficha identificable. |
+| DEC-003, AC-007 | DEV-API005-01/02/03/04 | DEV-API005-01 aprobado el 2026-11-22; contratos mínimos Orders/Catalog publicados y evidencia de contenedores pendiente. |
+| Contratos de módulos dueños/API-003 | DEV-API005-03/04 | `IActiveOrderReader` e `IAccountDeletionCatalog` publicados; pruebas aisladas pendientes. |
+| TASK-AUTH-007→008→010 | DEV-API005-02/03/04 | Se usa el gate JWT/Redis existente; no se usa service_role ni Admin API. |
 
 ## Estrategia de pruebas
 

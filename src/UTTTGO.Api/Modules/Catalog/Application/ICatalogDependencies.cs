@@ -14,6 +14,12 @@ public interface IProductRepository
         string status, CancellationToken cancellationToken);
 }
 
+// Identity requests only this owner operation; it must not depend on the full product repository.
+public interface IAccountDeletionCatalog
+{
+    Task PauseProductsForSellerAsync(string sellerId, CancellationToken cancellationToken);
+}
+
 // The Catalog module owns the categories collection as well.
 public interface ICategoryRepository
 {

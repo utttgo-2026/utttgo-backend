@@ -5,7 +5,7 @@ using UTTTGO.Api.Shared.Infrastructure;
 
 namespace UTTTGO.Api.Modules.Orders.Infrastructure;
 
-public sealed class MongoOrderRepository(MongoStore store) : IOrderRepository
+public sealed class MongoOrderRepository(MongoStore store) : IOrderRepository, IActiveOrderReader
 {
     private IMongoCollection<OrderDocument> Orders =>
         store.Database.GetCollection<OrderDocument>("orders");
@@ -54,6 +54,19 @@ public sealed class MongoOrderRepository(MongoStore store) : IOrderRepository
         if (!ObjectId.TryParse(orderId, out var id)) return null;
         var document = await Orders.Find(item => item.Id == id).FirstOrDefaultAsync(cancellationToken);
         return document is null ? null : ToRecord(document);
+    }
+
+    public Task<bool> HasActiveOrdersAsync(string buyerUserId, string? sellerId,
+        CancellationToken cancellationToken)
+    {
+        var filter = Builders<OrderDocument>.Filter.In(item => item.Status,
+            new[] { "Pending", "Accepted", "InPreparation", "Ready" });
+        filter &= Builders<OrderDocument>.Filter.Or(
+            Builders<OrderDocument>.Filter.Eq(item => item.BuyerUserId, buyerUserId),
+            string.IsNullOrWhiteSpace(sellerId)
+                ? Builders<OrderDocument>.Filter.Exists(item => item.SellerId, false)
+                : Builders<OrderDocument>.Filter.Eq(item => item.SellerId, sellerId));
+        return Orders.Find(filter).Limit(1).AnyAsync(cancellationToken);
     }
 
     public async Task<OrderRecord?> FindByIdempotencyKeyAsync(string buyerUserId, string idempotencyKey,

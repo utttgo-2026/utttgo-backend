@@ -20,6 +20,8 @@ public sealed class OpenApiEndpointTests
         using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         body.RootElement.GetProperty("openapi").GetString().Should().StartWith("3.");
         body.RootElement.GetProperty("paths").TryGetProperty("/api/v1/auth/login", out _).Should().BeTrue();
+        body.RootElement.GetProperty("paths").GetProperty("/api/v1/users/me")
+            .TryGetProperty("delete", out _).Should().BeTrue();
     }
 
     [Fact]
