@@ -348,7 +348,12 @@ public sealed class MediaCatalogJourneyTests : IAsyncLifetime
 
     private sealed class LocalRekognitionClient : AmazonRekognitionClient
     {
-        public LocalRekognitionClient() : base(new AmazonRekognitionConfig()) { }
+        public LocalRekognitionClient() : base(new AmazonRekognitionConfig
+        {
+            RegionEndpoint = Amazon.RegionEndpoint.USEast2
+        })
+        {
+        }
 
         public override async Task<DetectModerationLabelsResponse> DetectModerationLabelsAsync(
             DetectModerationLabelsRequest request, CancellationToken ct)

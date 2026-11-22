@@ -233,7 +233,12 @@ public sealed class MediaSecurityTests : IAsyncLifetime
     private sealed class FailingRekognitionClient : AmazonRekognitionClient
     {
         public int Calls;
-        public FailingRekognitionClient() : base(new AmazonRekognitionConfig()) { }
+        public FailingRekognitionClient() : base(new AmazonRekognitionConfig
+        {
+            RegionEndpoint = Amazon.RegionEndpoint.USEast2
+        })
+        {
+        }
 
         public override Task<DetectModerationLabelsResponse> DetectModerationLabelsAsync(
             DetectModerationLabelsRequest request, CancellationToken ct)
