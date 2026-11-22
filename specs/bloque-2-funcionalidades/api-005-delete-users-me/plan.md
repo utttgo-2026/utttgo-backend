@@ -1,6 +1,6 @@
 # API-005 — Eliminar cuenta propia · plan
 
-Estado de aprobación de la ficha: PENDIENTE
+Estado de aprobación de la ficha: PENDIENTE DE APROBACIÓN
 
 ## Autoridad y alcance
 
@@ -21,7 +21,7 @@ Estado de aprobación de la ficha: PENDIENTE
 
 ## Secuencia técnica
 
-Resolver DEC-003 (pedidos compartidos y en curso, revocación, idempotencia, fallo parcial, borrado físico/tiempos) → validar sujeto con gate Identity → consultar contratos dueños para inventario/ejecución → coordinar borrado recuperable → revocar identidad/sesión conforme política → confirmar solo cuando se cumpla criterio aprobado. Si algún paso falla, no declarar éxito ni borrar datos ajenos; definir compensación/reintento antes de codificar.
+Propuesta DEV-API005-01: resolver DEC-003 con baja lógica `Deleted`, anonimización de perfil, `deletedUserRef` para pedidos/reseñas, bloqueo por pedidos activos, productos del vendedor en `Paused`, revocación Redis compartida con API-003 y deshabilitación mediante Supabase Admin API. La propuesta queda bloqueada hasta aprobar secreto privilegiado, contratos de módulos dueños, consistencia/idempotencia y tratamiento de fallos parciales. Después: validar sujeto con gate Identity → preflight de contratos dueños → coordinar cambios idempotentes → revocar sesión → deshabilitar Supabase → confirmar solo con criterio aprobado.
 
 ## Componentes reutilizables del Bloque 1
 
@@ -43,7 +43,7 @@ DEV-API005-01 decide privacidad/orden y contrato; DEV-API005-02 crea coordinaci�
 
 | Gate | Tarea | Evidencia |
 |---|---|---|
-| DEC-003, AC-007 | DEV-API005-01/02/03/04 | Acta privacidad/negocio de datos compartidos, pedidos activos y fallos. |
+| DEC-003, AC-007 | DEV-API005-01/02/03/04 | Esta ficha contiene una propuesta; falta aprobación de privacidad/negocio sobre datos compartidos, pedidos activos, secretos, consistencia y fallos. |
 | Contratos de módulos dueños/API-003 | DEV-API005-03/04 | Interfaces versionadas y pruebas locales de borrado/revocación. |
 | TASK-AUTH-007→008→010 | DEV-API005-02/03/04 | Aprobación equipo/delegación y ficha identificable. |
 
