@@ -177,6 +177,22 @@ resource "aws_iam_role_policy" "media_objects" {
   })
 }
 
+resource "aws_iam_role_policy" "rekognition_moderation" {
+  name = "media-rekognition-moderation"
+  role = aws_iam_role.ec2.name
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["rekognition:DetectModerationLabels"]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
 # Publicacion de logs: el driver `awslogs` de Docker escribe directamente en
 # CloudWatch Logs usando el Instance Profile (IMDSv2). La politica anterior
 # `cloudwatch-logs` cubre CreateLogStream y PutLogEvents; el driver no necesita
@@ -436,6 +452,42 @@ resource "aws_s3_bucket_cors_configuration" "images" {
       allowed_origins = var.allowed_origins
       expose_headers  = ["ETag", "x-amz-request-id"]
       max_age_seconds = 3000
+    }
+  }
+}
+
+resource "aws_s3_bucket_lifecycle_configuration" "images" {
+  bucket = aws_s3_bucket.images.id
+
+  rule {
+    id     = "expire-staging-uploads"
+    status = "Enabled"
+
+    filter {
+      prefix = "staging/"
+    }
+
+    expiration {
+      days = 1
+    }
+
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 1
+    }
+  }
+
+  # Approved objects are retained indefinitely. This rule only cleans up
+  # abandoned multipart uploads and never expires completed approved images.
+  rule {
+    id     = "retain-approved-objects"
+    status = "Enabled"
+
+    filter {
+      prefix = "approved/"
+    }
+
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 7
     }
   }
 }
