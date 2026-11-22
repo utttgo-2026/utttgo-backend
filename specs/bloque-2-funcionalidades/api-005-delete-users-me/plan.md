@@ -1,6 +1,6 @@
 # API-005 — Eliminar cuenta propia · plan
 
-Estado de aprobación de la ficha: PENDIENTE DE APROBACIÓN
+Estado de aprobación de la ficha: APROBADA por el propietario, 2026-11-22
 
 ## Autoridad y alcance
 
@@ -21,7 +21,7 @@ Estado de aprobación de la ficha: PENDIENTE DE APROBACIÓN
 
 ## Secuencia técnica
 
-Propuesta DEV-API005-01: resolver DEC-003 con baja lógica `Deleted`, anonimización de perfil, `deletedUserRef` para pedidos/reseñas, bloqueo por pedidos activos, productos del vendedor en `Paused`, revocación Redis compartida con API-003 y deshabilitación mediante Supabase Admin API. La propuesta queda bloqueada hasta aprobar secreto privilegiado, contratos de módulos dueños, consistencia/idempotencia y tratamiento de fallos parciales. Después: validar sujeto con gate Identity → preflight de contratos dueños → coordinar cambios idempotentes → revocar sesión → deshabilitar Supabase → confirmar solo con criterio aprobado.
+DEV-API005-01 queda aprobado documentalmente: baja lógica `Deleted`, anonimización de perfil, `deletedUserRef=SHA-256(SALT + ":" + userId)`, bloqueo por pedidos activos, productos del vendedor en `Paused`, revocación Redis compartida con API-003, y orden idempotente MongoDB → Redis → Supabase. La implementación queda bloqueada hasta elegir Supabase A/B, almacenar el secreto si se elige A, resolver la reconciliación de `Paused` con BR-011 y publicar contratos de módulos dueños. Después: validar sujeto → preflight → anonimizar MongoDB → revocar Redis → deshabilitar Supabase → confirmar.
 
 ## Componentes reutilizables del Bloque 1
 
@@ -43,7 +43,7 @@ DEV-API005-01 decide privacidad/orden y contrato; DEV-API005-02 crea coordinaci�
 
 | Gate | Tarea | Evidencia |
 |---|---|---|
-| DEC-003, AC-007 | DEV-API005-01/02/03/04 | Esta ficha contiene una propuesta; falta aprobación de privacidad/negocio sobre datos compartidos, pedidos activos, secretos, consistencia y fallos. |
+| DEC-003, AC-007 | DEV-API005-01/02/03/04 | Política aprobada; faltan elección Supabase A/B, reconciliación BR-011/`Paused`, contratos dueños, secreto/operación y consistencia/idempotencia. |
 | Contratos de módulos dueños/API-003 | DEV-API005-03/04 | Interfaces versionadas y pruebas locales de borrado/revocación. |
 | TASK-AUTH-007→008→010 | DEV-API005-02/03/04 | Aprobación equipo/delegación y ficha identificable. |
 

@@ -271,7 +271,7 @@ Ninguna tarea se marca completada sin pruebas ejecutadas.
 |---|---|---|
 | DEC-001 | ¿Carrito o compra directa? | **Resuelta**: no existe carrito (BR-001). |
 | DEC-002 | ¿Requiere aprobación administrativa para activar vendedor? | **Resuelta en v2.2**: autoactivación tras completar los datos obligatorios del negocio, sin aprobación administrativa previa en el MVP (§ 12). |
-| DEC-003 | Eliminación de cuenta | **PROPUESTA pendiente de aprobación**: baja lógica `Deleted`, anonimización de perfil, conservación de pedidos/reseñas con identificador anonimizado, bloqueo por pedidos activos, productos del vendedor no disponibles, revocación Redis y deshabilitación server-side en Supabase. No autoriza código hasta aprobar secretos, consistencia, reintentos y contratos de módulos dueños. |
+| DEC-003 | Eliminación de cuenta | **Resuelta funcionalmente, 2026-11-22**: baja lógica `Deleted`, anonimización de perfil, conservación de pedidos/reseñas con identificador anonimizado, bloqueo por pedidos activos, productos del vendedor `Paused`, revocación Redis y deshabilitación server-side en Supabase. La implementación queda condicionada a elegir A/B, cerrar contratos/consistencia y reconciliar la excepción `Paused` con BR-011. |
 | DEC-004 | Comparación de opciones entre vendedores | **Revisada**: buscar/filtrar productos propios de distintos vendedores; sin producto maestro compartido ni ofertas asociadas a él (BR-005, BR-006). |
 | DEC-005 | Historial de chat temporal | **Resuelta funcionalmente**: conservar durante pedido en curso; eliminar dentro de tres días de completarse. Pendiente diseño de almacenamiento, disparador y purga. |
 | DEC-006 | Patrón de despliegue | **Resuelta**: Azure con Load Balancer, IaC en Terraform e instancias stateless (§ 9). |
@@ -290,7 +290,7 @@ Ninguna tarea se marca completada sin pruebas ejecutadas.
 
 | ID | Decisión | Estado |
 |---|---|---|
-| DEC-003 | Datos compartidos entre usuarios, operaciones activas, consistencia, reintentos y eliminación de identidad/activos | **PROPUESTA pendiente técnico/privacidad**; la política está documentada en API-005 y requiere aprobación. |
+| DEC-003 | Datos compartidos entre usuarios, operaciones activas, consistencia, reintentos y eliminación de identidad/activos | **Pendiente técnico de implementación**: la política fue aprobada en API-005; siguen abiertos el contrato Supabase A/B, los contratos dueños, la consistencia/idempotencia y la reconciliación `Paused`/BR-011. |
 | DEC-005 | Almacenamiento, definición de pedido completado, cronograma y mecanismo verificable de purga | **Pendiente técnico**; no contradice BR-012. |
 | API-011..015 | Fichas de lectura/escritura de productos, pausa/reactivación y parameters de búsqueda | **Pendiente de conciliación** (Sprint 2 de la fase 03); API-016 ya no bloquea el Sprint 1 por DEC-019. |
 | API-019..022 | DTOs, `slug`, política de orden y desactivación/reactivación de categorías | **Pendiente de conciliación** (Sprint 2); la desactivación no borra productos del vendedor. |

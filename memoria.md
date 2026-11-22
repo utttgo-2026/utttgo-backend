@@ -9,7 +9,7 @@ credenciales.
 |---|---|---|
 | DEC-001 | Compra directa individual; no existe carrito. | Resuelta |
 | DEC-002 | El vendedor se autoactiva al completar su perfil de negocio. | Resuelta |
-| DEC-003 | Propuesta API-005: baja lógica `Deleted`, anonimización de perfil, pedidos/reseñas con `deletedUserRef`, bloqueo por pedidos activos, productos de vendedor no disponibles, revocación Redis y deshabilitación server-side en Supabase. | PROPUESTA pendiente de aprobación |
+| DEC-003 | API-005 aprobada funcionalmente: baja lógica `Deleted`, anonimización de perfil, `deletedUserRef=SHA-256(SALT + ":" + userId)` con SALT en SSM, pedidos/reseñas conservados, bloqueo por pedidos activos, productos de vendedor `Paused`, orden MongoDB → Redis → Supabase e idempotencia. | RESUELTA; opción Supabase A/B y reconciliación BR-011 pendientes |
 | DEC-005 | El chat se conserva durante el pedido y se purga dentro de tres días. | Diseño técnico pendiente |
 | DEC-008 | El único pago es efectivo presencial. | Resuelta |
 | DEC-009 | No existen menús ni horarios. | Resuelta |
@@ -45,11 +45,11 @@ credenciales.
 
 ## Pendientes
 
-- La propuesta de DEC-003/API-005 está documentada en
-  `specs/bloque-2-funcionalidades/api-005-delete-users-me/spec.md`; no autoriza
-  código. Faltan aprobación de privacidad/negocio, contratos de Orders/Sellers/
-  Catalog/Media/Reviews, estrategia de consistencia e idempotencia y decisión
-  para guardar/rotar la `service_role` de Supabase en la EC2/SSM.
+- La política aprobada de DEC-003/API-005 está documentada en
+  `specs/bloque-2-funcionalidades/api-005-delete-users-me/spec.md`; todavía no
+  autoriza código hasta elegir Supabase A/B y reconciliar `Paused` con BR-011.
+  Faltan contratos de Orders/Sellers/Catalog/Media/Reviews y la operación de
+  consistencia/reintento.
 
 - Rama `feature/auth-logout` aprobada el 2026-11-21: implementa API-003 con `204`, `401` para token ausente/inválido/expirado/revocado, `503` si Redis falla, `jti` obligatorio, `SET NX` y TTL hasta `exp`; no implementa refresh token.
 

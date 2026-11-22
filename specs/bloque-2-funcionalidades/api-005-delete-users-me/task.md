@@ -1,6 +1,6 @@
 # API-005 — Eliminar cuenta propia · task
 
-Estado de aprobación de la ficha: PENDIENTE DE APROBACIÓN
+Estado de aprobación de la ficha: APROBADA por el propietario, 2026-11-22
 
 ## Autoridad y alcance
 
@@ -14,8 +14,8 @@ No hay tarea técnica READY: la política de datos compartidos es indispensable.
 
 | ID · tipo y objetivo | Requisito/escenario; archivos permitidos | Dependencias; acción posterior; resultado y prueba/evidencia | Estado |
 |---|---|---|---|
-| DEV-API005-01 · DOCUMENTAL proponer política de baja integral | BR-011, RF-11, DEL-01/02/03; solo `spec.md`, `plan.md`, `task.md` | DEC-003: la ficha propone baja lógica/anonimización, `deletedUserRef`, bloqueo por pedidos activos, productos `Paused`, revocación Redis y Supabase Admin. Falta acta/aprobación de privacidad, secretos, consistencia, reintentos, respuesta e interfaces. | PROPUESTA_PENDIENTE_APROBACION |
-| DEV-API005-02 · IMPLEMENTACION DELETE y coordinación Identity | RF-11, DEL-01/04; `UsersController.cs`, nuevo `DeleteOwnAccountService.cs`, repositorio Identity, DI | Tras DEV-API005-01 y TASK-AUTH-007→008→010: crear acción y servicio con sujeto JWT, interfaz para dueños, eliminación de `users`/Supabase en orden aprobado; no acceder a otras colecciones. **Hecho**: tests unitarios `DeleteOwnAccountServiceTests.cs`, endpoint `DeleteOwnAccountEndpointTests.cs`, Release verde. | BLOCKED |
+| DEV-API005-01 · DOCUMENTAL aprobar política de baja integral | BR-011, RF-11, DEL-01/02/03; solo `spec.md`, `plan.md`, `task.md` | DEC-003: política aprobada con baja lógica/anonimización, `deletedUserRef` con SALT en SSM, bloqueo por pedidos activos, productos `Paused`, orden MongoDB → Redis → Supabase y reintentos idempotentes. Falta elegir A/B, reconciliar BR-011 y cerrar contratos/operación. | APROBADA_CON_GATES |
+| DEV-API005-02 · IMPLEMENTACION DELETE y coordinación Identity | RF-11, DEL-01/04; `UsersController.cs`, nuevo `DeleteOwnAccountService.cs`, repositorio Identity, DI | Tras elegir Supabase A/B, reconciliar BR-011/`Paused` y cerrar contratos: crear acción y servicio con sujeto JWT, interfaces de dueños, orden idempotente y sin acceder a otras colecciones. **Hecho**: tests unitarios/endpoint y Release verde. | BLOCKED |
 | DEV-API005-03 · INTEGRACION consumir borrado por dueño | BR-011, DEL-02/03; `DeleteOwnAccountService.cs`, tests de integración, contratos publicados de Sellers/Catalog/Media/Orders/Chat | Tras DEV-API005-01/02 y disponibilidad de interfaces aprobadas: inyectar consumidores, coordinar estados, reintento/fallo parcial; implementación interna sigue en módulos dueños. **Hecho**: pruebas de vendedor con publicaciones, media e historial propios eliminados y pedido ajeno preservado en entorno aislado. | BLOCKED |
 | DEV-API005-04 · QA_TECNICA privacidad y fallos | AC-007, T-AUTH-10, DEL-01/02/03/04; nuevos `DeleteOwnAccountEndpointTests.cs`, `DeleteOwnAccountSecurityTests.cs` | Tras DEV-API005-02/03 y permiso Mongo/Redis no productivo: probar repetición, operación activa, JWT ajeno/revocado, dependencia caída y no pérdida de ajenos. **Hecho**: evidencia fechada con build/formato y suites Release, estado de datos final y errores `correlationId` sin secretos. | BLOCKED |
 
