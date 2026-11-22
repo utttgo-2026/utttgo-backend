@@ -261,7 +261,8 @@ public sealed class MediaCatalogJourneyTests : IAsyncLifetime
         head.ContentLength.Should().Be(5);
         using var mismatch = await client.PostAsJsonAsync("/api/v1/media/confirm",
             new { mediaAssetId = id });
-        mismatch.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        mismatch.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+        (await mismatch.Content.ReadAsStringAsync()).Should().Contain("MEDIA_SIZE_MISMATCH");
         using var after = await client.GetAsync($"/api/v1/media/{id}");
         using var afterJson = JsonDocument.Parse(await after.Content.ReadAsStringAsync());
         afterJson.RootElement.GetProperty("status").GetString().Should().Be(MediaStatus.PendingUpload);
@@ -279,21 +280,25 @@ public sealed class MediaCatalogJourneyTests : IAsyncLifetime
         oversizedPut.StatusCode.Should().Be(HttpStatusCode.OK);
         using var oversizedConfirm = await client.PostAsJsonAsync("/api/v1/media/confirm",
             new { mediaAssetId = oversizedId });
-        oversizedConfirm.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        oversizedConfirm.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+        (await oversizedConfirm.Content.ReadAsStringAsync()).Should().Contain("MEDIA_SIZE_MISMATCH");
         using var oversizedRead = await client.GetAsync($"/api/v1/media/{oversizedId}");
         using var oversizedState = JsonDocument.Parse(await oversizedRead.Content.ReadAsStringAsync());
         oversizedState.RootElement.GetProperty("imageUrl").ValueKind.Should().Be(JsonValueKind.Null);
 
         using var absent = await client.PostAsJsonAsync("/api/v1/media/confirm",
             new { mediaAssetId = absentId });
-        absent.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        absent.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await absent.Content.ReadAsStringAsync()).Should().Contain("MEDIA_OBJECT_NOT_UPLOADED");
 
-        await CheckInvalidStoredObject(client, "image/png", new byte[10], HttpStatusCode.BadRequest);
-        await CheckInvalidStoredObject(client, ImageType, new byte[10], HttpStatusCode.OK);
+        await CheckInvalidStoredObject(client, "image/png", new byte[10], HttpStatusCode.UnprocessableEntity,
+            "MEDIA_MIME_MISMATCH", MediaStatus.PendingUpload);
+        await CheckInvalidStoredObject(client, ImageType, new byte[10], HttpStatusCode.UnprocessableEntity,
+            "MEDIA_CONTENT_INVALID", MediaStatus.Rejected);
     }
 
     private async Task CheckInvalidStoredObject(HttpClient client, string actualMime, byte[] bytes,
-        HttpStatusCode expectedHttp)
+        HttpStatusCode expectedHttp, string expectedCode, string expectedStatus)
     {
         using var intent = await client.PostAsJsonAsync("/api/v1/media/upload-url",
             new { fileName = "untrusted.jpg", mimeType = ImageType, size = bytes.Length });
@@ -313,10 +318,11 @@ public sealed class MediaCatalogJourneyTests : IAsyncLifetime
         using var confirmation = await client.PostAsJsonAsync("/api/v1/media/confirm",
             new { mediaAssetId = id });
         confirmation.StatusCode.Should().Be(expectedHttp);
+        (await confirmation.Content.ReadAsStringAsync()).Should().Contain(expectedCode);
         using var read = await client.GetAsync($"/api/v1/media/{id}");
         using var state = JsonDocument.Parse(await read.Content.ReadAsStringAsync());
         state.RootElement.GetProperty("status").GetString().Should()
-            .Be(expectedHttp == HttpStatusCode.OK ? MediaStatus.Rejected : MediaStatus.PendingUpload);
+            .Be(expectedStatus);
         state.RootElement.GetProperty("imageUrl").ValueKind.Should().Be(JsonValueKind.Null);
     }
 

@@ -52,9 +52,24 @@ public sealed class MediaServiceTests
         var store = new ObjectStore { Head = (11, "image/jpeg") };
         var moderator = new Moderator();
         var service = new MediaService(repo, store, moderator);
-        await Assert.ThrowsAsync<ArgumentException>(() => service.ConfirmAsync(Id, Owner, default));
+        var exception = await Assert.ThrowsAsync<MediaCompletionException>(() =>
+            service.ConfirmAsync(Id, Owner, default));
+        exception.Failure.Should().Be(MediaCompletionFailure.SizeMismatch);
         repo.Value!.Status.Should().Be(MediaStatus.PendingUpload);
         moderator.Calls.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task MissingObjectHasDistinctCompletionFailure()
+    {
+        var repo = new Repository { Value = Asset() };
+        var service = new MediaService(repo, new ObjectStore(), new Moderator());
+
+        var exception = await Assert.ThrowsAsync<MediaCompletionException>(() =>
+            service.ConfirmAsync(Id, Owner, default));
+
+        exception.Failure.Should().Be(MediaCompletionFailure.ObjectNotUploaded);
+        repo.Value!.Status.Should().Be(MediaStatus.PendingUpload);
     }
 
     [Fact]

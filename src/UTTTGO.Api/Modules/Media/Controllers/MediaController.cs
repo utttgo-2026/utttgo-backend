@@ -63,6 +63,8 @@ public sealed class MediaController(MediaService media, IAuthenticatedLocalProfi
     [ProducesResponseType(typeof(ApiError), 400)]
     [ProducesResponseType(typeof(ApiError), 401)]
     [ProducesResponseType(typeof(ApiError), 404)]
+    [ProducesResponseType(typeof(ApiError), 409)]
+    [ProducesResponseType(typeof(ApiError), 422)]
     [ProducesResponseType(typeof(ApiError), 429)]
     [ProducesResponseType(typeof(ApiError), 503)]
     public async Task<IActionResult> Complete(string mediaAssetId, CancellationToken ct)
@@ -77,7 +79,22 @@ public sealed class MediaController(MediaService media, IAuthenticatedLocalProfi
             return result is null ? NotFound(ApiError.Create(HttpContext, 404, "ASSET_NOT_FOUND",
                 "Asset no encontrado.")) : Ok(result);
         }
-        catch (ArgumentException) { return BadRequest(ApiError.Create(HttpContext, 400, "INVALID_OBJECT", "Objeto inválido.")); }
+        catch (MediaCompletionException exception)
+        {
+            return exception.Failure switch
+            {
+                MediaCompletionFailure.ObjectNotUploaded => Conflict(ApiError.Create(HttpContext, 409,
+                    "MEDIA_OBJECT_NOT_UPLOADED", "El objeto todavía no está disponible.")),
+                MediaCompletionFailure.SizeMismatch => UnprocessableEntity(ApiError.Create(HttpContext, 422,
+                    "MEDIA_SIZE_MISMATCH", "El tamaño del objeto no coincide con la intención.")),
+                MediaCompletionFailure.MimeMismatch => UnprocessableEntity(ApiError.Create(HttpContext, 422,
+                    "MEDIA_MIME_MISMATCH", "El tipo MIME del objeto no coincide con la intención.")),
+                MediaCompletionFailure.ContentInvalid => UnprocessableEntity(ApiError.Create(HttpContext, 422,
+                    "MEDIA_CONTENT_INVALID", "El contenido no coincide con el tipo de imagen declarado.")),
+                MediaCompletionFailure.StorageUnavailable => StorageUnavailable(),
+                _ => Unavailable()
+            };
+        }
         catch (Exception) when (!ct.IsCancellationRequested) { return Unavailable(); }
     }
 
@@ -122,4 +139,7 @@ public sealed class MediaController(MediaService media, IAuthenticatedLocalProfi
 
     private IActionResult Unavailable() => StatusCode(503, ApiError.Create(HttpContext, 503,
         "MEDIA_UNAVAILABLE", "Servicio temporalmente no disponible."));
+
+    private IActionResult StorageUnavailable() => StatusCode(503, ApiError.Create(HttpContext, 503,
+        "MEDIA_STORAGE_UNAVAILABLE", "El almacenamiento de imágenes no está disponible."));
 }

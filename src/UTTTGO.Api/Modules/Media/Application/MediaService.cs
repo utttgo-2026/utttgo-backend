@@ -4,7 +4,8 @@ using UTTTGO.Api.Modules.Media.Contracts;
 namespace UTTTGO.Api.Modules.Media.Application;
 
 public sealed class MediaService(IMediaRepository repository, IMediaObjectStore objects,
-    IImageModerator moderator) : IProductMediaAccess
+    IImageModerator moderator, ILogger<MediaService>? logger = null,
+    IHttpContextAccessor? httpContextAccessor = null) : IProductMediaAccess
 {
     public async Task<PresignedUrlResponse> StartAsync(string owner, PresignedUrlRequest request,
         CancellationToken cancellationToken)
@@ -56,10 +57,26 @@ public sealed class MediaService(IMediaRepository repository, IMediaObjectStore 
         }
         if (asset.Status == MediaStatus.PendingUpload)
         {
-            var head = await objects.HeadAsync(asset.ObjectKey, ct);
-            if (head is null || head.Value.Length != asset.Size || head.Value.Length > MediaImagePolicy.MaxBytes ||
-                !string.Equals(head.Value.Mime, asset.MimeType, StringComparison.OrdinalIgnoreCase))
-                throw new ArgumentException("Uploaded object does not match its intent.");
+            (long Length, string Mime)? head;
+            try
+            {
+                head = await objects.HeadAsync(asset.ObjectKey, ct);
+            }
+            catch (Exception) when (!ct.IsCancellationRequested)
+            {
+                return await FailAsync(asset, MediaCompletionFailure.StorageUnavailable,
+                    observedSize: null, observedMime: null, ct);
+            }
+
+            if (head is null)
+                return await FailAsync(asset, MediaCompletionFailure.ObjectNotUploaded,
+                    observedSize: null, observedMime: null, ct);
+            if (head.Value.Length != asset.Size || head.Value.Length > MediaImagePolicy.MaxBytes)
+                return await FailAsync(asset, MediaCompletionFailure.SizeMismatch,
+                    head.Value.Length, head.Value.Mime, ct);
+            if (!string.Equals(head.Value.Mime, asset.MimeType, StringComparison.OrdinalIgnoreCase))
+                return await FailAsync(asset, MediaCompletionFailure.MimeMismatch,
+                    head.Value.Length, head.Value.Mime, ct);
             if (!await repository.TransitionAsync(asset.Id, owner, asset.Version,
                     MediaStatus.PendingUpload, MediaStatus.PendingModeration, ct))
                 return await CurrentAsync(id, owner, ct);
@@ -90,11 +107,15 @@ public sealed class MediaService(IMediaRepository repository, IMediaObjectStore 
                 await objects.DeleteAsync(asset.ObjectKey, ct);
                 await repository.TransitionAsync(asset.Id, owner, asset.Version,
                     MediaStatus.PendingModeration, MediaStatus.Rejected, ct);
+                return await FailAsync(asset, MediaCompletionFailure.ContentInvalid,
+                    asset.Size, asset.MimeType, ct);
             }
             catch (Exception) when (!ct.IsCancellationRequested)
             {
                 await repository.TransitionAsync(asset.Id, owner, asset.Version,
                     MediaStatus.PendingModeration, MediaStatus.ProcessingFailed, ct);
+                return await FailAsync(asset, MediaCompletionFailure.StorageUnavailable,
+                    asset.Size, asset.MimeType, ct);
             }
         }
         catch (Exception) when (!ct.IsCancellationRequested)
@@ -103,6 +124,17 @@ public sealed class MediaService(IMediaRepository repository, IMediaObjectStore 
                 MediaStatus.PendingModeration, MediaStatus.ProcessingFailed, ct);
         }
         return await CurrentAsync(id, owner, ct);
+    }
+
+    private Task<ConfirmResponse?> FailAsync(MediaRecord asset,
+        MediaCompletionFailure failure, long? observedSize, string? observedMime,
+        CancellationToken ct)
+    {
+        logger?.LogWarning(
+            "Media completion failed. AssetId={AssetId} Cause={Cause} DeclaredSize={DeclaredSize} ObservedSize={ObservedSize} DeclaredMime={DeclaredMime} ObservedMime={ObservedMime} CorrelationId={CorrelationId}",
+            asset.Id, failure, asset.Size, observedSize, asset.MimeType, observedMime,
+            httpContextAccessor?.HttpContext?.TraceIdentifier);
+        throw new MediaCompletionException(failure);
     }
 
     private async Task<ConfirmResponse?> CurrentAsync(string id, string owner, CancellationToken ct)
