@@ -482,7 +482,7 @@ Errores: `400 VALIDATION_ERROR`, `401`, `403 SELLER_ROLE_REQUIRED`/`403 SELLER_A
 }
 ```
 
-Códigos en uso: `VALIDATION_ERROR`, `UNAUTHORIZED`, `INVALID_CREDENTIALS`, `INSTITUTIONAL_EMAIL_REQUIRED`, `PROFILE_NOT_FOUND`, `ACCOUNT_NOT_ACTIVE`, `SELLER_ROLE_REQUIRED`, `SELLER_ACCOUNT_NOT_ACTIVE`, `SELLER_CONFLICT`, `SELLER_PROFILE_NOT_FOUND`, `PRODUCT_NOT_FOUND`, `CATEGORY_NOT_FOUND`, `INVALID_PRODUCT_ID`, `PRODUCT_CONFLICT`, `ORDER_NOT_FOUND`, `ORDER_FORBIDDEN`, `ORDER_STATE_CONFLICT`, `ORDER_VERSION_CONFLICT`, `DELIVERY_TOKEN_INVALID`, `DELIVERY_TOKEN_EXPIRED`, `DELIVERY_TOKEN_ALREADY_USED`, `INSUFFICIENT_STOCK`, `PRODUCT_NOT_AVAILABLE`, `IMAGE_NOT_AVAILABLE`, `RATE_LIMITED`, `AUTH_UNAVAILABLE`, `CATALOG_UNAVAILABLE`, `ORDER_UNAVAILABLE`, `SELLER_UNAVAILABLE`.
+Códigos en uso: `VALIDATION_ERROR`, `UNAUTHORIZED`, `INVALID_CREDENTIALS`, `INSTITUTIONAL_EMAIL_REQUIRED`, `PROFILE_NOT_FOUND`, `ACCOUNT_NOT_ACTIVE`, `SELLER_ROLE_REQUIRED`, `SELLER_ACCOUNT_NOT_ACTIVE`, `SELLER_CONFLICT`, `SELLER_PROFILE_NOT_FOUND`, `PRODUCT_NOT_FOUND`, `CATEGORY_NOT_FOUND`, `INVALID_PRODUCT_ID`, `PRODUCT_CONFLICT`, `ORDER_NOT_FOUND`, `ORDER_FORBIDDEN`, `ORDER_STATE_CONFLICT`, `ORDER_VERSION_CONFLICT`, `ACTIVE_ORDER_CONFLICT`, `DELIVERY_TOKEN_INVALID`, `DELIVERY_TOKEN_EXPIRED`, `DELIVERY_TOKEN_ALREADY_USED`, `INSUFFICIENT_STOCK`, `PRODUCT_NOT_AVAILABLE`, `IMAGE_NOT_AVAILABLE`, `RATE_LIMITED`, `AUTH_UNAVAILABLE`, `CATALOG_UNAVAILABLE`, `ORDER_UNAVAILABLE`, `SELLER_UNAVAILABLE`, `ACCOUNT_DELETION_UNAVAILABLE`.
 
 ## 7. Flujo mínimo de integración
 
@@ -496,6 +496,10 @@ Códigos en uso: `VALIDATION_ERROR`, `UNAUTHORIZED`, `INVALID_CREDENTIALS`, `INS
 8. Vendedor (tras cobrar en efectivo): `POST /api/v1/orders/{orderId}/delivery-confirmations` → `200` con `{token}`; el pedido queda en `Delivered`.
 9. Comprador (mientras el pedido siga en `Pending`): `POST /api/v1/orders/{orderId}/cancel` → `200`.
 
+### Eliminación de cuenta
+
+`DELETE /api/v1/users/me` no recibe body ni identificadores. El backend obtiene la identidad del Bearer validado. Ante `204`, el móvil debe borrar el access token y los datos locales de sesión. La operación devuelve `409 ACTIVE_ORDER_CONFLICT` si existen pedidos `Pending`, `Accepted`, `InPreparation` o `Ready`; devuelve `401 UNAUTHORIZED` para una sesión inválida/revocada y `503 ACCOUNT_DELETION_UNAVAILABLE` si Mongo, Orders, Catalog o Redis no están disponibles. El logout global de Supabase es best-effort y no cambia el `204` local.
+
 ## 8. Límites conocidos (no confundir con fallos)
 
 - **Sin imágenes**: no existe Media/S3 presigned; `avatarUrl` es `null`, los productos no tienen imágenes y `POST /products` con `imageUrl` con valor responde `422 IMAGE_NOT_AVAILABLE`.
@@ -503,6 +507,7 @@ Códigos en uso: `VALIDATION_ERROR`, `UNAUTHORIZED`, `INVALID_CREDENTIALS`, `INS
 - **Sin reseñas**: `ratingAverage` y `ratingCount` son `null` en productos y vendedores.
 - **Sin "mis productos" ni filtro `sellerId`**: el catálogo no permite filtrar por vendedor; está decidido para la siguiente iteración (el índice `sellerId_status` ya existe).
 - **Sin eliminación de producto**: no hay DELETE.
+- La eliminación de cuenta anonimiza el perfil local, pausa los productos del vendedor y revoca el token actual. No elimina pedidos compartidos ni implementa todavía reseñas o mensajes; esas fichas conservarán `deletedUserRef` cuando existan.
 - **Sin chat ni notificaciones push**: pertenecen a fases posteriores; la Fase 2 de pedidos no emite push (D-ORD-15).
 - **Sin `role` en `/orders/mine`**: siempre `buyer`. El listado del vendedor es la ruta separada `GET /sellers/me/orders` (§5.8) con `role: "seller"`.
 - **Sin reseñas tras la entrega**: la entrega no genera automáticamente una reseña (fase 06 pendiente).

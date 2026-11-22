@@ -53,4 +53,5 @@ public sealed class UsersController(IOwnProfileService profiles, IUpdateOwnProfi
                 "PROFILE_UNAVAILABLE", "Servicio temporalmente no disponible."))
         };
     }
+
 }

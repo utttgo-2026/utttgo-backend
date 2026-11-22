@@ -6,7 +6,7 @@ using UTTTGO.Api.Shared.Infrastructure;
 namespace UTTTGO.Api.Modules.Identity.Infrastructure;
 
 public sealed class MongoUserRepositories(MongoStore store) : IUserRegistrationRepository,
-    ILoginProfileRepository, IProfileUpdateRepository
+    ILoginProfileRepository, IProfileUpdateRepository, IAccountDeletionRepository
 {
     private IMongoCollection<UserDocument> Users => store.Database.GetCollection<UserDocument>("users");
 
@@ -84,7 +84,34 @@ public sealed class MongoUserRepositories(MongoStore store) : IUserRegistrationR
         return new(exists ? ProfileUpdateOutcome.Conflict : ProfileUpdateOutcome.Missing);
     }
 
+    public async Task<AccountDeletionResult> DeleteOwnAsync(string subject, string localId, long expectedVersion,
+        string deletedUserRef, CancellationToken cancellationToken)
+    {
+        if (!ObjectId.TryParse(localId, out var id)) return new(AccountDeletionOutcome.Missing);
+        var filter = Builders<UserDocument>.Filter.Eq(user => user.Id, id) &
+            Builders<UserDocument>.Filter.Eq(user => user.SupabaseUserId, subject) &
+            Builders<UserDocument>.Filter.Eq(user => user.Version, expectedVersion) &
+            Builders<UserDocument>.Filter.Eq(user => user.AccountStatus, "Active");
+        var update = Builders<UserDocument>.Update.Combine(
+            Builders<UserDocument>.Update.Set(user => user.AccountStatus, "Deleted"),
+            Builders<UserDocument>.Update.Set(user => user.DisplayName, "Cuenta eliminada"),
+            Builders<UserDocument>.Update.Set(user => user.Email, $"deleted+{deletedUserRef}@invalid.utttgo.local"),
+            Builders<UserDocument>.Update.Set(user => user.Phone, null),
+            Builders<UserDocument>.Update.Set(user => user.AvatarMediaAssetId, null),
+            Builders<UserDocument>.Update.Set(user => user.DeletedUserRef, deletedUserRef),
+            Builders<UserDocument>.Update.Inc(user => user.Version, 1));
+        var updated = await Users.FindOneAndUpdateAsync(filter, update,
+            new FindOneAndUpdateOptions<UserDocument> { ReturnDocument = ReturnDocument.After }, cancellationToken);
+        if (updated is not null) return new(AccountDeletionOutcome.Deleted, ToProfile(updated));
+        var current = await Users.Find(user => user.Id == id && user.SupabaseUserId == subject)
+            .FirstOrDefaultAsync(cancellationToken);
+        return current is null ? new(AccountDeletionOutcome.Missing) :
+            current.AccountStatus == "Deleted" ? new(AccountDeletionOutcome.AlreadyDeleted, ToProfile(current)) :
+            new(AccountDeletionOutcome.Conflict);
+    }
+
     private static LocalLoginProfile ToProfile(UserDocument user) =>
         new(user.Id.ToString(), user.SupabaseUserId, user.Email, user.AccountStatus,
-            user.Roles, user.DisplayName, user.Phone, user.AvatarMediaAssetId, user.Version, user.SellerId);
+            user.Roles, user.DisplayName, user.Phone, user.AvatarMediaAssetId, user.Version, user.SellerId,
+            user.DeletedUserRef);
 }

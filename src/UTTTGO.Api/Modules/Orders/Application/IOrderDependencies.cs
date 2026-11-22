@@ -15,6 +15,11 @@ public interface IOrderRepository
         string? expectedDeliveryTokenHash, OrderMutation mutation, CancellationToken cancellationToken);
 }
 
+public interface IActiveOrderReader
+{
+    Task<bool> HasActiveOrdersAsync(string buyerUserId, string? sellerId, CancellationToken cancellationToken);
+}
+
 // Every write to an order goes through one compare-and-set: the stored status and the
 // stored version must match the ones the caller read, otherwise nothing is changed.
 public sealed record OrderMutation(string? NewStatus = null, DateTime? DeliveredAt = null,

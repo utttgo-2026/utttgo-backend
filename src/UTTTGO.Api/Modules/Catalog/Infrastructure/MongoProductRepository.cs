@@ -7,7 +7,7 @@ using UTTTGO.Api.Shared.Infrastructure;
 
 namespace UTTTGO.Api.Modules.Catalog.Infrastructure;
 
-public sealed class MongoProductRepository(MongoStore store) : IProductRepository
+public sealed class MongoProductRepository(MongoStore store) : IProductRepository, IAccountDeletionCatalog
 {
     private IMongoCollection<ProductDocument> Products =>
         store.Database.GetCollection<ProductDocument>("products");
@@ -143,6 +143,17 @@ public sealed class MongoProductRepository(MongoStore store) : IProductRepositor
         var exists = await Products.Find(product => product.Id == id && product.SellerId == sellerId)
             .AnyAsync(cancellationToken);
         return new(exists ? ProductUpdateOutcome.Conflict : ProductUpdateOutcome.Missing);
+    }
+
+    public async Task PauseProductsForSellerAsync(string sellerId, CancellationToken cancellationToken)
+    {
+        var filter = Builders<ProductDocument>.Filter.Eq(product => product.SellerId, sellerId) &
+            Builders<ProductDocument>.Filter.Ne(product => product.Status, ProductAvailability.Deleted);
+        var update = Builders<ProductDocument>.Update.Combine(
+            Builders<ProductDocument>.Update.Set(product => product.Status, ProductAvailability.Paused),
+            Builders<ProductDocument>.Update.Inc(product => product.Version, 1),
+            Builders<ProductDocument>.Update.Set(product => product.UpdatedAt, DateTime.UtcNow));
+        await Products.UpdateManyAsync(filter, update, cancellationToken: cancellationToken);
     }
 
     internal static string BuildSearchText(string name, string description,

@@ -1,33 +1,24 @@
-# API-005 — Eliminar cuenta propia · task
+# API-005 - Eliminar cuenta propia - task
 
-Estado de aprobación de la ficha: APROBADA por el propietario, 2026-11-22
+Estado de aprobacion de la ficha: APROBADA por el propietario, 2026-11-22.
 
 ## Autoridad y alcance
 
-[Constitución](../../../docs/constitution.md) → [spec](spec.md) → [plan](plan.md) → tareas. No empezar código antes de resolver DEC-003; interfaces consumidoras, no borrar datos de otro módulo desde Identity.
+Constitucion -> spec.md -> plan.md -> tareas. DEC-003 esta aprobado; Identity no borra datos de otro modulo.
 
-## Tareas ejecutables sin cambiar contrato
+## Tareas
 
-No hay tarea técnica READY: la política de datos compartidos es indispensable. Las tareas DEV siguientes quedan explícitamente bloqueadas.
+| ID | Tipo | Alcance | Estado | Evidencia |
+|---|---|---|---|---|
+| DEV-API005-01 | DOCUMENTAL | Politica de baja, anonimización, `deletedUserRef` UUID, bloqueo por pedidos activos, pausa de productos, Redis y logout best-effort. | DONE | `spec.md`, aprobacion 2026-11-22 |
+| DEV-API005-02 | IMPLEMENTACION | DELETE, servicio Identity, CAS en `users`, contratos Orders/Catalog, Redis y logout best-effort. | DONE | Unitarias y build Release; integracion pendiente |
+| DEV-API005-03 | INTEGRACION | Consumir contratos de Orders/Catalog sin escribir sus colecciones. | BLOCKED | Docker/Testcontainers pendiente |
+| DEV-API005-04 | QA_TECNICA | Repeticion, pedido activo, JWT invalido/revocado, dependencia caida y preservacion de ajenos. | BLOCKED | Suites completas pendientes |
 
-## Tareas bloqueadas hasta decisión y gates SDD
+## Restricciones
 
-| ID · tipo y objetivo | Requisito/escenario; archivos permitidos | Dependencias; acción posterior; resultado y prueba/evidencia | Estado |
-|---|---|---|---|
-| DEV-API005-01 · DOCUMENTAL aprobar política de baja integral | BR-011, RF-11, DEL-01/02/03; solo `spec.md`, `plan.md`, `task.md` | DEC-003: política aprobada con baja lógica/anonimización, `deletedUserRef` con SALT en SSM, bloqueo por pedidos activos, productos `Paused`, orden MongoDB → Redis → Supabase y reintentos idempotentes. Falta elegir A/B, reconciliar BR-011 y cerrar contratos/operación. | APROBADA_CON_GATES |
-| DEV-API005-02 · IMPLEMENTACION DELETE y coordinación Identity | RF-11, DEL-01/04; `UsersController.cs`, nuevo `DeleteOwnAccountService.cs`, repositorio Identity, DI | Tras elegir Supabase A/B, reconciliar BR-011/`Paused` y cerrar contratos: crear acción y servicio con sujeto JWT, interfaces de dueños, orden idempotente y sin acceder a otras colecciones. **Hecho**: tests unitarios/endpoint y Release verde. | BLOCKED |
-| DEV-API005-03 · INTEGRACION consumir borrado por dueño | BR-011, DEL-02/03; `DeleteOwnAccountService.cs`, tests de integración, contratos publicados de Sellers/Catalog/Media/Orders/Chat | Tras DEV-API005-01/02 y disponibilidad de interfaces aprobadas: inyectar consumidores, coordinar estados, reintento/fallo parcial; implementación interna sigue en módulos dueños. **Hecho**: pruebas de vendedor con publicaciones, media e historial propios eliminados y pedido ajeno preservado en entorno aislado. | BLOCKED |
-| DEV-API005-04 · QA_TECNICA privacidad y fallos | AC-007, T-AUTH-10, DEL-01/02/03/04; nuevos `DeleteOwnAccountEndpointTests.cs`, `DeleteOwnAccountSecurityTests.cs` | Tras DEV-API005-02/03 y permiso Mongo/Redis no productivo: probar repetición, operación activa, JWT ajeno/revocado, dependencia caída y no pérdida de ajenos. **Hecho**: evidencia fechada con build/formato y suites Release, estado de datos final y errores `correlationId` sin secretos. | BLOCKED |
+No usar Supabase `service_role` ni Admin API. No introducir acceso cross-module ni eliminar pedidos, reseñas o chat desde Identity. No ejecutar contra producción.
 
-## Guía de ejecución con OpenCode
+## Evidencia requerida
 
-Leer [constitución](../../../docs/constitution.md), [spec](spec.md), [plan](plan.md). Resolver política y gates, confirmar interfaces de dueños antes de cambiar código; pruebas solo locales autorizadas.
-
-### Control de ejecución
-
-| ID | Tipo | Estado | Cambio técnico | Autorización | Dependencias | Evidencia de cierre |
-|---|---|---|---|---|---|---|
-| DEV-API005-01 | DOCUMENTAL | BLOCKED | NO | Pendiente: DEC-003 y política de compartidos | - | PENDIENTE |
-| DEV-API005-02 | IMPLEMENTACION | BLOCKED | SI | Pendiente: DEC-003, TASK-AUTH-007/008/010 y contrato API-005 | DEV-API005-01 | PENDIENTE |
-| DEV-API005-03 | INTEGRACION | BLOCKED | SI | Pendiente: DEC-003, contratos dueños y gates SDD | DEV-API005-01, DEV-API005-02 | PENDIENTE |
-| DEV-API005-04 | QA_TECNICA | BLOCKED | SI | Pendiente: DEC-003 y pruebas aisladas autorizadas | DEV-API005-02, DEV-API005-03 | PENDIENTE |
+Cuando Docker este disponible, ejecutar build Release, formato, unitarias, integracion y seguridad. Registrar resultados y actualizar `docs/traceability.md` y `memoria.md` sin afirmar verificacion no realizada.
