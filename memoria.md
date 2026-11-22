@@ -9,7 +9,7 @@ credenciales.
 |---|---|---|
 | DEC-001 | Compra directa individual; no existe carrito. | Resuelta |
 | DEC-002 | El vendedor se autoactiva al completar su perfil de negocio. | Resuelta |
-| DEC-003 | API-005: baja lógica `Deleted`, anonimización de perfil, `deletedUserRef` UUID, bloqueo por pedidos activos, productos de vendedor no disponibles, revocación Redis y logout global de Supabase best-effort; no se usa service_role/Admin API. | Aprobada por el propietario 2026-11-22; evidencia de contenedores pendiente |
+| DEC-003 | API-005: baja lógica `Deleted`, anonimización de perfil, `deletedUserRef` UUID aleatorio, bloqueo por pedidos activos, productos de vendedor no disponibles, revocación Redis y logout global de Supabase best-effort; no se usa service_role/Admin API. | Aprobada por el propietario 2026-11-22; evidencia de contenedores pendiente |
 | DEC-005 | El chat se conserva durante el pedido y se purga dentro de tres días. | Diseño técnico pendiente |
 | DEC-008 | El único pago es efectivo presencial. | Resuelta |
 | DEC-009 | No existen menús ni horarios. | Resuelta |

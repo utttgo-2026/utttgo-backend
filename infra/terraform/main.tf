@@ -468,7 +468,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "images" {
     }
 
     expiration {
-      days = 1
+      days = 30
     }
 
     abort_incomplete_multipart_upload {

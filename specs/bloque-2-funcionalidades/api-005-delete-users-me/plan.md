@@ -1,60 +1,50 @@
-# API-005 — Eliminar cuenta propia · plan
+# API-005 - Eliminar cuenta propia - plan
 
-Estado de aprobación de la ficha: APROBADA
+Estado de aprobacion de la ficha: APROBADA por el propietario, 2026-11-22.
 
 ## Autoridad y alcance
 
-[Constitución](../../../docs/constitution.md) → [spec](spec.md) → plan → [task](task.md). Dueño coordinador Identity; cada módulo borra solo sus propios datos después de resolver DEC-003.
+Constitucion -> spec.md -> este plan -> task.md. Identity coordina la baja y solo modifica `users`; los modulos dueños exponen contratos para sus propios datos.
 
 ## Arquitectura existente
 
-`src/UTTTGO.Api/Modules/Identity/Controllers/UsersController.cs` y guard de API-006 son reutilizables; no hay DELETE ni flujo de eliminación. `users` pertenece a Identity; `sellers` a Sellers; Catalog/Media/Orders/Chat conservan propiedad de sus datos.
+`UsersController` reutiliza el guard de Identity. `users` pertenece a Identity; Catalog y Orders se consumen mediante `IAccountDeletionCatalog` e `IActiveOrderReader`. No se accede a colecciones ajenas desde Identity.
 
-## Componentes involucrados
+## Secuencia tecnica aprobada
 
-| Capa | Componente actual o previsto | Responsabilidad |
+Validar sujeto con el gate existente -> consultar pedidos activos -> anonimizar `users` con CAS -> pausar productos mediante Catalog -> revocar la sesion actual en Redis -> solicitar logout global de Supabase best-effort -> responder `204`. `deletedUserRef` es un UUID aleatorio estable. Mongo o Redis fallidos devuelven `503` fail-closed.
+
+## Componentes
+
+| Capa | Componente | Responsabilidad |
 |---|---|---|
-| Controller | `src/UTTTGO.Api/Modules/Identity/Controllers/UsersController.cs` | DELETE `/me`, respuesta aprobada. |
-| Aplicación | `src/UTTTGO.Api/Modules/Identity/Application/DeleteOwnAccountService.cs` (nuevo) | Coordinar solo contratos publicados por dueños y reintentos. |
-| Datos | `src/UTTTGO.Api/Modules/Identity/Infrastructure/MongoUserRepositories.cs`, `SupabaseAuthClient.cs` | Borrar perfil/identidad en orden aprobado; sin accesos a colecciones ajenas. |
-| Contratos de otros módulos | Interfaces futuras de Sellers/Catalog/Media/Orders/Chat | Borrar recursos propios o preservar compartidos según acta; módulos dueños implementan interfaces. |
+| Controller | `Modules/Identity/Controllers/UsersController.cs` | DELETE `/api/v1/users/me`. |
+| Application | `Modules/Identity/Application/DeleteOwnAccountService.cs` | Orquestacion e idempotencia. |
+| Infrastructure | `MongoUserRepositories.cs`, `SupabaseAuthClient.cs` | Persistencia de Identity y logout best-effort. |
+| Contratos | `IActiveOrderReader`, `IAccountDeletionCatalog` | Consultar pedidos y pausar productos sin cruzar colecciones. |
 
-## Secuencia técnica
-
-DEV-API005-01 queda aprobado el 2026-11-22 con baja lógica `Deleted`, anonimización de perfil, `deletedUserRef` UUID, bloqueo por pedidos activos, productos del vendedor no disponibles, revocación Redis compartida con API-003 y logout global de Supabase best-effort. La secuencia implementada es: validar sujeto con gate Identity → consultar pedidos activos → anonimizar en Mongo con CAS → pausar productos mediante Catalog → revocar sesión en Redis → llamar logout global de Supabase → confirmar `204`. Cada paso local es idempotente; un reintento con perfil `Deleted` continúa los pasos pendientes. Mongo o Redis fallidos devuelven `503` fail-closed.
-
-## Componentes reutilizables del Bloque 1
-
-[Base modular](../../bloque-1-arquitectura/base-modular/spec.md), [errores](../../bloque-1-arquitectura/contratos-transversales/spec.md), [Mongo](../../bloque-1-arquitectura/persistencia-mongodb/spec.md) y [Redis](../../bloque-1-arquitectura/redis-rate-limit-revocacion/spec.md). Sin repositorios cross-module.
-
-## Archivos que se crearán o modificarán cuando corresponda
-
-| Brecha | Ruta o componente | Cambio condicionado |
-|---|---|---|
-| DEL-01/04 | `src/UTTTGO.Api/Modules/Identity/Controllers/UsersController.cs`, `Application/DeleteOwnAccountService.cs` (nuevo), `Infrastructure/MongoUserRepositories.cs` | Orquestación/guard/borrado Identity solo tras acta. |
-| DEL-02/03 | Contratos publicados por `Modules/Sellers`, `Catalog`, `Media`, `Orders`, `Chat` | Dependencia exigida, implementación en fichas dueñas; no escribir sus colecciones aquí. |
-| DEL-01..04 | `tests/UtttGo.UnitTests/DeleteOwnAccountServiceTests.cs`, `tests/UtttGo.IntegrationTests/DeleteOwnAccountEndpointTests.cs`, `tests/UtttGo.SecurityTests/DeleteOwnAccountSecurityTests.cs` | Pruebas nuevas tras contrato. |
-
-## Orden de implementación
-
-DEV-API005-01 decide privacidad/orden y contrato; DEV-API005-02 crea coordinación Identity y DELETE con interfaces inyectadas; DEV-API005-03 integra consumidores cuando dueños entreguen contratos; DEV-API005-04 prueba consistencia, idempotencia y seguridad. No atribuir a API-005 la implementación interna de Orders/Catalog.
-
-## Dependencias y bloqueos
+## Dependencias y gates
 
 | Gate | Tarea | Evidencia |
 |---|---|---|
-| DEC-003, AC-007 | DEV-API005-01/02/03/04 | DEV-API005-01 aprobado el 2026-11-22; contratos mínimos Orders/Catalog publicados y evidencia de contenedores pendiente. |
-| Contratos de módulos dueños/API-003 | DEV-API005-03/04 | `IActiveOrderReader` e `IAccountDeletionCatalog` publicados; pruebas aisladas pendientes. |
-| TASK-AUTH-007→008→010 | DEV-API005-02/03/04 | Se usa el gate JWT/Redis existente; no se usa service_role ni Admin API. |
+| DEC-003 y AC-007 | DEV-API005-01/02/03/04 | Decision aprobada; contratos minimos publicados. |
+| Orders, Catalog y API-003 | DEV-API005-03/04 | Interfaces y pruebas aisladas. |
+| Docker/Testcontainers | DEV-API005-04 | Integracion y seguridad completas pendientes. |
 
-## Estrategia de pruebas
+## Archivos
 
-Unitarias sobre orden/fallos/reintento con dobles; integración WebApplicationFactory con Mongo/Redis aislados, interfaces de módulos dueños y Supabase simulado; seguridad contra token revocado, sujeto ajeno y fallo Redis. Verificar persistencia real solo en no-producción autorizado; `dotnet build UTTTGO.Backend.slnx -c Release --no-restore`, `dotnet format UTTTGO.Backend.slnx --verify-no-changes --no-restore`, tres proyectos `dotnet test` Release `--no-build`.
+| Ruta | Cambio |
+|---|---|
+| `UsersController.cs` | Accion DELETE autenticada. |
+| `DeleteOwnAccountService.cs` | Coordinacion de baja. |
+| `MongoUserRepositories.cs` | Anonimizacion CAS. |
+| `tests/UtttGo.UnitTests/DeleteOwnAccountServiceTests.cs` | Orden, fallos e idempotencia. |
+| `tests/UtttGo.IntegrationTests/` y `tests/UtttGo.SecurityTests/` | Evidencia con Mongo/Redis aislados cuando Docker este disponible. |
 
-## Seguridad, errores y observabilidad
+## Seguridad y errores
 
-Autorización por identidad/propiedad en cada módulo; error único `correlationId`, no log de PII/tokens; Redis fail-closed. Sin eliminación lógica sustituta ni mutación de middleware.
+El cliente no decide identidad, estado ni referencias. El error usa el contrato unico con `correlationId`; no se registran PII, tokens ni secretos. Redis es fail-closed para la revocacion.
 
-## Criterios de cierre técnico
+## Criterios de cierre
 
-DEL-01..04 con pruebas fechadas de comprador, vendedor, compartidos y fallo parcial; identidad y propios no accesibles, ajenos intactos, build/formato/suites verdes. AC-007 se cierra por evidencia separada.
+DEL-01..04 con pruebas de comprador, vendedor, pedidos activos, repeticion y fallos parciales; build, formato y las tres suites verdes. La evidencia de contenedores sigue pendiente.
