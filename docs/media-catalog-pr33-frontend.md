@@ -54,7 +54,8 @@ La ruta del inventario `POST /api/v1/media/{mediaAssetId}/complete` **no
 requiere body** y comparte la misma confirmación idempotente. La respuesta
 refleja el estado persistido: `PendingUpload`, `PendingModeration`, `Approved`,
 `Rejected` o `ProcessingFailed` según el momento y el resultado. Un objeto
-ausente, de tipo o tamaño distinto, no pasa a moderación (`400 INVALID_OBJECT`).
+ausente devuelve `409 MEDIA_OBJECT_NOT_UPLOADED`; un tamaño distinto devuelve
+`422 MEDIA_SIZE_MISMATCH`; un MIME distinto devuelve `422 MEDIA_MIME_MISMATCH`.
 La lectura del estado propio es
 `GET /api/v1/media/{mediaAssetId}` · `Authorization: Bearer <JWT>` · `200`:
 
