@@ -27,6 +27,23 @@ public sealed class OpenApiContractTests
         ResponseSchema(document, "/api/v1/products", "post", 422, "ApiError");
         ResponseSchema(document, "/api/v1/products/{productId}", "patch", 422, "ApiError");
     }
+
+    [Fact]
+    public async Task LogoutDocumentsBearerResponses()
+    {
+        using var document = await LoadDocumentAsync();
+        var responses = document.RootElement.GetProperty("paths")
+            .GetProperty("/api/v1/auth/logout").GetProperty("post")
+            .GetProperty("responses");
+
+        responses.TryGetProperty("204", out _).Should().BeTrue();
+        responses.TryGetProperty("401", out var unauthorized).Should().BeTrue();
+        unauthorized.GetProperty("content").GetProperty("application/json").GetProperty("schema")
+            .GetProperty("$ref").GetString().Should().Be("#/components/schemas/ApiError");
+        responses.TryGetProperty("503", out var unavailable).Should().BeTrue();
+        unavailable.GetProperty("content").GetProperty("application/json").GetProperty("schema")
+            .GetProperty("$ref").GetString().Should().Be("#/components/schemas/ApiError");
+    }
     [Fact]
     public async Task TheDocumentAdvertisesThePublicHttpsServer()
     {

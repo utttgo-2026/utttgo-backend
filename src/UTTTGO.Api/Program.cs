@@ -128,6 +128,8 @@ builder.Services.AddSingleton<IUserRegistrationRepository>(services => services.
 builder.Services.AddScoped<ISupabaseLogin>(services => services.GetRequiredService<SupabaseAuthClient>());
 builder.Services.AddSingleton<ILoginProfileRepository>(services => services.GetRequiredService<MongoUserRepositories>());
 builder.Services.AddScoped<ILoginJwtGate, RedisJwtGate>();
+builder.Services.AddScoped<ILogoutService, LogoutService>();
+builder.Services.AddSingleton<IJwtRevocationStore, RedisJwtRevocationStore>();
 builder.Services.AddScoped<IValidatedJwtSubjectReader, ValidatedJwtSubjectReader>();
 builder.Services.AddScoped<ISupabaseSessionIdentity>(services => services.GetRequiredService<SupabaseAuthClient>());
 builder.Services.AddScoped<IAdminUsersService, AdminUsersService>();

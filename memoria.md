@@ -45,6 +45,8 @@ credenciales.
 
 ## Pendientes
 
+- Rama `feature/auth-logout` aprobada el 2026-11-21: implementa API-003 con `204`, `401` para token ausente/inválido/expirado/revocado, `503` si Redis falla, `jti` obligatorio, `SET NX` y TTL hasta `exp`; no implementa refresh token.
+
 - Ejecutar build Release y las suites unitarias, integración y seguridad con
   Docker encendido antes de cualquier commit.
 - Actualizar el snapshot OpenAPI y los ejemplos móviles del PATCH de producto.

@@ -86,8 +86,15 @@ public sealed class RedisJwtGate(IServiceProvider services, IOptions<SupabaseJwt
                 !string.Equals(signed.Payload.Sub, subject, StringComparison.Ordinal) ||
                 !string.Equals(principal.FindFirst("sub")?.Value, subject, StringComparison.Ordinal) ||
                 RevocationId(signed) is not { } revocationId) return false;
-            return !await services.GetRequiredService<IConnectionMultiplexer>().GetDatabase()
-                .KeyExistsAsync($"revoked:{revocationId}");
+            try
+            {
+                return !await services.GetRequiredService<IConnectionMultiplexer>().GetDatabase()
+                    .KeyExistsAsync($"revoked:{revocationId}");
+            }
+            catch (RedisException)
+            {
+                throw new ExternalDependencyUnavailableException();
+            }
         }
         catch (SecurityTokenException)
         {
