@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using StackExchange.Redis;
+using UTTTGO.Api.Modules.Identity.Application;
 using UTTTGO.Api.Modules.Identity.Infrastructure;
 using Xunit;
 
@@ -17,7 +18,7 @@ public sealed class RedisJwtGateTests
     private const string Secret = "a-test-only-signing-key-that-is-at-least-32-bytes-long";
 
     [Theory]
-    [InlineData("jwt-id", "session-id", "revoked:jwt-id")]
+    [InlineData("jwt-id", "session-id", "revoked:session-id")]
     [InlineData(null, "session-id", "revoked:session-id")]
     public async Task ValidJwtChecksPreferredRevocationIdentifier(string? jti, string? session,
         string expectedKey)
@@ -33,11 +34,33 @@ public sealed class RedisJwtGateTests
     }
 
     [Fact]
-    public async Task JwtWithoutJtiOrSessionIdIsRejectedBeforeRedis()
+    public async Task JwtWithoutJtiOrSessionIdUsesTokenHashBeforeRedis()
     {
-        using var services = new ServiceCollection().BuildServiceProvider();
-        (await CreateGate(services).IsValidAndNotRevokedAsync(Token(null, null), "sub-1", default))
-            .Should().BeFalse();
+        var database = DispatchProxy.Create<IDatabase, DatabaseProxy>();
+        var connection = DispatchProxy.Create<IConnectionMultiplexer, MultiplexerProxy>();
+        ((MultiplexerProxy)connection).Database = database;
+        using var services = new ServiceCollection().AddSingleton(connection).BuildServiceProvider();
+        var token = Token(null, null);
+
+        (await CreateGate(services).IsValidAndNotRevokedAsync(token, "sub-1", default))
+            .Should().BeTrue();
+        ((DatabaseProxy)database).CheckedKey.Should().Be(
+            $"revoked:{JwtRevocationIdentifier.For(new JwtSecurityTokenHandler().ReadJwtToken(token), token)}");
+    }
+
+    [Fact]
+    public async Task RevokedIdentifierIsRejectedOnSubsequentRequest()
+    {
+        var database = DispatchProxy.Create<IDatabase, DatabaseProxy>();
+        var connection = DispatchProxy.Create<IConnectionMultiplexer, MultiplexerProxy>();
+        ((MultiplexerProxy)connection).Database = database;
+        using var services = new ServiceCollection().AddSingleton(connection).BuildServiceProvider();
+        var gate = CreateGate(services);
+        var token = Token(null, "session-id");
+
+        (await gate.IsValidAndNotRevokedAsync(token, "sub-1", default)).Should().BeTrue();
+        ((DatabaseProxy)database).Revoked = true;
+        (await gate.IsValidAndNotRevokedAsync(token, "sub-1", default)).Should().BeFalse();
     }
 
     private static RedisJwtGate CreateGate(IServiceProvider services) =>
@@ -71,12 +94,13 @@ public sealed class RedisJwtGateTests
     public class DatabaseProxy : DispatchProxy
     {
         public string? CheckedKey { get; private set; }
+        public bool Revoked { get; set; }
 
         protected override object? Invoke(MethodInfo? targetMethod, object?[]? args)
         {
             if (targetMethod?.Name != "KeyExistsAsync") throw new NotSupportedException();
             CheckedKey = args![0]!.ToString();
-            return Task.FromResult(false);
+            return Task.FromResult(Revoked);
         }
     }
 }

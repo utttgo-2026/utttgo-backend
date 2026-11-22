@@ -18,3 +18,8 @@ public interface IJwtRevocationStore
 {
     Task<bool> TryRevokeAsync(string jti, TimeSpan ttl, CancellationToken cancellationToken);
 }
+
+public interface ISupabaseSessionRevoker
+{
+    Task RevokeGloballyAsync(string accessToken, CancellationToken cancellationToken);
+}

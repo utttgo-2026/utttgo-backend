@@ -5,7 +5,8 @@ namespace UTTTGO.Api.Modules.Identity.Application;
 
 public sealed class LogoutService(
     ILoginJwtGate jwtGate,
-    IJwtRevocationStore revocations) : ILogoutService
+    IJwtRevocationStore revocations,
+    ISupabaseSessionRevoker supabase) : ILogoutService
 {
     public async Task<LogoutResult> LogoutAsync(string token, CancellationToken cancellationToken)
     {
@@ -20,10 +21,10 @@ public sealed class LogoutService(
         }
 
         var subject = parsed.Payload.Sub;
-        var jti = parsed.Payload.Jti;
-        if (string.IsNullOrWhiteSpace(subject) || string.IsNullOrWhiteSpace(jti) ||
-            parsed.Payload.Expiration is not { } expiration)
+        if (string.IsNullOrWhiteSpace(subject) || parsed.Payload.Expiration is not { } expiration)
             return new(LogoutOutcome.Unauthorized);
+
+        var revocationId = JwtRevocationIdentifier.For(parsed, token);
 
         if (!await jwtGate.IsValidAndNotRevokedAsync(token, subject, cancellationToken))
             return new(LogoutOutcome.Unauthorized);
@@ -34,13 +35,15 @@ public sealed class LogoutService(
 
         try
         {
-            return await revocations.TryRevokeAsync(jti, ttl, cancellationToken)
-                ? new(LogoutOutcome.Success)
-                : new(LogoutOutcome.Unauthorized);
+            if (!await revocations.TryRevokeAsync(revocationId, ttl, cancellationToken))
+                return new(LogoutOutcome.Unauthorized);
         }
         catch (ExternalDependencyUnavailableException)
         {
             return new(LogoutOutcome.Unavailable);
         }
+
+        await supabase.RevokeGloballyAsync(token, cancellationToken);
+        return new(LogoutOutcome.Success);
     }
 }

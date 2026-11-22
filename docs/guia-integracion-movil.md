@@ -86,7 +86,7 @@ Errores: `400 VALIDATION_ERROR`, `401 INVALID_CREDENTIALS`, `429 RATE_LIMITED`, 
 
 ### 2.4 `POST /api/v1/auth/logout` → `204` (Bearer)
 
-El móvil debe enviar el access token vigente en `Authorization: Bearer <accessToken>`. El backend valida firma, issuer, audience, expiración y `jti`, y registra `revoked:{jti}` en Redis hasta la expiración del token. La respuesta `204` no tiene cuerpo. No se envía refresh token al backend ni se revoca la sesión global de Supabase.
+El móvil debe enviar el access token vigente en `Authorization: Bearer <accessToken>`. El backend valida firma, issuer, audience y expiración, registra `revoked:{session_id|jti|sha256}` en Redis hasta la expiración del token y solicita a Supabase la invalidación global de la sesión, incluidos sus refresh tokens. La respuesta `204` no tiene cuerpo, incluso si Supabase no responde después de la revocación local. Tras recibir `204`, el móvil debe borrar sus access y refresh tokens locales y regresar a la pantalla de inicio de sesión.
 
 Errores: `401 UNAUTHORIZED` si falta el header, el JWT es inválido, expiró o ya fue revocado; `503 AUTH_UNAVAILABLE` si Redis no está disponible.
 
@@ -499,7 +499,7 @@ Códigos en uso: `VALIDATION_ERROR`, `UNAUTHORIZED`, `INVALID_CREDENTIALS`, `INS
 ## 8. Límites conocidos (no confundir con fallos)
 
 - **Sin imágenes**: no existe Media/S3 presigned; `avatarUrl` es `null`, los productos no tienen imágenes y `POST /products` con `imageUrl` con valor responde `422 IMAGE_NOT_AVAILABLE`.
-- El logout revoca el access token actual en Redis; el access token expira como máximo a la hora y no se envía refresh token al backend.
+- El logout revoca el access token actual en Redis e invalida globalmente la sesión Supabase, incluidos sus refresh tokens; el móvil debe borrar sus tokens locales después del `204`.
 - **Sin reseñas**: `ratingAverage` y `ratingCount` son `null` en productos y vendedores.
 - **Sin "mis productos" ni filtro `sellerId`**: el catálogo no permite filtrar por vendedor; está decidido para la siguiente iteración (el índice `sellerId_status` ya existe).
 - **Sin eliminación de producto**: no hay DELETE.
