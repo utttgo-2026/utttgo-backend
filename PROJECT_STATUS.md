@@ -87,7 +87,7 @@ No existen todavía: media/imágenes, reseñas, favoritos, notificaciones push, 
 | Redis | `IConnectionMultiplexer` + `RedisRateLimiter` + `RedisJwtGate` | `REDIS_URL` | **Real y operativo**: rate limiting distribuido, blacklist JWT (`revoked:{jti}`) y healthcheck. |
 | Supabase Auth | `SupabaseAuthClient` (HTTP a `/auth/v1/signup`, `/token`, `/user`) | `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_JWKS_URL`, `SUPABASE_JWT_SECRET`, `SUPABASE_JWT_ISSUER`, `SUPABASE_JWT_AUDIENCE` | **Real y operativo**; el JWT se valida por JWKS o HMAC. |
 | Amazon S3 | **No existe cliente** | `S3_BUCKET_IMAGES`, `AWS_REGION` (declarados) | Bucket privado aprovisionado; el flujo presigned + moderación pertenece a la fase 05. |
-| Azure AI Content Safety | **No existe cliente** | — | Pendiente (fase 05, Media). |
+| Amazon Rekognition | Cliente integrado en Media | `MODERATION_MIN_CONFIDENCE` | Migración en validación local (fase 05, Media). |
 | Firebase Cloud Messaging | **No existe cliente** | — | Pendiente (fase de notificaciones). |
 | SignalR | **No implementado** | — | Pendiente (fase de chat); con 2 réplicas requiere backplane Redis. |
 

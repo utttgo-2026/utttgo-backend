@@ -9,7 +9,7 @@ API-018 `POST /api/v1/media/{assetId}/complete`, módulo `Media`, según [trazab
 
 ## Estado de aprobación
 
-BR-007 y constitución § 7 obligan moderación Azure AI Content Safety **antes** de publicación, `Approved` solo si seguro y `Rejected` con borrado S3 si inseguro. Fase 05 no tiene spec aprobada; HTTP, thresholds, reintentos y fallos parciales requieren contrato propio. Sprint 2 de Catalog publica sin imágenes (DEC-019).
+BR-007 y constitución § 7 obligan moderación Amazon Rekognition **antes** de publicación, `Approved` solo si seguro y `Rejected` con borrado S3 si inseguro. Fase 05 no tiene spec aprobada; umbral, reintentos y fallos parciales requieren contrato propio. Sprint 2 de Catalog publica sin imágenes (DEC-019).
 
 ## Responsabilidad única
 

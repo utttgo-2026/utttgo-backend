@@ -23,7 +23,7 @@
 - **Vendedores:** autoactivación al completar nombre de negocio, descripción y punto de recogida; sin aprobación administrativa previa en el MVP (DEC-002). El cliente no asigna roles.
 - **Redis:** contenedor Redis 7 en el `docker-compose.yml` de la instancia (sin ElastiCache por costo $0, DEC-018) para caché, rate limiting distribuido y blacklist JWT.
 - **Storage:** Amazon S3 bucket **privado** con URLs presignadas generadas exclusivamente por el backend.
-- **Moderación:** Azure AI Content Safety API antes de publicar imágenes (se conserva como servicio externo; DEC-018).
+- **Moderación:** Amazon Rekognition antes de publicar imágenes, usando la identidad AWS del entorno.
 - **Push:** Firebase Cloud Messaging con FCM Admin SDK, únicamente desde el backend.
 - **Tiempo real:** SignalR con backplane obligatorio.
 - **API:** prefijo `/api/v1`.
@@ -130,7 +130,7 @@ restore → format → build → unit → integration → security → secret sc
 | BR-004 | **No existen menús ni horarios.** La disponibilidad depende de existencias/estado del producto; ingredientes no son menú. |
 | BR-005 | La comparación se hace entre **productos independientes de distintos vendedores** encontrados por búsqueda/filtros (ingredientes, precios y calificaciones disponibles). |
 | BR-006 | Cada vendedor posee y administra sus **propios productos/publicaciones**; no hay producto maestro compartido ni ofertas asociadas. |
-| BR-007 | Toda imagen usa **URL presignada de S3 generada por el backend** y **moderación previa** con Azure AI Content Safety. |
+| BR-007 | Toda imagen usa **URL presignada de S3 generada por el backend** y **moderación previa** con Amazon Rekognition. |
 | BR-008 | Las notificaciones push se envían **solo** por el backend con FCM Admin SDK. |
 | BR-009 | El comprador no decide precio/total/estado ni identidad; el vendedor propietario puede solicitar cambios de precio, stock y publicación, validados por backend; identidades/roles nunca se confían al cliente. |
 | BR-010 | Total server-side = precio vigente del producto elegido × cantidad; definir concurrencia/snapshot en Orders. |
@@ -219,7 +219,7 @@ Flujo obligatorio:
 1. El cliente pide intención de subida al backend.
 2. El backend valida JWT, MIME, extensión y tamaño; crea `mediaAssets` en `PendingUpload` y devuelve una **presigned PUT** de un solo objeto.
 3. El cliente sube directo a la carpeta de staging del bucket S3 privado (CORS configurado en Terraform).
-4. El cliente notifica fin; el backend invoca Azure AI Content Safety.
+4. El cliente notifica fin; el backend invoca Amazon Rekognition.
 5. Seguro → `Approved`; no seguro → se elimina el objeto y queda `Rejected`.
 6. Solo un `mediaAssetId` en `Approved` puede asociarse a un producto publicado.
 

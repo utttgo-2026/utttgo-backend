@@ -9,16 +9,10 @@ firma); los pasos siguientes requieren evidencia AWS independiente.
 
 ## Antes de permitir fotos aprobadas
 
-- [ ] Registrar decisión formal de umbrales de las cuatro categorías Azure
-  `Hate`, `SelfHarm`, `Sexual`, `Violence` (`FourSeverityLevels`: 0/2/4/6),
-  tratamiento de fallos, reintentos, compensación y coste. No fijar umbrales
-  solo para hacer pasar pruebas. Configurar endpoint HTTPS y clave Azure **solo**
-  como secretos del entorno (`CONTENT_SAFETY_ENDPOINT`, `CONTENT_SAFETY_KEY`);
-  configurar `CONTENT_SAFETY_MAX_HATE_SEVERITY`,
-  `CONTENT_SAFETY_MAX_SELF_HARM_SEVERITY`,
-  `CONTENT_SAFETY_MAX_SEXUAL_SEVERITY`,
-  `CONTENT_SAFETY_MAX_VIOLENCE_SEVERITY` **únicamente** después de aprobar la
-  política. Sin cuatro valores válidos: `ProcessingFailed`, nunca `Approved`.
+- [ ] Registrar decisión formal del umbral `MODERATION_MIN_CONFIDENCE` de
+  Amazon Rekognition, tratamiento de fallos, reintentos, compensación y coste.
+  El valor por defecto es `75`; valores fuera de `0..100` fallan cerrado y un
+  fallo del proveedor termina en `ProcessingFailed`, nunca en `Approved`.
 - [ ] Revisar/autorizar cambios Terraform de IAM: `infra/terraform/main.tf`
   actualmente crea bucket, Block Public Access y CORS, pero el Instance
   Profile EC2 **no tiene política S3 para este bucket**. Añadir mediante
