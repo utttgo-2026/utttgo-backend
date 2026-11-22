@@ -110,6 +110,10 @@ public sealed class MediaService(IMediaRepository repository, IMediaObjectStore 
                 return await FailAsync(asset, MediaCompletionFailure.ContentInvalid,
                     asset.Size, asset.MimeType, ct);
             }
+            catch (MediaCompletionException)
+            {
+                throw;
+            }
             catch (Exception) when (!ct.IsCancellationRequested)
             {
                 await repository.TransitionAsync(asset.Id, owner, asset.Version,

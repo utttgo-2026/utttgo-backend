@@ -73,6 +73,21 @@ public sealed class MediaServiceTests
     }
 
     [Fact]
+    public async Task InvalidContentPropagatesItsFailureAfterRejectingTheAsset()
+    {
+        var repo = new Repository { Value = Asset() };
+        var store = new ObjectStore { Head = (10, "image/jpeg") };
+        var service = new MediaService(repo, store, new InvalidImageModerator());
+
+        var exception = await Assert.ThrowsAsync<MediaCompletionException>(() =>
+            service.ConfirmAsync(Id, Owner, default));
+
+        exception.Failure.Should().Be(MediaCompletionFailure.ContentInvalid);
+        repo.Value!.Status.Should().Be(MediaStatus.Rejected);
+        store.Deletes.Should().Be(1);
+    }
+
+    [Fact]
     public async Task UnconfiguredModeratorFailsClosedAndTerminalStateIsStable()
     {
         var repo = new Repository { Value = Asset() };
@@ -236,6 +251,12 @@ public sealed class MediaServiceTests
             Calls++;
             return Task.FromResult(Safe);
         }
+    }
+
+    private sealed class InvalidImageModerator : IImageModerator
+    {
+        public Task<bool> IsSafeAsync(string key, string mime, long size, CancellationToken ct) =>
+            throw new InvalidMediaImageException();
     }
 
     private sealed class DelayedModerator : IImageModerator
