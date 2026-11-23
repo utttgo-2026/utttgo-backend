@@ -72,16 +72,23 @@ public sealed class MediaService(IMediaRepository repository, IMediaObjectStore 
         }
         try
         {
-            var safe = await moderator.IsSafeAsync(asset.ObjectKey, asset.MimeType, asset.Size, ct);
-            if (!safe)
+            var verdict = await moderator.ReviewAsync(asset.ObjectKey, asset.MimeType, asset.Size, ct);
+            if (!verdict.Safe)
             {
                 await objects.DeleteAsync(asset.ObjectKey, ct);
                 await repository.TransitionAsync(asset.Id, owner, asset.Version,
                     MediaStatus.PendingModeration, MediaStatus.Rejected, ct);
             }
             else
-                await repository.TransitionAsync(asset.Id, owner, asset.Version,
-                    MediaStatus.PendingModeration, MediaStatus.Approved, ct);
+            {
+                if (verdict.ApprovedSha256.Length != 32)
+                    throw new InvalidOperationException("Approved image hash is missing.");
+                var approvedKey = $"approved/{owner}/{asset.Id}/{Guid.NewGuid():N}";
+                await objects.SealApprovedAsync(asset.ObjectKey, approvedKey, asset.MimeType, asset.Size,
+                    verdict.ApprovedSha256, ct);
+                if (!await repository.ApproveAsync(asset.Id, owner, asset.Version, approvedKey, ct))
+                    await objects.DeleteAsync(approvedKey, ct);
+            }
         }
         catch (InvalidMediaImageException) when (!ct.IsCancellationRequested)
         {
@@ -111,13 +118,18 @@ public sealed class MediaService(IMediaRepository repository, IMediaObjectStore 
         return record is null ? null : new(record.Id, record.Status);
     }
 
+    private static bool HasSealedKey(MediaRecord record) =>
+        record.ObjectKey.StartsWith($"approved/{record.OwnerUserId}/{record.Id}/",
+            StringComparison.Ordinal);
+
     public async Task<bool> IsApprovedForOwnerAsync(string id, string owner, CancellationToken ct) =>
-        await ReadOwnedAsync(id, owner, ct) is { Status: MediaStatus.Approved };
+        await ReadOwnedAsync(id, owner, ct) is { Status: MediaStatus.Approved } record &&
+        HasSealedKey(record);
 
     public async Task<MediaReadUrl?> GetApprovedReadUrlAsync(string id, CancellationToken ct)
     {
         var record = await repository.FindAsync(id, ct);
-        return record is { Status: MediaStatus.Approved }
+        return record is { Status: MediaStatus.Approved } && HasSealedKey(record)
             ? await objects.SignGetAsync(record.ObjectKey, ct) : null;
     }
 }

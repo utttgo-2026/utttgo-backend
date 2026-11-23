@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using System.Security.Cryptography;
 using System.Text.Json;
 using FluentAssertions;
 using Microsoft.Extensions.Options;
@@ -152,6 +153,21 @@ public sealed class ContentSafetyPolicyDecisionTests
     }
 
     [Fact]
+    public async Task StagingOverwriteDuringAzureAnalysisCannotSealDifferentBytes()
+    {
+        var response = JsonSerializer.Serialize(new
+        {
+            categoriesAnalysis = Categories.Select(name => new { category = name, severity = 0 })
+        });
+        var scenario = Create(_ => Task.FromResult(JsonResponse(response)));
+        scenario.Store.MutateOnSeal = true;
+        (await scenario.Service.ConfirmAsync(Id, Owner, default))!.Status
+            .Should().Be(MediaStatus.ProcessingFailed);
+        scenario.Repository.Value!.ObjectKey.Should().StartWith("staging/");
+        (await scenario.Service.GetApprovedReadUrlAsync(Id, default)).Should().BeNull();
+    }
+
+    [Fact]
     public async Task ExplicitThresholdsWithoutIsolatedTestSwitchCannotApprove()
     {
         var images = new Store();
@@ -166,7 +182,7 @@ public sealed class ContentSafetyPolicyDecisionTests
             new AzureContentSafetyAnalyzer(new HttpClient(new Handler(_ =>
                 Task.FromResult(JsonResponse("{}")))), options), options);
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            moderator.IsSafeAsync("staging/asset", "image/png", 12, default));
+            moderator.ReviewAsync("staging/asset", "image/png", 12, default));
         images.Reads.Should().Be(0);
     }
 
@@ -281,6 +297,15 @@ public sealed class ContentSafetyPolicyDecisionTests
             Value = Value with { Status = to, Version = version + 1 };
             return Task.FromResult(true);
         }
+        public Task<bool> ApproveAsync(string id, string owner, long version, string approvedKey,
+            CancellationToken ct)
+        {
+            if (Value is null || Value.Id != id || Value.OwnerUserId != owner ||
+                Value.Status != MediaStatus.PendingModeration || Value.Version != version)
+                return Task.FromResult(false);
+            Value = Value with { Status = MediaStatus.Approved, ObjectKey = approvedKey, Version = version + 1 };
+            return Task.FromResult(true);
+        }
     }
 
     private sealed class Store : IMediaObjectStore, IMediaImageSource
@@ -290,6 +315,7 @@ public sealed class ContentSafetyPolicyDecisionTests
         public bool FailRead;
         public bool FailDelete;
         public bool WrongFormat;
+        public bool MutateOnSeal;
         public int Reads;
         public Task<byte[]> ReadForModerationAsync(string key, string mime, long size, CancellationToken ct)
         {
@@ -316,5 +342,16 @@ public sealed class ContentSafetyPolicyDecisionTests
             Task.FromResult<(string, DateTime, IReadOnlyDictionary<string, string>)>(
                 ("https://test.invalid/upload", DateTime.UtcNow.AddMinutes(4),
                     new Dictionary<string, string> { ["Content-Type"] = mime }));
+        public Task SealApprovedAsync(string stagingKey, string approvedKey, string mime, long size,
+            byte[] approvedHash, CancellationToken ct)
+        {
+            var content = MutateOnSeal
+                ? new byte[] { 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 0, 0, 0 }
+                : new byte[] { 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0 };
+            if (approvedHash.Length != 32 ||
+                !CryptographicOperations.FixedTimeEquals(SHA256.HashData(content), approvedHash))
+                throw new InvalidOperationException("Staging bytes changed.");
+            return Task.CompletedTask;
+        }
     }
 }

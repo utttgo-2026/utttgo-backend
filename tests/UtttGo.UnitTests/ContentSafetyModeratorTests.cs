@@ -18,7 +18,7 @@ public sealed class ContentSafetyModeratorTests
         var moderator = new ContentSafetyImageModerator(images, analyzer, Options.Create(
             new ContentSafetyOptions { MaxHateSeverity = 0 }));
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            moderator.IsSafeAsync("staging/asset", "image/png", 12, default));
+            moderator.ReviewAsync("staging/asset", "image/png", 12, default));
         images.Reads.Should().Be(0);
         analyzer.Calls.Should().Be(0);
     }
@@ -31,7 +31,7 @@ public sealed class ContentSafetyModeratorTests
         policy.MaxHateSeverity = 1;
         var moderator = new ContentSafetyImageModerator(images, new Analyzer(), Options.Create(policy));
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            moderator.IsSafeAsync("staging/asset", "image/png", 12, default));
+            moderator.ReviewAsync("staging/asset", "image/png", 12, default));
         images.Reads.Should().Be(0);
     }
 
@@ -44,7 +44,7 @@ public sealed class ContentSafetyModeratorTests
         var analyzer = new Analyzer { HateSeverity = severity };
         var moderator = new ContentSafetyImageModerator(new Images(), analyzer,
             Options.Create(TestPolicy()));
-        (await moderator.IsSafeAsync("staging/asset", "image/png", 12, default)).Should().Be(expected);
+        (await moderator.ReviewAsync("staging/asset", "image/png", 12, default)).Safe.Should().Be(expected);
         analyzer.Calls.Should().Be(1);
     }
 
@@ -58,7 +58,7 @@ public sealed class ContentSafetyModeratorTests
         var moderator = new ContentSafetyImageModerator(new Images(), analyzer,
             Options.Create(TestPolicy()));
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            moderator.IsSafeAsync("staging/asset", "image/png", 12, default));
+            moderator.ReviewAsync("staging/asset", "image/png", 12, default));
     }
 
     [Fact]

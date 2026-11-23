@@ -91,7 +91,14 @@ public sealed class MediaSecurityTests : IAsyncLifetime
     [Fact]
     public async Task OnlyOwnApprovedAssetReceivesTemporaryReadUrl()
     {
-        var repo = new Repository { Value = Asset() with { Status = MediaStatus.Approved } };
+        var repo = new Repository
+        {
+            Value = Asset() with
+            {
+                Status = MediaStatus.Approved,
+                ObjectKey = $"approved/{SellerFixtures.UserId}/{Id}/sealed"
+            }
+        };
         var store = new Store();
         using var factory = Factory(repo, store, Profile());
         using var client = Client(factory);
@@ -207,6 +214,15 @@ public sealed class MediaSecurityTests : IAsyncLifetime
             Value = Value with { Status = to, Version = version + 1 };
             return Task.FromResult(true);
         }
+        public Task<bool> ApproveAsync(string id, string owner, long version, string approvedKey,
+            CancellationToken ct)
+        {
+            if (Value is null || Value.Id != id || Value.OwnerUserId != owner ||
+                Value.Version != version || Value.Status != MediaStatus.PendingModeration)
+                return Task.FromResult(false);
+            Value = Value with { Status = MediaStatus.Approved, ObjectKey = approvedKey, Version = version + 1 };
+            return Task.FromResult(true);
+        }
     }
 
     private sealed class Store : IMediaObjectStore
@@ -230,6 +246,8 @@ public sealed class MediaSecurityTests : IAsyncLifetime
             return Task.FromResult(new MediaReadUrl("https://local.invalid/get", DateTime.UtcNow.AddMinutes(4)));
         }
         public Task DeleteAsync(string key, CancellationToken ct) => Task.CompletedTask;
+        public Task SealApprovedAsync(string stagingKey, string approvedKey, string mime, long size,
+            byte[] approvedHash, CancellationToken ct) => Task.CompletedTask;
     }
 
     private sealed class ImageSource : IMediaImageSource

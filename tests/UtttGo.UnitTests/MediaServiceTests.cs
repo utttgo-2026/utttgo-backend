@@ -69,6 +69,43 @@ public sealed class MediaServiceTests
     }
 
     [Fact]
+    public async Task PreviouslyApprovedStagingKeyIsNotReadOrAssociatedWithoutSealing()
+    {
+        var repo = new Repository { Value = Asset() with { Status = MediaStatus.Approved } };
+        var store = new ObjectStore();
+        var service = new MediaService(repo, store, new Moderator());
+        (await service.GetApprovedReadUrlAsync(Id, default)).Should().BeNull();
+        (await service.IsApprovedForOwnerAsync(Id, Owner, default)).Should().BeFalse();
+        store.SignGets.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task FailedSealNeverApprovesAndConcurrentConfirmationCannotRetry()
+    {
+        var repo = new Repository { Value = Asset() };
+        var store = new ObjectStore { Head = (10, "image/jpeg"), FailSeal = true };
+        var moderator = new Moderator();
+        var service = new MediaService(repo, store, moderator);
+        (await service.ConfirmAsync(Id, Owner, default))!.Status.Should().Be(MediaStatus.ProcessingFailed);
+        store.Seals.Should().Be(1);
+        (await service.ConfirmAsync(Id, Owner, default))!.Status.Should().Be(MediaStatus.ProcessingFailed);
+        moderator.Calls.Should().Be(1);
+        (await service.GetApprovedReadUrlAsync(Id, default)).Should().BeNull();
+    }
+
+    [Fact]
+    public async Task LostApprovalCasRemovesSealedCandidateWithoutServingIt()
+    {
+        var repo = new Repository { Value = Asset(), FailApproval = true };
+        var store = new ObjectStore { Head = (10, "image/jpeg") };
+        var service = new MediaService(repo, store, new Moderator());
+        (await service.ConfirmAsync(Id, Owner, default))!.Status.Should().Be(MediaStatus.PendingModeration);
+        store.Seals.Should().Be(1);
+        store.Deletes.Should().Be(1);
+        (await service.GetApprovedReadUrlAsync(Id, default)).Should().BeNull();
+    }
+
+    [Fact]
     public async Task PendingModerationRemainsVisibleUntilTheProviderReturns()
     {
         var repo = new Repository { Value = Asset() };
@@ -152,6 +189,7 @@ public sealed class MediaServiceTests
     private sealed class Repository : IMediaRepository
     {
         public MediaRecord? Value;
+        public bool FailApproval;
         public Task AddAsync(MediaRecord record, CancellationToken ct)
         {
             Value = record;
@@ -167,12 +205,25 @@ public sealed class MediaServiceTests
             Value = Value with { Status = to, Version = version + 1 };
             return Task.FromResult(true);
         }
+        public Task<bool> ApproveAsync(string id, string owner, long version, string approvedKey,
+            CancellationToken ct)
+        {
+            if (FailApproval) return Task.FromResult(false);
+            if (Value is null || Value.Id != id || Value.OwnerUserId != owner ||
+                Value.Version != version || Value.Status != MediaStatus.PendingModeration)
+                return Task.FromResult(false);
+            Value = Value with { Status = MediaStatus.Approved, ObjectKey = approvedKey, Version = version + 1 };
+            return Task.FromResult(true);
+        }
     }
 
     private sealed class ObjectStore : IMediaObjectStore
     {
         public (long Length, string Mime)? Head;
         public int Deletes;
+        public int Seals;
+        public int SignGets;
+        public bool FailSeal;
         public Task<(string Url, DateTime ExpiresAt, IReadOnlyDictionary<string, string> Headers)>
             SignPutAsync(string key, string mime, CancellationToken ct) =>
             Task.FromResult<(string, DateTime, IReadOnlyDictionary<string, string>)>(
@@ -180,11 +231,21 @@ public sealed class MediaServiceTests
                     new Dictionary<string, string> { ["Content-Type"] = mime }));
         public Task<(long Length, string Mime)?> HeadAsync(string key, CancellationToken ct) =>
             Task.FromResult(Head);
-        public Task<MediaReadUrl> SignGetAsync(string key, CancellationToken ct) =>
-            Task.FromResult(new MediaReadUrl("https://local.invalid/get", DateTime.UtcNow.AddMinutes(4)));
+        public Task<MediaReadUrl> SignGetAsync(string key, CancellationToken ct)
+        {
+            SignGets++;
+            return Task.FromResult(new MediaReadUrl("https://local.invalid/get", DateTime.UtcNow.AddMinutes(4)));
+        }
         public Task DeleteAsync(string key, CancellationToken ct)
         {
             Deletes++;
+            return Task.CompletedTask;
+        }
+        public Task SealApprovedAsync(string stagingKey, string approvedKey, string mime, long size,
+            byte[] approvedHash, CancellationToken ct)
+        {
+            Seals++;
+            if (FailSeal) throw new InvalidOperationException("Simulated sealing failure.");
             return Task.CompletedTask;
         }
     }
@@ -193,10 +254,10 @@ public sealed class MediaServiceTests
     {
         public bool Safe = true;
         public int Calls;
-        public Task<bool> IsSafeAsync(string key, string mime, long size, CancellationToken ct)
+        public Task<MediaModerationVerdict> ReviewAsync(string key, string mime, long size, CancellationToken ct)
         {
             Calls++;
-            return Task.FromResult(Safe);
+            return Task.FromResult(new MediaModerationVerdict(Safe, Safe ? new byte[32] : []));
         }
     }
 
@@ -204,13 +265,15 @@ public sealed class MediaServiceTests
     {
         public int Calls;
         public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        private readonly TaskCompletionSource<bool> result = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public Task<bool> IsSafeAsync(string key, string mime, long size, CancellationToken ct)
+        private readonly TaskCompletionSource<MediaModerationVerdict> result =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public Task<MediaModerationVerdict> ReviewAsync(string key, string mime, long size, CancellationToken ct)
         {
             Calls++;
             Started.SetResult();
             return result.Task;
         }
-        public void Complete(bool safe) => result.SetResult(safe);
+        public void Complete(bool safe) =>
+            result.SetResult(new MediaModerationVerdict(safe, safe ? new byte[32] : []));
     }
 }

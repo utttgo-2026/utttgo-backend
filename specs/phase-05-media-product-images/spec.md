@@ -5,6 +5,23 @@
 
 ## Alcance y compatibilidad
 
+**IMG-T10: sellado de bytes aprobados (cambio Media, sin cambio JSON):** cada intención tiene
+clave PUT `staging/{owner}/{mediaAssetId}`; los bytes moderados se identifican
+mediante SHA-256 interno (no expuesto). Tras resultado seguro, el backend vuelve a
+leer staging, comprueba tamaño/MIME/firma binaria y huella, y escribe **esos
+mismos bytes** en una clave nueva e impredecible `approved/{owner}/{mediaAssetId}/{nonce}`
+con `If-None-Match: *` (PUT exclusivo del backend, jamás URL PUT para `approved/`).
+Solo después del PUT se hace CAS Mongo atómico de `PendingModeration` a
+`Approved` **junto con** `objectKey = approved/...`; ante error no se aprueba;
+si CAS falla se intenta borrar el candidato sellado. La URL GET de Media y la
+interfaz usada por Catalog requieren `Approved` **y** clave `approved/` del dueño
+y asset: nunca firman GET de staging, incluso para registros antiguos marcados
+Approved con clave insegura. Repetir PUT de staging tras confirmar no altera
+la copia aprobada. Este diseño no cambia estados, IDs ni respuestas públicas.
+Los registros `Approved` anteriores que apuntan a staging quedan fail-closed
+(sin URL ni asociación) hasta migración/reevaluación aprobada; no reabrir
+automáticamente ni convertir `Rejected` en `Approved`.
+
 > **Decisión posterior del equipo (2026-11-20): aprobado el límite público exacto de 4 000 000 bytes, inclusive**, para Media y Expo Go. El texto histórico siguiente describe cuándo se identificó el cambio, no un estado de aprobación pendiente. Umbrales Azure 0/0/0/0 continúan autorizados **solo** para pruebas controladas, nunca producción.
 
 `PresignedUrlRequest.size` declara mínimo `1` y máximo `4_000_000` en el OpenAPI

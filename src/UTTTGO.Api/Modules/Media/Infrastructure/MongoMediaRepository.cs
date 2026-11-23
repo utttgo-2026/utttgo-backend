@@ -66,4 +66,21 @@ public sealed class MongoMediaRepository(MongoStore store) : IMediaRepository
             update = update.Set(x => x.ConfirmedAt, DateTime.UtcNow);
         return (await Assets.UpdateOneAsync(filter, update, cancellationToken: cancellationToken)).ModifiedCount == 1;
     }
+
+    public async Task<bool> ApproveAsync(string id, string ownerId, long version, string approvedKey,
+        CancellationToken cancellationToken)
+    {
+        if (!ObjectId.TryParse(id, out var objectId) ||
+            !approvedKey.StartsWith($"approved/{ownerId}/{id}/", StringComparison.Ordinal)) return false;
+        var filter = Builders<MediaDocument>.Filter.Eq(x => x.Id, objectId) &
+            Builders<MediaDocument>.Filter.Eq(x => x.OwnerUserId, ownerId) &
+            Builders<MediaDocument>.Filter.Eq(x => x.Version, version) &
+            Builders<MediaDocument>.Filter.Eq(x => x.Status, MediaStatus.PendingModeration) &
+            Builders<MediaDocument>.Filter.Regex(x => x.ObjectKey,
+                new MongoDB.Bson.BsonRegularExpression("^staging/"));
+        var update = Builders<MediaDocument>.Update.Set(x => x.Status, MediaStatus.Approved)
+            .Set(x => x.ObjectKey, approvedKey).Set(x => x.ConfirmedAt, DateTime.UtcNow)
+            .Inc(x => x.Version, 1);
+        return (await Assets.UpdateOneAsync(filter, update, cancellationToken: cancellationToken)).ModifiedCount == 1;
+    }
 }

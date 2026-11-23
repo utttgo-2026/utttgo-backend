@@ -19,6 +19,8 @@ public interface IMediaRepository
     Task<MediaRecord?> FindAsync(string id, CancellationToken cancellationToken);
     Task<bool> TransitionAsync(string id, string ownerId, long version, string from, string to,
         CancellationToken cancellationToken);
+    Task<bool> ApproveAsync(string id, string ownerId, long version, string approvedKey,
+        CancellationToken cancellationToken);
 }
 
 public sealed record MediaReadUrl(string Url, DateTime ExpiresAt);
@@ -38,6 +40,8 @@ public interface IMediaObjectStore
     Task<(long Length, string Mime)?> HeadAsync(string key, CancellationToken cancellationToken);
     Task<MediaReadUrl> SignGetAsync(string key, CancellationToken cancellationToken);
     Task DeleteAsync(string key, CancellationToken cancellationToken);
+    Task SealApprovedAsync(string stagingKey, string approvedKey, string mime, long size,
+        byte[] approvedHash, CancellationToken cancellationToken);
 }
 
 // Moderation reads the staging object server-side; the client never supplies bytes or a URL.
@@ -55,11 +59,15 @@ public interface IContentSafetyAnalyzer
 public interface IImageModerator
 {
     // No configured provider or provider error must never yield true.
-    Task<bool> IsSafeAsync(string objectKey, string mime, long size, CancellationToken cancellationToken);
+    Task<MediaModerationVerdict> ReviewAsync(string objectKey, string mime, long size,
+        CancellationToken cancellationToken);
 }
+
+public sealed record MediaModerationVerdict(bool Safe, byte[] ApprovedSha256);
 
 public sealed class UnconfiguredImageModerator : IImageModerator
 {
-    public Task<bool> IsSafeAsync(string objectKey, string mime, long size, CancellationToken cancellationToken) =>
+    public Task<MediaModerationVerdict> ReviewAsync(string objectKey, string mime, long size,
+        CancellationToken cancellationToken) =>
         throw new InvalidOperationException("Content Safety is not configured.");
 }

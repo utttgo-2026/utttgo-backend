@@ -1,6 +1,7 @@
 using Amazon;
 using Amazon.S3;
 using Amazon.S3.Model;
+using System.Security.Cryptography;
 using Microsoft.Extensions.Options;
 using UTTTGO.Api.Modules.Media.Application;
 using UTTTGO.Api.Shared.Contracts;
@@ -22,6 +23,8 @@ public sealed class S3MediaObjectStore(IOptions<S3Config> options) : IMediaObjec
     public Task<(string Url, DateTime ExpiresAt, IReadOnlyDictionary<string, string> Headers)> SignPutAsync(
         string key, string mime, CancellationToken cancellationToken)
     {
+        if (!key.StartsWith("staging/", StringComparison.Ordinal))
+            throw new InvalidOperationException("Upload signatures are limited to staging.");
         var (client, bucket) = Open();
         using (client)
         {
@@ -82,6 +85,35 @@ public sealed class S3MediaObjectStore(IOptions<S3Config> options) : IMediaObjec
         using (client)
             await client.DeleteObjectAsync(new DeleteObjectRequest { BucketName = bucket, Key = key },
                 cancellationToken);
+    }
+
+    public async Task SealApprovedAsync(string stagingKey, string approvedKey, string mime, long size,
+        byte[] approvedHash, CancellationToken cancellationToken)
+    {
+        if (!stagingKey.StartsWith("staging/", StringComparison.Ordinal) ||
+            !approvedKey.StartsWith("approved/", StringComparison.Ordinal) ||
+            approvedHash.Length != 32 || size is <= 0 or > MediaImagePolicy.MaxBytes)
+            throw new InvalidOperationException("Invalid image promotion.");
+
+        // Read a fresh snapshot: a repeated PUT during moderation must never
+        // cause bytes other than those analyzed to become publicly readable.
+        var bytes = await ReadForModerationAsync(stagingKey, mime, size, cancellationToken);
+        if (!MediaImagePolicy.MatchesFormat(bytes, mime) ||
+            !CryptographicOperations.FixedTimeEquals(SHA256.HashData(bytes), approvedHash))
+            throw new InvalidOperationException("Staging object changed after moderation.");
+        var (client, bucket) = Open();
+        using (client)
+        await using (var stream = new MemoryStream(bytes, writable: false))
+        {
+            await client.PutObjectAsync(new PutObjectRequest
+            {
+                BucketName = bucket,
+                Key = approvedKey,
+                InputStream = stream,
+                ContentType = mime,
+                IfNoneMatch = "*"
+            }, cancellationToken);
+        }
     }
 
     public async Task<byte[]> ReadForModerationAsync(string objectKey, string expectedMime, long expectedSize,

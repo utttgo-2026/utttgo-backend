@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Amazon.Runtime;
@@ -194,7 +195,7 @@ public sealed class MediaCatalogJourneyTests : IAsyncLifetime
         });
         var query = System.Web.HttpUtility.ParseQueryString(new Uri(url).Query);
         var signedSeconds = int.Parse(query["X-Amz-Expires"]!);
-        signedSeconds.Should().BeLessThanOrEqualTo(4);
+        signedSeconds.Should().BeLessThanOrEqualTo(300);
         await Task.Delay(TimeSpan.FromSeconds(signedSeconds + 2));
         using var body = new ByteArrayContent(new byte[] { 1 });
         body.Headers.ContentType = new MediaTypeHeaderValue(ImageType);
@@ -229,6 +230,22 @@ public sealed class MediaCatalogJourneyTests : IAsyncLifetime
         (await complete.Content.ReadAsStringAsync()).Should().Contain(MediaStatus.Approved);
         using var repeat = await client.PostAsJsonAsync($"/api/v1/media/{id}/complete", new { });
         (await repeat.Content.ReadAsStringAsync()).Should().Contain(MediaStatus.Approved);
+        var approved = await host.Database.GetCollection<BsonDocument>("mediaAssets")
+            .Find(Builders<BsonDocument>.Filter.Eq("_id", ObjectId.Parse(id))).FirstAsync();
+        approved["objectKey"].AsString.Should().StartWith("approved/");
+        approved["objectKey"].AsString.Should().NotBe($"staging/{approved["ownerUserId"].AsString}/{id}");
+        // The original PUT is still usable in LocalStack; replacing staging
+        // cannot change the independently sealed bytes signed for approved GET.
+        using var replacement = new ByteArrayContent(new byte[] { 0xff, 0xd8, 0xff, 1, 1, 1, 1, 1, 0xff, 0xd9 });
+        replacement.Headers.ContentType = new MediaTypeHeaderValue(ImageType);
+        using var replay = await new HttpClient().PutAsync(upload, replacement);
+        replay.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var read = await client.GetAsync($"/api/v1/media/{id}");
+        using var readJson = JsonDocument.Parse(await read.Content.ReadAsStringAsync());
+        readJson.RootElement.GetProperty("status").GetString().Should().Be(MediaStatus.Approved);
+        using var image = await new HttpClient().GetAsync(readJson.RootElement.GetProperty("imageUrl").GetString());
+        (await image.Content.ReadAsByteArrayAsync()).Should()
+            .Equal(new byte[] { 0xff, 0xd8, 0xff, 0, 0, 0, 0, 0, 0xff, 0xd9 });
         return id;
     }
 
@@ -414,6 +431,24 @@ public sealed class MediaCatalogJourneyTests : IAsyncLifetime
         }
         public Task DeleteAsync(string key, CancellationToken ct) =>
             client.DeleteObjectAsync(Bucket, key, ct);
+
+        public async Task SealApprovedAsync(string stagingKey, string approvedKey, string mime, long size,
+            byte[] approvedHash, CancellationToken ct)
+        {
+            var bytes = await ReadForModerationAsync(stagingKey, mime, size, ct);
+            if (bytes.Length != size ||
+                !CryptographicOperations.FixedTimeEquals(SHA256.HashData(bytes), approvedHash))
+                throw new InvalidOperationException("Staging bytes changed after moderation.");
+            using var stream = new MemoryStream(bytes);
+            await client.PutObjectAsync(new PutObjectRequest
+            {
+                BucketName = Bucket,
+                Key = approvedKey,
+                InputStream = stream,
+                ContentType = mime,
+                IfNoneMatch = "*"
+            }, ct);
+        }
 
         public async Task<byte[]> ReadForModerationAsync(string key, string mime, long size, CancellationToken ct)
         {

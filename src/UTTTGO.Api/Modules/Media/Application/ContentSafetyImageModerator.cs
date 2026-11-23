@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Logging;
+using System.Security.Cryptography;
 
 namespace UTTTGO.Api.Modules.Media.Application;
 
@@ -18,7 +19,7 @@ public sealed class ContentSafetyOptions
 public sealed class ContentSafetyImageModerator(IMediaImageSource images, IContentSafetyAnalyzer analyzer,
     IOptions<ContentSafetyOptions> options, ILogger<ContentSafetyImageModerator>? logger = null) : IImageModerator
 {
-    public async Task<bool> IsSafeAsync(string objectKey, string mime, long size,
+    public async Task<MediaModerationVerdict> ReviewAsync(string objectKey, string mime, long size,
         CancellationToken cancellationToken)
     {
         var configured = options.Value;
@@ -47,7 +48,8 @@ public sealed class ContentSafetyImageModerator(IMediaImageSource images, IConte
         logger?.LogInformation("Media moderation result: Hate={HateSeverity} SelfHarm={SelfHarmSeverity} " +
             "Sexual={SexualSeverity} Violence={ViolenceSeverity}",
             result["Hate"], result["SelfHarm"], result["Sexual"], result["Violence"]);
-        return thresholds.All(category => result.TryGetValue(category.Key, out var severity) &&
+        var safe = thresholds.All(category => result.TryGetValue(category.Key, out var severity) &&
             severity <= category.Value);
+        return new MediaModerationVerdict(safe, safe ? SHA256.HashData(content) : []);
     }
 }

@@ -47,6 +47,14 @@ firma); los pasos siguientes requieren evidencia AWS independiente.
   cambios en MIME firmado, por lo que las pruebas locales solo acreditan
   rechazo posterior por HEAD y firma binaria, no enforcement de SigV4 ni
   privacidad/expiración reales de AWS.
+- [ ] **Sellado IMG-T10:** crear objeto staging de prueba con PUT presignada;
+  verificar que backend escribe copia `approved/` con PUT condicionado
+  `If-None-Match: *` y no concede URL PUT para esa clave. Repetir PUT original
+  durante TTL con bytes distintos: GET aprobado debe seguir devolviendo
+  exactamente los bytes moderados. Un segundo PUT con `If-None-Match: *` a la
+  misma clave aprobada debe fallar `412 Precondition Failed` (o `409` en carrera);
+  comprobar rol IAM mínimo: escritura backend de `approved/`, nunca firma de
+  PUT cliente allí. Documentar HTTP/huella de prueba sin URL ni bytes privados.
 - [ ] Con identidad de backend **no productivo**, solicitar intención y confirmar objeto:
   PUT presignado de **una clave staging** con `Content-Type` exacto,
   `X-Amz-Expires ≤ 300`, sin ACL pública; HEAD por backend debe ver MIME y
