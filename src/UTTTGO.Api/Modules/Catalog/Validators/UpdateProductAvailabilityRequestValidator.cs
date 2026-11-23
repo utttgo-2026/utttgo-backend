@@ -10,7 +10,8 @@ public sealed class UpdateProductAvailabilityRequestValidator
     public UpdateProductAvailabilityRequestValidator()
     {
         RuleFor(request => request.Status).Must(value => value is not null &&
-            (value == ProductAvailability.Active || value == ProductAvailability.Paused));
+            (value == ProductAvailability.Active || value == ProductAvailability.Paused ||
+                value == ProductAvailability.Deleted));
         RuleFor(request => request.UnknownFields).Must(fields => fields is null || fields.Count == 0)
             .WithMessage("Campos no permitidos.");
     }

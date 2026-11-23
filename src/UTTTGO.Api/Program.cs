@@ -175,6 +175,7 @@ builder.Services.AddSingleton<ICategoryRepository, MongoCategoryRepository>();
 builder.Services.AddScoped<ICatalogRateLimitGate, RedisCatalogRateLimitGate>();
 builder.Services.AddSingleton<IProductRatingsReader, UnconfiguredProductRatingsReader>();
 builder.Services.AddScoped<IListProductsService, ListProductsService>();
+builder.Services.AddScoped<IListOwnProductsService, ListOwnProductsService>();
 builder.Services.AddScoped<IGetProductService, GetProductService>();
 builder.Services.AddScoped<IListCategoriesService, ListCategoriesService>();
 builder.Services.AddScoped<ICreateProductService, CreateProductService>();
