@@ -43,6 +43,22 @@ credenciales.
 - Las pruebas locales anteriores no son evidencia de IAM, S3 privado ni
   servicio de moderación real.
 
+## Auditoría Orders 2026-11-23
+
+- `origin/main` se actualizó a `9894adc`; la auditoría se realizó en la rama
+  aislada `feature/orders-flow-verification`, sin cambios de producción.
+- Orders ya cubre creación, listado del comprador, detalle, cancelación,
+  transiciones del vendedor, token de entrega y confirmación de entrega.
+- La persistencia usa `MongoOrderRepository`, índices de `orders` y
+  `orderAuditLogs`, CAS por `status`/`version`, y DI resuelta en `Program.cs`.
+- Redis aplica los límites `order-*` mediante `RedisOrdersRateLimitGate` con
+  comportamiento fail-closed.
+- Validación con Docker activo: build Release correcto con 0 errores; `format`
+  correcto; unitarias 386/386, integración 292/292 y seguridad 159/159.
+- El build emitió cuatro advertencias `CS8034` del analizador de
+  `AWSSDK.Core`, bloqueado por la política de control de aplicaciones local;
+  no es un error del código de Orders.
+
 ## Pendientes
 
 - DEC-003/API-005 fue aprobada el 2026-11-22. Los contratos mínimos `IActiveOrderReader`
