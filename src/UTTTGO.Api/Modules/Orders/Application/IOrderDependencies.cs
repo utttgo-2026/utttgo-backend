@@ -20,6 +20,16 @@ public interface IActiveOrderReader
     Task<bool> HasActiveOrdersAsync(string buyerUserId, string? sellerId, CancellationToken cancellationToken);
 }
 
+// Published read contract for Reviews. Reviews never reads the orders collection.
+public interface IDeliveredOrderReader
+{
+    Task<DeliveredOrderSnapshot?> FindDeliveredForBuyerAsync(string orderId, string buyerUserId,
+        CancellationToken cancellationToken);
+}
+
+public sealed record DeliveredOrderSnapshot(string OrderId, string BuyerUserId, string SellerId,
+    string ProductId, string Status, DateTime? DeliveredAt);
+
 // Every write to an order goes through one compare-and-set: the stored status and the
 // stored version must match the ones the caller read, otherwise nothing is changed.
 public sealed record OrderMutation(string? NewStatus = null, DateTime? DeliveredAt = null,

@@ -1,7 +1,7 @@
 # API-031 — Listar reseñas de vendedor · spec
 
-Estado de aprobación de la ficha: PENDIENTE
-Estado operativo: BLOCKED
+Estado de aprobación de la ficha: APROBADA por autorización explícita del propietario 2026-11-23
+Estado operativo: IMPLEMENTED
 
 ## Identificación y autoridad
 
@@ -9,7 +9,7 @@ API-031 `GET /api/v1/sellers/{sellerId}/reviews`, dueño `Reviews` aunque ruta b
 
 ## Estado de aprobación
 
-Método/ruta y paginación figuran en trazabilidad; constitución §5 exige `page`/`pageSize` con máximo configurable, §4 prohíbe acceso a colecciones ajenas. Visibilidad pública/autenticada, filtros/orden, rating agregado, datos del autor, DTO/HTTP y estado de vendedor no aprobados; no inferir de API-008 ni de código ausente.
+La autorización explícita del propietario ratifica acceso público con rate limit Redis, `page`/`pageSize` (defaults 1/20, máximo 50), orden descendente por `createdAt` y ascendente por `_id`, promedio decimal a dos posiciones y desglose de calificaciones 1..5. La respuesta no expone comprador, pedido ni PII.
 
 ## Responsabilidad única
 
@@ -32,19 +32,19 @@ Devolver listado paginado de reseñas atribuibles al `sellerId` real, sin mezcla
 
 ## Comportamiento implementado candidato
 
-No existen `src/UTTTGO.Api/Modules/Reviews/`, repositorio de reseñas, endpoint API-031 ni pruebas Review; API-030 tampoco implementada. La ruta Sellers no autoriza leer `sellers` directamente desde Reviews.
+`src/UTTTGO.Api/Modules/Reviews/` implementa el lector paginado y sus índices. El filtro `sellerId` se aplica en Mongo antes de paginar; no se consulta la colección `sellers`.
 
 ## Funcionalidad requerida faltante
 
-Lector Reviews con filtro `sellerId` derivado de reseñas creadas desde compras entregadas; validar existencia/visibilidad de vendedor mediante contrato Sellers si el acta lo requiere. Índice por sellerId y orden estable justificado por paginación, proyección sin buyerUserId/orderId/PII salvo decisión expresa. Métricas/ratings que consumen Catalog/Sellers mediante interfaz Reviews propia, no una colección compartida; política de reseñas tras borrado DEC-003 pendiente.
+El lector usa `sellerId`, índice compuesto y proyección pública mínima. Expone `averageRating` y `ratingBreakdown`; Reviews publica además lectores de métricas para Sellers/Catalog sin compartir la colección.
 
 ## Contrato de entrada/salida
 
 | Elemento | Aprobado (fuente) | Candidato NO aprobado | Falta decidir |
 |---|---|---|---|
-| Entrada | GET inventariado con sellerId y `page`/`pageSize` acotados | ID tipo ObjectId, página ≥1; auth pública o JWT según política | Formato ID, defaults/máximo, acceso/inactivo/inexistente. |
-| Éxito | Solo reseñas del vendedor paginadas; ratings no ficticios | `200 {items,page,pageSize,total}` y orden por fecha+ID como candidato | DTO/campos/orden, filtros, rating promedio/conteo, reseñas vacías. |
-| Error | Contrato error único `correlationId`; Redis/blacklist fail-closed cuando aplique | `400/401/404/429/503` candidatos | Código ID inválido/ausente, rate limit público, Seller inactivo y estado Mongo. |
+| Entrada | GET inventariado público con sellerId y `page`/`pageSize` acotados | `sellerId` ObjectId, página ≥1, máximo 50 | Seller sin reseñas devuelve página vacía con métricas nulas/cero. |
+| Éxito | Solo reseñas del vendedor paginadas; ratings no ficticios | `200 {items,page,pageSize,totalCount,averageRating,ratingBreakdown}` | Orden por fecha descendente e ID ascendente. |
+| Error | Contrato error único `correlationId`; Redis fail-closed | `400/429/503` | ID o paginación inválidos → `400`; Redis/Mongo → `429`/`503`. |
 
 ## Seguridad y validaciones
 
@@ -90,4 +90,4 @@ Lector Reviews con filtro `sellerId` derivado de reseñas creadas desde compras 
 
 ## Criterios de preparación para desarrollo
 
-Alcance [BLOCKED](../../../docs/sdd-guia-api-atomica.md#estados-operativos) hasta contrato Reviews aprobado y reseñas API-030; LIST-01..04 necesitan pruebas locales de paginación/aislamiento/privacidad sin valores inventados.
+Alcance [IMPLEMENTED](../../../docs/sdd-guia-api-atomica.md#estados-operativos) por autorización explícita del propietario el 2026-11-23. LIST-01..04 se verifican con pruebas locales de paginación, aislamiento y privacidad.

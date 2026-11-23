@@ -1,5 +1,7 @@
 # API-031 — Listar reseñas de vendedor · plan
 
+Estado de aprobación: APROBADA; implementación completada 2026-11-23
+
 Estado de aprobación de la ficha: PENDIENTE
 
 ## Autoridad y alcance
@@ -8,7 +10,7 @@ Estado de aprobación de la ficha: PENDIENTE
 
 ## Arquitectura existente
 
-No hay Reviews ni pruebas. Reutilizar `ReviewDocument`/`MongoReviewRepository` previstos API-030; contrato Sellers para visibilidad solo si se aprueba. Reutilizar paginación/error/rate limit Bloque 1, no copiar repositorios de API-008/011.
+Reutiliza `ReviewDocument`/`MongoReviewRepository` de API-030, paginación/error y rate limit Redis. La lectura es pública y no requiere consultar Sellers.
 
 ## Componentes involucrados
 

@@ -471,7 +471,42 @@ Query: `page` (≥1), `pageSize` (≤50) y `status` opcional (`Pending|Accepted|
 
 Errores: `400 VALIDATION_ERROR`, `401`, `403 SELLER_ROLE_REQUIRED`/`403 SELLER_ACCOUNT_NOT_ACTIVE`, `429 RATE_LIMITED`, `503 ORDER_UNAVAILABLE`.
 
-## 6. Contrato único de error
+## 6. Reseñas (API-030 y API-031)
+
+### 6.1 Crear reseña
+
+`POST /api/v1/orders/{orderId}/review` requiere Bearer y cuenta `Active`.
+Solo el comprador del pedido puede crearla y únicamente cuando el pedido está
+en `Delivered`. El servidor deriva vendedor y producto desde Orders.
+
+```json
+{ "rating": 5, "comment": "Excelente producto" }
+```
+
+`rating` acepta valores enteros de 1 a 5; `comment` es opcional y admite hasta
+1000 caracteres. La respuesta `201` contiene `reviewId`, `sellerId`,
+`productId`, `rating`, `comment` y `createdAt`. Un segundo intento para el
+mismo pedido responde `409 REVIEW_ALREADY_EXISTS`.
+
+### 6.2 Listar reseñas de vendedor
+
+`GET /api/v1/sellers/{sellerId}/reviews?page=1&pageSize=20` es público. El
+máximo de `pageSize` es 50 y el orden es más reciente primero.
+
+```json
+{
+  "items": [],
+  "page": 1,
+  "pageSize": 20,
+  "totalCount": 0,
+  "averageRating": null,
+  "ratingBreakdown": { "one": 0, "two": 0, "three": 0, "four": 0, "five": 0 }
+}
+```
+
+Las reseñas públicas no exponen comprador, pedido ni datos personales.
+
+## 7. Contrato único de error
 
 ```json
 {

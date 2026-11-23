@@ -1,7 +1,7 @@
 # API-030 — Crear reseña vinculada a pedido · spec
 
-Estado de aprobación de la ficha: PENDIENTE
-Estado operativo: BLOCKED
+Estado de aprobación de la ficha: APROBADA por autorización explícita del propietario 2026-11-23
+Estado operativo: IMPLEMENTED
 
 ## Identificación y autoridad
 
@@ -9,7 +9,7 @@ API-030 `POST /api/v1/orders/{orderId}/review`, módulo dueño `Reviews` aunque 
 
 ## Estado de aprobación
 
-La trazabilidad registra vinculación a pedido entregado y autorización por comprador; constitución §13 define `Delivered` y §§4/5/6 fijan fronteras, identidad y seguridad. No están aprobados payload, escala de calificación, unicidad/reintento, edición, moderación de texto, índices, métricas ni DTO/HTTP; no inventarlos. El hecho entregado de [fase 04 v0.1](../../phase-04-orders-cash/plan.md) es propuesta, D-ORD-03/02 pendientes.
+La autorización explícita del propietario (2026-11-23) ratifica este contrato mínimo: `rating` entero de 1 a 5, `comment` opcional de máximo 1000 caracteres, una reseña por pedido, respuesta `201`, duplicado `409 REVIEW_ALREADY_EXISTS` y lectura de entrega mediante el contrato publicado por Orders. La reseña se deriva de `buyerUserId`, `sellerId` y `productId`; el cliente no puede enviarlos.
 
 ## Responsabilidad única
 
@@ -32,19 +32,19 @@ Registrar reseña del comprador para pedido `Delivered`, asociada al vendedor/pr
 
 ## Comportamiento implementado candidato
 
-No existen `src/UTTTGO.Api/Modules/Reviews/`, endpoints, repositorio ni tests de Reviews; tampoco Orders ni hecho entregado implementados. Sin ficha histórica aprobada de fase 08; documentación no equivale a funcionalidad.
+`src/UTTTGO.Api/Modules/Reviews/` implementa el endpoint, servicio, repositorio Mongo, índice único por `orderId`, rate limit Redis y pruebas. Orders publica `IDeliveredOrderReader`; Reviews no lee la colección `orders`.
 
 ## Funcionalidad requerida faltante
 
-Contrato acíclico publicado por Orders que acredite entrega, buyerUserId, sellerId y productId para pedido indicado (según diseño acordado de hecho entregado de fase 04), sin consulta directa a `orders` por Reviews; manejar demora/duplicado/pérdida del hecho y reintentos antes de aceptar reseña. Reviews define y persiste solo datos propios; índice único por pedido/comprador si el equipo aprueba una reseña por compra. Política de borrado BR-011/DEC-003 para datos compartidos sin resolver en esta ruta.
+El contrato `IDeliveredOrderReader` acredita entrega, comprador, vendedor y producto. El índice único `orderId_unique` impide duplicados concurrentes; el contenido no se registra en logs y no se expone `buyerUserId` en la respuesta pública.
 
 ## Contrato de entrada/salida
 
 | Elemento | Aprobado (fuente) | Candidato NO aprobado (sin payload inventado) | Falta decidir |
 |---|---|---|---|
-| Entrada | Ruta POST inventariada, JWT, comprador del pedido entregado | `orderId` string; DTO explícito validado para calificación/contenido una vez ratificado | Campos, escala, límites, opcionales, idioma, sanitización y plazo para reseñar. |
-| Éxito | Reseña atribuida al pedido/seller/producto reales, no a IDs de cliente | Respuesta con ID reseña y campos aprobados, sin documento Mongo | HTTP/JSON, unicidad, edición/reintento, publicación y ratings derivados. |
-| Error | Error único con `correlationId`, propiedad y revocación fail-closed | `400/401/403/404/409/422/429/503` son posibilidades, NO contrato | Diferenciar inexistente/ajeno/no entregado, duplicado, fallo de hecho/Redis/Mongo. |
+| Entrada | Ruta POST inventariada, JWT, comprador del pedido entregado | `rating` 1..5 y `comment` opcional ≤1000 | No se aceptan sellerId/productId/buyerId/rating agregado del cliente. |
+| Éxito | Reseña atribuida al pedido/seller/producto reales, no a IDs de cliente | `201` con `reviewId`, `sellerId`, `productId`, `rating`, `comment`, `createdAt` | No expone documento Mongo ni comprador. |
+| Error | Error único con `correlationId`, propiedad y revocación fail-closed | `400/401/403/404/409/429/503` según escenario | Duplicado → `409 REVIEW_ALREADY_EXISTS`; fallos de dependencia → `503`. |
 
 ## Seguridad y validaciones
 
@@ -91,4 +91,4 @@ Contrato acíclico publicado por Orders que acredite entrega, buyerUserId, selle
 
 ## Criterios de preparación para desarrollo
 
-Alcance [BLOCKED](../../../docs/sdd-guia-api-atomica.md#estados-operativos) hasta ficha Reviews aprobada, contrato de hecho de Orders y política duplicados; REV-01..04 verificables solo con tests locales aislados y sin calificaciones inventadas.
+Alcance [IMPLEMENTED](../../../docs/sdd-guia-api-atomica.md#estados-operativos) por autorización explícita del propietario el 2026-11-23. REV-01..04 se verifican con pruebas locales aisladas y sin calificaciones inventadas.
