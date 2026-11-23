@@ -1,4 +1,6 @@
 using FluentAssertions;
+using Amazon.S3;
+using System.Net;
 using UTTTGO.Api.Modules.Media.Application;
 using UTTTGO.Api.Modules.Media.Contracts;
 using Xunit;
@@ -197,6 +199,22 @@ public sealed class MediaServiceTests
     }
 
     [Fact]
+    public async Task MissingDestinationWithAccessDeniedHeadIsCopiedAndVerifiedAfterCopy()
+    {
+        var repo = new Repository { Value = Asset() with { Status = MediaStatus.Approved, Version = 1 } };
+        var store = new ObjectStore { AccessDeniedWhenMissing = true };
+        store.Objects[$"staging/{Owner}/{Id}"] = (10, "image/jpeg");
+        var service = new MediaService(repo, store, new Moderator());
+
+        (await service.PromoteApprovedAsync(Id, Owner, default)).Should().BeTrue();
+
+        store.Copies.Should().Be(1);
+        store.HeadedKeys.Should().ContainInOrder(
+            $"staging/{Owner}/{Id}", $"approved/{Owner}/{Id}");
+        repo.Value!.ObjectKey.Should().Be($"approved/{Owner}/{Id}");
+    }
+
+    [Fact]
     public async Task FailedPromotionCasCompensatesCreatedDestinationAndKeepsSource()
     {
         var repo = new Repository
@@ -214,6 +232,20 @@ public sealed class MediaServiceTests
         store.DeletedKeys.Should().Contain($"approved/{Owner}/{Id}");
         store.DeletedKeys.Should().NotContain($"staging/{Owner}/{Id}");
         repo.Value!.ObjectKey.Should().Be($"staging/{Owner}/{Id}");
+    }
+
+    [Fact]
+    public async Task CopyFailureLeavesStagingAndDoesNotPromoteMongo()
+    {
+        var repo = new Repository { Value = Asset() with { Status = MediaStatus.Approved, Version = 1 } };
+        var store = new ObjectStore { CopyFails = true };
+        store.Objects[$"staging/{Owner}/{Id}"] = (10, "image/jpeg");
+        var service = new MediaService(repo, store, new Moderator());
+
+        await Assert.ThrowsAsync<AmazonS3Exception>(() => service.PromoteApprovedAsync(Id, Owner, default));
+
+        repo.Value!.ObjectKey.Should().Be($"staging/{Owner}/{Id}");
+        store.DeletedKeys.Should().NotContain($"staging/{Owner}/{Id}");
     }
 
     [Fact]
@@ -274,6 +306,9 @@ public sealed class MediaServiceTests
         public (long Length, string Mime)? Head;
         public int Deletes;
         public int Copies;
+        public bool AccessDeniedWhenMissing;
+        public bool CopyFails;
+        public List<string> HeadedKeys { get; } = [];
         public Dictionary<string, (long Length, string Mime)> Objects { get; } = [];
         public List<string> DeletedKeys { get; } = [];
         public Task<(string Url, DateTime ExpiresAt, IReadOnlyDictionary<string, string> Headers)>
@@ -281,13 +316,25 @@ public sealed class MediaServiceTests
             Task.FromResult<(string, DateTime, IReadOnlyDictionary<string, string>)>(
                 ("https://local.invalid/put", DateTime.UtcNow.AddMinutes(4),
                     new Dictionary<string, string> { ["Content-Type"] = mime }));
-        public Task<(long Length, string Mime)?> HeadAsync(string key, CancellationToken ct) =>
-            Task.FromResult(Objects.TryGetValue(key, out var value) ? ((long Length, string Mime)?)value : Head);
+        public Task<(long Length, string Mime)?> HeadAsync(string key, CancellationToken ct)
+        {
+            HeadedKeys.Add(key);
+            if (AccessDeniedWhenMissing && !Objects.ContainsKey(key))
+                throw new AmazonS3Exception("Access denied")
+                {
+                    ErrorCode = "AccessDenied",
+                    StatusCode = HttpStatusCode.Forbidden
+                };
+            return Task.FromResult(Objects.TryGetValue(key, out var value)
+                ? ((long Length, string Mime)?)value : Head);
+        }
         public Task<MediaReadUrl> SignGetAsync(string key, CancellationToken ct) =>
             Task.FromResult(new MediaReadUrl("https://local.invalid/get", DateTime.UtcNow.AddMinutes(4)));
         public Task CopyAsync(string sourceKey, string targetKey, string mime, CancellationToken ct)
         {
             Copies++;
+            if (CopyFails)
+                throw new AmazonS3Exception("copy failed") { ErrorCode = "InternalError" };
             if (Objects.TryGetValue(sourceKey, out var value)) Objects[targetKey] = value;
             return Task.CompletedTask;
         }

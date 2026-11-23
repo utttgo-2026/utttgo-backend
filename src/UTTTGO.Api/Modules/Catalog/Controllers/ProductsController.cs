@@ -103,6 +103,8 @@ public sealed class ProductsController(IListProductsService list, IGetProductSer
                 "IMAGE_NOT_AVAILABLE", "Las imágenes aún no están disponibles; publica el producto sin foto.")),
             CreateProductOutcome.ImageNotApproved => StatusCode(422, ApiError.Create(HttpContext, 422,
                 "IMAGE_NOT_APPROVED", "Imagen no disponible.")),
+            CreateProductOutcome.MediaPromotionFailed => StatusCode(503, ApiError.Create(HttpContext, 503,
+                "MEDIA_PROMOTION_FAILED", "No fue posible preparar la imagen; intenta de nuevo más tarde.")),
             CreateProductOutcome.RateLimited => StatusCode(429,
                 ApiError.Create(HttpContext, 429, "RATE_LIMITED", "Intenta de nuevo más tarde.")),
             _ => StatusCode(503,

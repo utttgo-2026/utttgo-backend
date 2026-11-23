@@ -8,7 +8,8 @@ using UTTTGO.Api.Shared.Contracts;
 namespace UTTTGO.Api.Modules.Media.Infrastructure;
 
 // Credentials are resolved by the AWS SDK provider chain; never from request data.
-public sealed class S3MediaObjectStore(IOptions<S3Config> options) : IMediaObjectStore, IMediaImageSource
+public sealed class S3MediaObjectStore(IOptions<S3Config> options,
+    ILogger<S3MediaObjectStore>? logger = null) : IMediaObjectStore, IMediaImageSource
 {
     private S3Config Configuration => options.Value;
     private (AmazonS3Client Client, string Bucket) Open()
@@ -53,8 +54,12 @@ public sealed class S3MediaObjectStore(IOptions<S3Config> options) : IMediaObjec
                 }, cancellationToken);
                 return (response.ContentLength, response.Headers.ContentType ?? "");
             }
-            catch (AmazonS3Exception exception) when (exception.StatusCode == System.Net.HttpStatusCode.NotFound)
+            catch (AmazonS3Exception exception) when (exception.StatusCode is
+                System.Net.HttpStatusCode.NotFound or System.Net.HttpStatusCode.Forbidden)
             {
+                logger?.LogWarning(
+                    "S3 object HEAD treated as absent. S3ErrorCode={S3ErrorCode} S3StatusCode={S3StatusCode}",
+                    exception.ErrorCode, exception.StatusCode);
                 return null;
             }
         }
