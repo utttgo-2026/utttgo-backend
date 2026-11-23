@@ -39,6 +39,29 @@ public sealed class CatalogWriteServiceTests
         result.Response.ImageUrlExpiresAt.Should().NotBeNull();
     }
 
+    [Fact]
+    public async Task PromotionFailureIsReportedSeparatelyWithoutCreatingProduct()
+    {
+        var products = new CatalogProductRepository();
+        var media = new ProductMediaDouble { Approved = true, ThrowOnPromotion = true };
+        var request = new CreateProductRequest
+        {
+            Name = ValidRequest.Name,
+            Description = ValidRequest.Description,
+            Ingredients = ValidRequest.Ingredients,
+            CategoryId = ValidRequest.CategoryId,
+            Price = ValidRequest.Price,
+            Stock = ValidRequest.Stock,
+            MediaAssetId = MediaId
+        };
+
+        var result = await CreateService(SellerProfile(), products, ActiveCategories(), media: media)
+            .CreateAsync("token", request, default);
+
+        result.Outcome.Should().Be(CreateProductOutcome.MediaPromotionFailed);
+        products.CreateCalls.Should().Be(0);
+    }
+
     [Theory]
     [InlineData("{\"mediaAssetId\":\"507f1f77bcf86cd799439011\"}", MediaId)]
     [InlineData("{\"mediaAssetId\":null}", null)]
@@ -74,12 +97,14 @@ public sealed class CatalogWriteServiceTests
     private sealed class ProductMediaDouble : IProductMediaAccess
     {
         public bool Approved;
+        public bool ThrowOnPromotion;
         public int PromoteCalls;
         public Task<bool> IsApprovedForOwnerAsync(string id, string owner, CancellationToken ct) =>
             Task.FromResult(Approved && id == MediaId && !string.IsNullOrWhiteSpace(owner));
         public Task<bool> PromoteApprovedAsync(string id, string owner, CancellationToken ct)
         {
             PromoteCalls++;
+            if (ThrowOnPromotion) throw new InvalidOperationException("simulated promotion failure");
             return Task.FromResult(Approved && id == MediaId && !string.IsNullOrWhiteSpace(owner));
         }
         public Task<MediaReadUrl?> GetApprovedReadUrlAsync(string id, CancellationToken ct) =>

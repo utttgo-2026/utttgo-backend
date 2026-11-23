@@ -158,35 +158,27 @@ public sealed class MediaService(IMediaRepository repository, IMediaObjectStore 
         if (asset.ObjectKey == targetKey) return true;
         if (!asset.ObjectKey.Equals($"staging/{owner}/{id}", StringComparison.Ordinal)) return false;
 
-        var destination = await objects.HeadAsync(targetKey, ct);
-        var createdDestination = destination is null;
-        if (destination is not null &&
-            (destination.Value.Length != asset.Size ||
-             !string.Equals(destination.Value.Mime, asset.MimeType, StringComparison.OrdinalIgnoreCase)))
-            return false;
-
         var mongoPromoted = false;
+        var copyCompleted = false;
         try
         {
-            if (createdDestination)
-            {
-                var source = await objects.HeadAsync(asset.ObjectKey, ct);
-                if (source is null || source.Value.Length != asset.Size ||
-                    !string.Equals(source.Value.Mime, asset.MimeType, StringComparison.OrdinalIgnoreCase))
-                    return false;
-                await objects.CopyAsync(asset.ObjectKey, targetKey, asset.MimeType, ct);
-                var copied = await objects.HeadAsync(targetKey, ct);
-                if (copied is null || copied.Value.Length != asset.Size ||
-                    !string.Equals(copied.Value.Mime, asset.MimeType, StringComparison.OrdinalIgnoreCase))
-                    throw new InvalidOperationException("Approved media copy verification failed.");
-            }
+            var source = await objects.HeadAsync(asset.ObjectKey, ct);
+            if (source is null || source.Value.Length != asset.Size ||
+                !string.Equals(source.Value.Mime, asset.MimeType, StringComparison.OrdinalIgnoreCase))
+                return false;
+            await objects.CopyAsync(asset.ObjectKey, targetKey, asset.MimeType, ct);
+            copyCompleted = true;
+            var copied = await objects.HeadAsync(targetKey, ct);
+            if (copied is null || copied.Value.Length != asset.Size ||
+                !string.Equals(copied.Value.Mime, asset.MimeType, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("Approved media copy verification failed.");
 
             if (!await repository.PromoteAsync(id, owner, asset.Version, asset.ObjectKey, targetKey, ct))
             {
                 var current = await ReadOwnedAsync(id, owner, ct);
                 if (current is not { Status: MediaStatus.Approved } || current.ObjectKey != targetKey)
                 {
-                    if (createdDestination) await objects.DeleteAsync(targetKey, ct);
+                    if (copyCompleted) await objects.DeleteAsync(targetKey, ct);
                     return false;
                 }
             }
@@ -195,9 +187,18 @@ public sealed class MediaService(IMediaRepository repository, IMediaObjectStore 
             await objects.DeleteAsync(asset.ObjectKey, ct);
             return true;
         }
-        catch
+        catch (Exception exception) when (!ct.IsCancellationRequested)
         {
-            if (createdDestination && !mongoPromoted)
+            var s3Exception = exception as Amazon.S3.AmazonS3Exception;
+            logger?.LogWarning(
+                "Media promotion failed. AssetId={AssetId} ExceptionType={ExceptionType} S3ErrorCode={S3ErrorCode} S3StatusCode={S3StatusCode} CorrelationId={CorrelationId}",
+                id,
+                exception.GetType().Name,
+                s3Exception?.ErrorCode,
+                s3Exception?.StatusCode.ToString(),
+                httpContextAccessor?.HttpContext?.TraceIdentifier);
+
+            if (copyCompleted && !mongoPromoted)
             {
                 try { await objects.DeleteAsync(targetKey, ct); }
                 catch (Exception) when (!ct.IsCancellationRequested) { }

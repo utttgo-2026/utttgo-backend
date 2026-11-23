@@ -20,6 +20,7 @@ public enum CreateProductOutcome
     CategoryNotFound,
     ImageNotAvailable,
     ImageNotApproved,
+    MediaPromotionFailed,
     RateLimited,
     Unavailable
 }
@@ -57,9 +58,18 @@ public sealed class CreateProductService(IAuthenticatedLocalProfileReader profil
                 return new(CreateProductOutcome.ImageNotAvailable);
             if (request.MediaAssetId is { } assetId)
             {
-                if (media is null || !await media.IsApprovedForOwnerAsync(assetId, profile.Id, cancellationToken) ||
-                    !await media.PromoteApprovedAsync(assetId, profile.Id, cancellationToken))
+                if (media is null || !await media.IsApprovedForOwnerAsync(assetId, profile.Id, cancellationToken))
                     return new(CreateProductOutcome.ImageNotApproved);
+
+                try
+                {
+                    if (!await media.PromoteApprovedAsync(assetId, profile.Id, cancellationToken))
+                        return new(CreateProductOutcome.ImageNotApproved);
+                }
+                catch (Exception) when (!cancellationToken.IsCancellationRequested)
+                {
+                    return new(CreateProductOutcome.MediaPromotionFailed);
+                }
             }
 
             var category = await categories.FindByIdAsync(request.CategoryId!, cancellationToken);
