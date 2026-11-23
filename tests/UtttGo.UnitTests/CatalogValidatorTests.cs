@@ -135,6 +135,7 @@ public sealed class CatalogValidatorTests
         var validator = new UpdateProductAvailabilityRequestValidator();
         validator.Validate(new UpdateProductAvailabilityRequest { Status = "Paused" }).IsValid.Should().BeTrue();
         validator.Validate(new UpdateProductAvailabilityRequest { Status = "Active" }).IsValid.Should().BeTrue();
+        validator.Validate(new UpdateProductAvailabilityRequest { Status = "Deleted" }).IsValid.Should().BeTrue();
         validator.Validate(new UpdateProductAvailabilityRequest { Status = "SoldOut" }).IsValid.Should().BeFalse();
         validator.Validate(new UpdateProductAvailabilityRequest { Status = null }).IsValid.Should().BeFalse();
     }

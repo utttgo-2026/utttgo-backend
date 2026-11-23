@@ -329,6 +329,20 @@ public sealed class CatalogWriteServiceTests
         result.Outcome.Should().Be(UpdateProductAvailabilityOutcome.NotSeller);
     }
 
+    [Fact]
+    public async Task SellerCanLogicallyDeleteItsProduct()
+    {
+        var products = new CatalogProductRepository();
+        products.Products[CatalogFixtures.ProductId] = CatalogFixtures.Product();
+        var request = new UpdateProductAvailabilityRequest { Status = ProductAvailability.Deleted };
+
+        var result = await AvailabilityService(SellerProfile(), products, ActiveCategories())
+            .UpdateAsync("token", CatalogFixtures.ProductId, request, default);
+
+        result.Outcome.Should().Be(UpdateProductAvailabilityOutcome.Updated);
+        products.Products[CatalogFixtures.ProductId].Status.Should().Be(ProductAvailability.Deleted);
+    }
+
     private static AuthenticatedProfileDouble SellerProfile() =>
         new() { Profile = SellerFixtures.Buyer("Active", CatalogFixtures.SellerId, true) };
 

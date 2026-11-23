@@ -50,6 +50,19 @@ public sealed class MongoProductRepository(MongoStore store) : IProductRepositor
         return new(documents.Select(ToRecord).ToList(), total);
     }
 
+    public async Task<ProductPage> ListForSellerAsync(string sellerId, int page, int pageSize,
+        CancellationToken cancellationToken)
+    {
+        var filter = Builders<ProductDocument>.Filter.Eq(product => product.SellerId, sellerId) &
+            Builders<ProductDocument>.Filter.Ne(product => product.Status, ProductAvailability.Deleted);
+        var total = await Products.CountDocumentsAsync(filter, cancellationToken: cancellationToken);
+        var documents = await Products.Find(filter)
+            .Sort(Builders<ProductDocument>.Sort.Descending(product => product.CreatedAt)
+                .Ascending(product => product.Id))
+            .Skip((page - 1) * pageSize).Limit(pageSize).ToListAsync(cancellationToken);
+        return new(documents.Select(ToRecord).ToList(), total);
+    }
+
     public async Task<ProductRecord?> FindByIdAsync(string productId, CancellationToken cancellationToken)
     {
         if (!ObjectId.TryParse(productId, out var id)) return null;

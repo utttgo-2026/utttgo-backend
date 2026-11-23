@@ -41,6 +41,7 @@ public sealed class CatalogSecurityTests
     [InlineData("POST", "/api/v1/products")]
     [InlineData("PATCH", "/api/v1/products/507f1f77bcf86cd799439021")]
     [InlineData("PATCH", "/api/v1/products/507f1f77bcf86cd799439021/availability")]
+    [InlineData("GET", "/api/v1/sellers/me/products")]
     public async Task WriteRoutesRequireASessionAndNeverWriteWithoutIt(string method, string url)
     {
         var products = new CatalogProductRepository();
@@ -71,6 +72,20 @@ public sealed class CatalogSecurityTests
         };
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", Token);
         using var response = await client.SendAsync(request);
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await response.Content.ReadAsStringAsync()).Should().Contain("SELLER_ROLE_REQUIRED");
+    }
+
+    [Fact]
+    public async Task BuyerCannotListSellerProducts()
+    {
+        using var factory = Factory(profile: SellerFixtures.Profile("Active"));
+        using var client = factory.CreateClient();
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/v1/sellers/me/products");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", Token);
+
+        using var response = await client.SendAsync(request);
+
         response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
         (await response.Content.ReadAsStringAsync()).Should().Contain("SELLER_ROLE_REQUIRED");
     }

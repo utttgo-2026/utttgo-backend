@@ -246,6 +246,24 @@ public sealed class CatalogEndpointTests
     }
 
     [Fact]
+    public async Task SellerProductsListsOnlyTheAuthenticatedSellersProducts()
+    {
+        var products = SeededProducts();
+        products.Products["507f1f77bcf86cd799439099"] = CatalogFixtures.Product(CatalogFixtures.OtherSellerId);
+        using var factory = Factory(products: products);
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", Token);
+
+        using var response = await client.GetAsync("/api/v1/sellers/me/products?page=1&pageSize=20");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        body.RootElement.GetProperty("totalCount").GetInt32().Should().Be(1);
+        body.RootElement.GetProperty("items")[0].GetProperty("sellerId").GetString()
+            .Should().Be(CatalogFixtures.SellerId);
+    }
+
+    [Fact]
     public async Task CriticalFailureReturns503WithoutExceptionDetails()
     {
         using var factory = Factory(products: new CatalogProductRepository { Fail = true });

@@ -23,6 +23,17 @@ internal sealed class CatalogProductRepository : IProductRepository
         return Task.FromResult(new ProductPage(items, items.Count));
     }
 
+    public Task<ProductPage> ListForSellerAsync(string sellerId, int page, int pageSize,
+        CancellationToken cancellationToken)
+    {
+        if (Fail) throw new InvalidOperationException("internal-secret");
+        var items = Products.Values.Where(product => product.SellerId == sellerId &&
+                product.Status != ProductAvailability.Deleted)
+            .OrderByDescending(product => product.CreatedAt)
+            .Skip((page - 1) * pageSize).Take(pageSize).ToList();
+        return Task.FromResult(new ProductPage(items, items.Count));
+    }
+
     public Task<ProductRecord?> FindByIdAsync(string productId, CancellationToken cancellationToken)
     {
         if (Fail) throw new InvalidOperationException("internal-secret");

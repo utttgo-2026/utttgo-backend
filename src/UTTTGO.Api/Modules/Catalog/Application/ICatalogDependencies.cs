@@ -6,6 +6,8 @@ namespace UTTTGO.Api.Modules.Catalog.Application;
 public interface IProductRepository
 {
     Task<ProductPage> ListAsync(ProductListQuery query, CancellationToken cancellationToken);
+    Task<ProductPage> ListForSellerAsync(string sellerId, int page, int pageSize,
+        CancellationToken cancellationToken);
     Task<ProductRecord?> FindByIdAsync(string productId, CancellationToken cancellationToken);
     Task<ProductRecord> CreateAsync(NewProduct product, CancellationToken cancellationToken);
     Task<ProductUpdateResult> UpdateOwnAsync(string sellerId, string productId, long expectedVersion,
