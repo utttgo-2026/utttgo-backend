@@ -22,6 +22,10 @@ on:
         description: 'CommandId SSM previo a inspeccionar (opcional)'
         required: false
         type: string
+      correlation_id:
+        description: 'CorrelationId a buscar en los logs del contenedor api'
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -203,6 +207,7 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           INSTANCE_ID: ${{ steps.target.outputs.instance_id }}
+          CORRELATION_ID: ${{ inputs.correlation_id }}
         run: |
           set -euo pipefail
           instance_id="$INSTANCE_ID"
@@ -210,7 +215,11 @@ jobs:
           # Todos los comandos son de lectura: no reinician ni recrean nada.
           python3 - <<'PY' > /tmp/ssm-diagnose.json
           import json
+          import os
+          import shlex
 
+          correlation_pattern = shlex.quote(
+              f"{os.environ['CORRELATION_ID']}|Exception|AccessDenied|NoSuchKey|Copy")
           commands = [
               "echo '=== df -h ==='",
               "df -h 2>&1 || true",
@@ -242,6 +251,8 @@ jobs:
               "cd /opt/utttgo && docker compose logs --tail=40 2>&1 || true",
               "echo '=== aws logs tail /utttgo/api/dev (si el driver awslogs impide leer compose logs) ==='",
               "if command -v aws >/dev/null 2>&1; then aws logs tail /utttgo/api/dev --since 30m --format short 2>&1 | tail -n 50 || true; else echo 'aws cli no disponible en la instancia'; fi",
+              "echo '=== api logs filtrados (ultimas 100 lineas) ==='",
+              f"cd /opt/utttgo && docker compose logs --no-color --tail=100 api 2>&1 | grep -E -- {correlation_pattern} | sed -E 's#https?://[^[:space:]]+#<url-redacted>#g; s#Bearer[[:space:]]+[^[:space:]]+#Bearer <token-redacted>#gi; s#eyJ[A-Za-z0-9._-]+#<token-redacted>#g' || true",
           ]
           print(json.dumps({"commands": commands}))
           PY
