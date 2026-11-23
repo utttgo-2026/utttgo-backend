@@ -115,7 +115,7 @@ public sealed class MediaCatalogJourneyTests : IAsyncLifetime
         await AssertPresignedGet(withImageJson.RootElement);
         var firstAsset = await host.Database.GetCollection<BsonDocument>("mediaAssets")
             .Find(Builders<BsonDocument>.Filter.Eq("_id", ObjectId.Parse(firstId))).FirstAsync();
-        firstAsset["objectKey"].AsString.Should().Be($"approved/local-id/{firstId}");
+        firstAsset["objectKey"].AsString.Should().Be($"approved/{firstAsset["ownerUserId"].AsString}/{firstId}");
         (await s3.GetObjectMetadataAsync(Bucket, firstAsset["objectKey"].AsString)).ContentLength.Should().Be(10);
         await PatchImage(client, productId!, $$"""{"mediaAssetId":"{{firstId}}"}""", firstId);
         await PatchImage(client, productId!, """{"stock":3}""", firstId);
@@ -136,7 +136,7 @@ public sealed class MediaCatalogJourneyTests : IAsyncLifetime
         stored["mediaAssetId"].AsString.Should().Be(secondId);
         var secondAsset = await host.Database.GetCollection<BsonDocument>("mediaAssets")
             .Find(Builders<BsonDocument>.Filter.Eq("_id", ObjectId.Parse(secondId))).FirstAsync();
-        secondAsset["objectKey"].AsString.Should().Be($"approved/local-id/{secondId}");
+        secondAsset["objectKey"].AsString.Should().Be($"approved/{secondAsset["ownerUserId"].AsString}/{secondId}");
         await PatchImage(client, productId!, """{"mediaAssetId":null}""", null);
     }
 
