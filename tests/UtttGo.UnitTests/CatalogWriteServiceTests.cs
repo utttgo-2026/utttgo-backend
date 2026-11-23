@@ -74,8 +74,14 @@ public sealed class CatalogWriteServiceTests
     private sealed class ProductMediaDouble : IProductMediaAccess
     {
         public bool Approved;
+        public int PromoteCalls;
         public Task<bool> IsApprovedForOwnerAsync(string id, string owner, CancellationToken ct) =>
             Task.FromResult(Approved && id == MediaId && !string.IsNullOrWhiteSpace(owner));
+        public Task<bool> PromoteApprovedAsync(string id, string owner, CancellationToken ct)
+        {
+            PromoteCalls++;
+            return Task.FromResult(Approved && id == MediaId && !string.IsNullOrWhiteSpace(owner));
+        }
         public Task<MediaReadUrl?> GetApprovedReadUrlAsync(string id, CancellationToken ct) =>
             Task.FromResult<MediaReadUrl?>(Approved && id == MediaId
                 ? new("https://local.invalid/get", DateTime.UtcNow.AddMinutes(5)) : null);

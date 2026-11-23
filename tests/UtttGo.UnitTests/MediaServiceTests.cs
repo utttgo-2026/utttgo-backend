@@ -181,6 +181,42 @@ public sealed class MediaServiceTests
     }
 
     [Fact]
+    public async Task ApprovedAssetIsPromotedIdempotentlyAndSourceIsDeletedAfterCas()
+    {
+        var repo = new Repository { Value = Asset() with { Status = MediaStatus.Approved, Version = 1 } };
+        var store = new ObjectStore();
+        store.Objects[$"staging/{Owner}/{Id}"] = (10, "image/jpeg");
+        var service = new MediaService(repo, store, new Moderator());
+
+        (await service.PromoteApprovedAsync(Id, Owner, default)).Should().BeTrue();
+        (await service.PromoteApprovedAsync(Id, Owner, default)).Should().BeTrue();
+
+        repo.Value!.ObjectKey.Should().Be($"approved/{Owner}/{Id}");
+        store.Copies.Should().Be(1);
+        store.DeletedKeys.Should().Contain($"staging/{Owner}/{Id}");
+    }
+
+    [Fact]
+    public async Task FailedPromotionCasCompensatesCreatedDestinationAndKeepsSource()
+    {
+        var repo = new Repository
+        {
+            Value = Asset() with { Status = MediaStatus.Approved, Version = 1 },
+            PromoteSucceeds = false
+        };
+        var store = new ObjectStore();
+        store.Objects[$"staging/{Owner}/{Id}"] = (10, "image/jpeg");
+        var service = new MediaService(repo, store, new Moderator());
+
+        (await service.PromoteApprovedAsync(Id, Owner, default)).Should().BeFalse();
+
+        store.Copies.Should().Be(1);
+        store.DeletedKeys.Should().Contain($"approved/{Owner}/{Id}");
+        store.DeletedKeys.Should().NotContain($"staging/{Owner}/{Id}");
+        repo.Value!.ObjectKey.Should().Be($"staging/{Owner}/{Id}");
+    }
+
+    [Fact]
     public void S3ConfigurationDoesNotExposeExplicitCredentials()
     {
         typeof(UTTTGO.Api.Shared.Contracts.S3Config).GetProperties()
@@ -205,6 +241,7 @@ public sealed class MediaServiceTests
     private sealed class Repository : IMediaRepository
     {
         public MediaRecord? Value;
+        public bool PromoteSucceeds = true;
         public Task AddAsync(MediaRecord record, CancellationToken ct)
         {
             Value = record;
@@ -220,24 +257,45 @@ public sealed class MediaServiceTests
             Value = Value with { Status = to, Version = version + 1 };
             return Task.FromResult(true);
         }
+        public Task<bool> PromoteAsync(string id, string owner, long version, string sourceKey, string targetKey,
+            CancellationToken ct)
+        {
+            if (Value is null || Value.Id != id || Value.OwnerUserId != owner ||
+                Value.Version != version || Value.Status != MediaStatus.Approved || Value.ObjectKey != sourceKey ||
+                !PromoteSucceeds)
+                return Task.FromResult(false);
+            Value = Value with { ObjectKey = targetKey, Version = version + 1 };
+            return Task.FromResult(true);
+        }
     }
 
     private sealed class ObjectStore : IMediaObjectStore
     {
         public (long Length, string Mime)? Head;
         public int Deletes;
+        public int Copies;
+        public Dictionary<string, (long Length, string Mime)> Objects { get; } = [];
+        public List<string> DeletedKeys { get; } = [];
         public Task<(string Url, DateTime ExpiresAt, IReadOnlyDictionary<string, string> Headers)>
             SignPutAsync(string key, string mime, CancellationToken ct) =>
             Task.FromResult<(string, DateTime, IReadOnlyDictionary<string, string>)>(
                 ("https://local.invalid/put", DateTime.UtcNow.AddMinutes(4),
                     new Dictionary<string, string> { ["Content-Type"] = mime }));
         public Task<(long Length, string Mime)?> HeadAsync(string key, CancellationToken ct) =>
-            Task.FromResult(Head);
+            Task.FromResult(Objects.TryGetValue(key, out var value) ? ((long Length, string Mime)?)value : Head);
         public Task<MediaReadUrl> SignGetAsync(string key, CancellationToken ct) =>
             Task.FromResult(new MediaReadUrl("https://local.invalid/get", DateTime.UtcNow.AddMinutes(4)));
+        public Task CopyAsync(string sourceKey, string targetKey, string mime, CancellationToken ct)
+        {
+            Copies++;
+            if (Objects.TryGetValue(sourceKey, out var value)) Objects[targetKey] = value;
+            return Task.CompletedTask;
+        }
         public Task DeleteAsync(string key, CancellationToken ct)
         {
             Deletes++;
+            DeletedKeys.Add(key);
+            Objects.Remove(key);
             return Task.CompletedTask;
         }
     }

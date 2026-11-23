@@ -76,6 +76,22 @@ public sealed class S3MediaObjectStore(IOptions<S3Config> options) : IMediaObjec
         }
     }
 
+    public async Task CopyAsync(string sourceKey, string targetKey, string mime,
+        CancellationToken cancellationToken)
+    {
+        var (client, bucket) = Open();
+        using (client)
+            await client.CopyObjectAsync(new CopyObjectRequest
+            {
+                SourceBucket = bucket,
+                SourceKey = sourceKey,
+                DestinationBucket = bucket,
+                DestinationKey = targetKey,
+                MetadataDirective = S3MetadataDirective.REPLACE,
+                ContentType = mime
+            }, cancellationToken);
+    }
+
     public async Task DeleteAsync(string key, CancellationToken cancellationToken)
     {
         var (client, bucket) = Open();

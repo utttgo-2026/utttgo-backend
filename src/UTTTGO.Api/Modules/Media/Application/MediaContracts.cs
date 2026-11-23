@@ -19,6 +19,8 @@ public interface IMediaRepository
     Task<MediaRecord?> FindAsync(string id, CancellationToken cancellationToken);
     Task<bool> TransitionAsync(string id, string ownerId, long version, string from, string to,
         CancellationToken cancellationToken);
+    Task<bool> PromoteAsync(string id, string ownerId, long version, string sourceKey, string targetKey,
+        CancellationToken cancellationToken);
 }
 
 public sealed record MediaReadUrl(string Url, DateTime ExpiresAt);
@@ -27,6 +29,8 @@ public sealed record MediaReadUrl(string Url, DateTime ExpiresAt);
 public interface IProductMediaAccess
 {
     Task<bool> IsApprovedForOwnerAsync(string mediaAssetId, string ownerUserId,
+        CancellationToken cancellationToken);
+    Task<bool> PromoteApprovedAsync(string mediaAssetId, string ownerUserId,
         CancellationToken cancellationToken);
     Task<MediaReadUrl?> GetApprovedReadUrlAsync(string mediaAssetId, CancellationToken cancellationToken);
 
@@ -46,6 +50,7 @@ public interface IMediaObjectStore
         string key, string mime, CancellationToken cancellationToken);
     Task<(long Length, string Mime)?> HeadAsync(string key, CancellationToken cancellationToken);
     Task<MediaReadUrl> SignGetAsync(string key, CancellationToken cancellationToken);
+    Task CopyAsync(string sourceKey, string targetKey, string mime, CancellationToken cancellationToken);
     Task DeleteAsync(string key, CancellationToken cancellationToken);
 }
 

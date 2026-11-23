@@ -113,6 +113,10 @@ public sealed class MediaCatalogJourneyTests : IAsyncLifetime
         withImage.StatusCode.Should().Be(HttpStatusCode.Created);
         using var withImageJson = JsonDocument.Parse(await withImage.Content.ReadAsStringAsync());
         await AssertPresignedGet(withImageJson.RootElement);
+        var firstAsset = await host.Database.GetCollection<BsonDocument>("mediaAssets")
+            .Find(Builders<BsonDocument>.Filter.Eq("_id", ObjectId.Parse(firstId))).FirstAsync();
+        firstAsset["objectKey"].AsString.Should().Be($"approved/{firstAsset["ownerUserId"].AsString}/{firstId}");
+        (await s3.GetObjectMetadataAsync(Bucket, firstAsset["objectKey"].AsString)).ContentLength.Should().Be(10);
         await PatchImage(client, productId!, $$"""{"mediaAssetId":"{{firstId}}"}""", firstId);
         await PatchImage(client, productId!, """{"stock":3}""", firstId);
         await PatchImage(client, productId!, $$"""{"mediaAssetId":"{{secondId}}"}""", secondId);
@@ -130,6 +134,9 @@ public sealed class MediaCatalogJourneyTests : IAsyncLifetime
             .Find(Builders<BsonDocument>.Filter.Eq("_id", ObjectId.Parse(productId)))
             .FirstAsync();
         stored["mediaAssetId"].AsString.Should().Be(secondId);
+        var secondAsset = await host.Database.GetCollection<BsonDocument>("mediaAssets")
+            .Find(Builders<BsonDocument>.Filter.Eq("_id", ObjectId.Parse(secondId))).FirstAsync();
+        secondAsset["objectKey"].AsString.Should().Be($"approved/{secondAsset["ownerUserId"].AsString}/{secondId}");
         await PatchImage(client, productId!, """{"mediaAssetId":null}""", null);
     }
 
@@ -413,6 +420,16 @@ public sealed class MediaCatalogJourneyTests : IAsyncLifetime
                 Protocol = Protocol.HTTP
             }), expires));
         }
+        public Task CopyAsync(string sourceKey, string targetKey, string mime, CancellationToken ct) =>
+            client.CopyObjectAsync(new CopyObjectRequest
+            {
+                SourceBucket = Bucket,
+                SourceKey = sourceKey,
+                DestinationBucket = Bucket,
+                DestinationKey = targetKey,
+                MetadataDirective = S3MetadataDirective.REPLACE,
+                ContentType = mime
+            }, ct);
         public Task DeleteAsync(string key, CancellationToken ct) =>
             client.DeleteObjectAsync(Bucket, key, ct);
 

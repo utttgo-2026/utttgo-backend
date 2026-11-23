@@ -150,6 +150,62 @@ public sealed class MediaService(IMediaRepository repository, IMediaObjectStore 
     public async Task<bool> IsApprovedForOwnerAsync(string id, string owner, CancellationToken ct) =>
         await ReadOwnedAsync(id, owner, ct) is { Status: MediaStatus.Approved };
 
+    public async Task<bool> PromoteApprovedAsync(string id, string owner, CancellationToken ct)
+    {
+        var asset = await ReadOwnedAsync(id, owner, ct);
+        if (asset is not { Status: MediaStatus.Approved }) return false;
+        var targetKey = $"approved/{owner}/{id}";
+        if (asset.ObjectKey == targetKey) return true;
+        if (!asset.ObjectKey.Equals($"staging/{owner}/{id}", StringComparison.Ordinal)) return false;
+
+        var destination = await objects.HeadAsync(targetKey, ct);
+        var createdDestination = destination is null;
+        if (destination is not null &&
+            (destination.Value.Length != asset.Size ||
+             !string.Equals(destination.Value.Mime, asset.MimeType, StringComparison.OrdinalIgnoreCase)))
+            return false;
+
+        var mongoPromoted = false;
+        try
+        {
+            if (createdDestination)
+            {
+                var source = await objects.HeadAsync(asset.ObjectKey, ct);
+                if (source is null || source.Value.Length != asset.Size ||
+                    !string.Equals(source.Value.Mime, asset.MimeType, StringComparison.OrdinalIgnoreCase))
+                    return false;
+                await objects.CopyAsync(asset.ObjectKey, targetKey, asset.MimeType, ct);
+                var copied = await objects.HeadAsync(targetKey, ct);
+                if (copied is null || copied.Value.Length != asset.Size ||
+                    !string.Equals(copied.Value.Mime, asset.MimeType, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidOperationException("Approved media copy verification failed.");
+            }
+
+            if (!await repository.PromoteAsync(id, owner, asset.Version, asset.ObjectKey, targetKey, ct))
+            {
+                var current = await ReadOwnedAsync(id, owner, ct);
+                if (current is not { Status: MediaStatus.Approved } || current.ObjectKey != targetKey)
+                {
+                    if (createdDestination) await objects.DeleteAsync(targetKey, ct);
+                    return false;
+                }
+            }
+            mongoPromoted = true;
+
+            await objects.DeleteAsync(asset.ObjectKey, ct);
+            return true;
+        }
+        catch
+        {
+            if (createdDestination && !mongoPromoted)
+            {
+                try { await objects.DeleteAsync(targetKey, ct); }
+                catch (Exception) when (!ct.IsCancellationRequested) { }
+            }
+            throw;
+        }
+    }
+
     public async Task<MediaReadUrl?> GetApprovedReadUrlAsync(string id, CancellationToken ct)
     {
         var record = await repository.FindAsync(id, ct);
