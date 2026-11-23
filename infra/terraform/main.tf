@@ -172,6 +172,15 @@ resource "aws_iam_role_policy" "media_objects" {
           "s3:DeleteObject"
         ]
         Resource = "${aws_s3_bucket.images.arn}/staging/*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:DeleteObject"
+        ]
+        Resource = "${aws_s3_bucket.images.arn}/approved/*"
       }
     ]
   })
