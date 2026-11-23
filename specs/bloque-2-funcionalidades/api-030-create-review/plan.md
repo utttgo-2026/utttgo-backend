@@ -1,6 +1,6 @@
 # API-030 — Crear reseña vinculada a pedido · plan
 
-Estado de aprobación de la ficha: PENDIENTE
+Estado de aprobación de la ficha: APROBADA; implementación completada 2026-11-23
 
 ## Autoridad y alcance
 
@@ -8,7 +8,7 @@ Estado de aprobación de la ficha: PENDIENTE
 
 ## Arquitectura existente
 
-No existen `Modules/Reviews`, `Modules/Orders` ni pruebas. RF-08 fase 03 requiere métricas desde Reviews. Reutilizar interfaces del dueño Orders para acreditar entrega, según contrato aprobado; no crear dependencia inversa Orders→Reviews→Orders ni leer `orders` directamente. Si hecho push de fase 04 se adopta, Reviews consume evidencia local propia del hecho; mecanismo pendiente.
+Reviews implementa sus colecciones y consume `IDeliveredOrderReader` publicado por Orders. RF-08 se atiende mediante `ISellerRatingsReader` e `IProductRatingsReader`; no existe dependencia inversa ni lectura directa de `orders`.
 
 ## Componentes involucrados
 
@@ -37,7 +37,7 @@ JWT/blacklist y limitador Redis → validar orderId y DTO una vez aprobado → o
 
 ## Orden de implementación
 
-DEV-API030-01 ratifica contrato Reviews/hecho; DEV-API030-02 DTO, guard y elegibilidad; DEV-API030-03 inserción/idempotencia/ratings; DEV-API030-04 pruebas seguridad y fallos. No implementar API-029/031 aquí.
+DEV-API030-01..04 se completan en esta rama: contrato, DTO/guard, inserción idempotente, métricas y pruebas. API-029 permanece en Orders; API-031 se implementa en el mismo módulo sin duplicar el escritor.
 
 ## Dependencias y bloqueos
 

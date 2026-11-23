@@ -5,7 +5,8 @@ using UTTTGO.Api.Shared.Infrastructure;
 
 namespace UTTTGO.Api.Modules.Orders.Infrastructure;
 
-public sealed class MongoOrderRepository(MongoStore store) : IOrderRepository, IActiveOrderReader
+public sealed class MongoOrderRepository(MongoStore store) : IOrderRepository, IActiveOrderReader,
+    IDeliveredOrderReader
 {
     private IMongoCollection<OrderDocument> Orders =>
         store.Database.GetCollection<OrderDocument>("orders");
@@ -54,6 +55,18 @@ public sealed class MongoOrderRepository(MongoStore store) : IOrderRepository, I
         if (!ObjectId.TryParse(orderId, out var id)) return null;
         var document = await Orders.Find(item => item.Id == id).FirstOrDefaultAsync(cancellationToken);
         return document is null ? null : ToRecord(document);
+    }
+
+    public async Task<DeliveredOrderSnapshot?> FindDeliveredForBuyerAsync(string orderId, string buyerUserId,
+        CancellationToken cancellationToken)
+    {
+        if (!ObjectId.TryParse(orderId, out var id)) return null;
+        var document = await Orders.Find(item => item.Id == id && item.BuyerUserId == buyerUserId &&
+            item.Status == OrderStatus.Delivered).FirstOrDefaultAsync(cancellationToken);
+        return document is null
+            ? null
+            : new(document.Id.ToString(), document.BuyerUserId, document.SellerId, document.ProductId,
+                document.Status, document.DeliveredAt);
     }
 
     public Task<bool> HasActiveOrdersAsync(string buyerUserId, string? sellerId,

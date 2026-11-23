@@ -61,6 +61,17 @@ credenciales.
 
 ## Pendientes
 
+## Implementación Reviews 2026-11-23
+
+- Autorización explícita del propietario para implementar API-030 y API-031 en
+  `feature/reviews-api-030-031`, sin Favoritos ni API-041.
+- Reviews posee `reviews`, su índice único por `orderId`, índices de lectura y
+  métricas agregadas. API-030 consume `IDeliveredOrderReader` de Orders; no lee
+  `orders` directamente.
+- API-031 es público y limita por IP en Redis; sus respuestas no exponen
+  `buyerUserId`, `orderId` ni PII. Sellers/Catalog reciben métricas mediante
+  interfaces de lectura de Reviews.
+
 - DEC-003/API-005 fue aprobada el 2026-11-22. Los contratos mínimos `IActiveOrderReader`
   e `IAccountDeletionCatalog` ya están publicados; Reviews y mensajes quedan para
   sus fichas dueñas. Falta ejecutar integración/seguridad con Mongo y Redis aislados

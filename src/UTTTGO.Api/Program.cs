@@ -32,6 +32,10 @@ using Amazon;
 using Amazon.Rekognition;
 using UTTTGO.Api.Modules.Media.Infrastructure;
 using UTTTGO.Api.Modules.Media.Validators;
+using UTTTGO.Api.Modules.Reviews.Application;
+using UTTTGO.Api.Modules.Reviews.Contracts;
+using UTTTGO.Api.Modules.Reviews.Infrastructure;
+using UTTTGO.Api.Modules.Reviews.Validators;
 using UTTTGO.Api.Shared.OpenApi;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -216,6 +220,7 @@ builder.Services.AddSingleton<MongoOrderRepository>();
 builder.Services.AddSingleton<IOrderRepository>(services =>
     services.GetRequiredService<MongoOrderRepository>());
 builder.Services.AddSingleton<IActiveOrderReader>(services => services.GetRequiredService<MongoOrderRepository>());
+builder.Services.AddSingleton<IDeliveredOrderReader>(services => services.GetRequiredService<MongoOrderRepository>());
 builder.Services.AddSingleton<IOrderAuditWriter, MongoOrderAuditWriter>();
 builder.Services.AddScoped<IOrdersRateLimitGate, RedisOrdersRateLimitGate>();
 builder.Services.AddScoped<ICreateOrderService, CreateOrderService>();
@@ -227,6 +232,17 @@ builder.Services.AddScoped<IUpdateOrderStatusService, UpdateOrderStatusService>(
 builder.Services.AddScoped<ICreateDeliveryTokenService, CreateDeliveryTokenService>();
 builder.Services.AddScoped<IConfirmDeliveryService, ConfirmDeliveryService>();
 builder.Services.AddHostedService<OrdersMongoIndexes>();
+builder.Services.AddScoped<IValidator<CreateReviewRequest>, CreateReviewRequestValidator>();
+builder.Services.AddScoped<IValidator<SellerReviewsQuery>, SellerReviewsQueryValidator>();
+builder.Services.AddSingleton<MongoReviewRepository>();
+builder.Services.AddSingleton<IReviewRepository>(services => services.GetRequiredService<MongoReviewRepository>());
+builder.Services.AddScoped<IReviewsRateLimitGate, RedisReviewsRateLimitGate>();
+builder.Services.AddScoped<ICreateReviewService, CreateReviewService>();
+builder.Services.AddScoped<ListSellerReviewsService>();
+builder.Services.AddScoped<IListSellerReviewsService>(services => services.GetRequiredService<ListSellerReviewsService>());
+builder.Services.AddScoped<ISellerRatingsReader>(services => services.GetRequiredService<ListSellerReviewsService>());
+builder.Services.AddScoped<IProductRatingsReader>(services => services.GetRequiredService<ListSellerReviewsService>());
+builder.Services.AddHostedService<ReviewsMongoIndexes>();
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi(options => options.AddDocumentTransformer<PublicApiServerTransformer>());
 

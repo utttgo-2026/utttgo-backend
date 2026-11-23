@@ -108,6 +108,22 @@ public sealed class OpenApiContractTests
     }
 
     [Fact]
+    public async Task ReviewRoutesDocumentTheirRealResponsesAndSchemas()
+    {
+        var document = await LoadDocumentAsync();
+
+        ResponseSchema(document, "/api/v1/orders/{orderId}/review", "post", 201, "ReviewResponse");
+        ResponseSchema(document, "/api/v1/orders/{orderId}/review", "post", 409, "ApiError");
+        ResponseSchema(document, "/api/v1/sellers/{sellerId}/reviews", "get", 200, "SellerReviewsResponse");
+        ResponseSchema(document, "/api/v1/sellers/{sellerId}/reviews", "get", 429, "ApiError");
+        RequestSchemaProperties(document, "/api/v1/orders/{orderId}/review", "post")
+            .Should().Contain(["rating", "comment"]);
+        ComponentProperties(document, "SellerReviewsResponse")
+            .Should().Contain(["items", "page", "pageSize", "totalCount", "averageRating",
+                "ratingBreakdown"]);
+    }
+
+    [Fact]
     public async Task MobileRequestSchemasExposeStatusImageUrlAndNotes()
     {
         var document = await LoadDocumentAsync();
