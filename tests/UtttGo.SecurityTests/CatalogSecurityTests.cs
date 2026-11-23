@@ -109,6 +109,27 @@ public sealed class CatalogSecurityTests
         products.UpdateCalls.Should().Be(0);
     }
 
+    [Fact]
+    public async Task ProductOfAnotherSellerCannotBeLogicallyDeleted()
+    {
+        var products = new CatalogProductRepository();
+        products.Products[CatalogFixtures.ProductId] = CatalogFixtures.Product(CatalogFixtures.OtherSellerId);
+        using var factory = Factory(products: products);
+        using var client = factory.CreateClient();
+        using var request = new HttpRequestMessage(HttpMethod.Patch,
+            $"/api/v1/products/{CatalogFixtures.ProductId}/availability")
+        {
+            Content = new StringContent("{\"status\":\"Deleted\"}", Encoding.UTF8, "application/json")
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", Token);
+
+        using var response = await client.SendAsync(request);
+
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        products.Products[CatalogFixtures.ProductId].Status.Should().Be(ProductAvailability.Active);
+        products.UpdateCalls.Should().Be(0);
+    }
+
     [Theory]
     [InlineData("{\"sellerId\":\"other-seller\"}")]
     [InlineData("{\"status\":\"Active\"}")]

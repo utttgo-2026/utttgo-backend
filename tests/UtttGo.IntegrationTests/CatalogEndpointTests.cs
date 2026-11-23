@@ -264,6 +264,26 @@ public sealed class CatalogEndpointTests
     }
 
     [Fact]
+    public async Task SellerCanLogicallyDeleteAProductAndItLeavesPublicCatalog()
+    {
+        var products = SeededProducts();
+        using var factory = Factory(products: products);
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", Token);
+
+        using var deleted = await client.PatchAsync(
+            $"/api/v1/products/{CatalogFixtures.ProductId}/availability",
+            JsonContent("{\"status\":\"Deleted\"}"));
+
+        deleted.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var publicDetail = await client.GetAsync($"/api/v1/products/{CatalogFixtures.ProductId}");
+        publicDetail.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        using var ownProducts = await client.GetAsync("/api/v1/sellers/me/products");
+        using var ownBody = JsonDocument.Parse(await ownProducts.Content.ReadAsStringAsync());
+        ownBody.RootElement.GetProperty("totalCount").GetInt32().Should().Be(0);
+    }
+
+    [Fact]
     public async Task CriticalFailureReturns503WithoutExceptionDetails()
     {
         using var factory = Factory(products: new CatalogProductRepository { Fail = true });
