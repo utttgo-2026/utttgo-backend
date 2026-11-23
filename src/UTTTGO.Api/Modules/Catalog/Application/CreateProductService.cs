@@ -55,9 +55,12 @@ public sealed class CreateProductService(IAuthenticatedLocalProfileReader profil
             // Client-provided permanent URLs are never accepted; only approved Media references.
             if (!string.IsNullOrWhiteSpace(request.ImageUrl))
                 return new(CreateProductOutcome.ImageNotAvailable);
-            if (request.MediaAssetId is { } assetId &&
-                (media is null || !await media.IsApprovedForOwnerAsync(assetId, profile.Id, cancellationToken)))
-                return new(CreateProductOutcome.ImageNotApproved);
+            if (request.MediaAssetId is { } assetId)
+            {
+                if (media is null || !await media.IsApprovedForOwnerAsync(assetId, profile.Id, cancellationToken) ||
+                    !await media.PromoteApprovedAsync(assetId, profile.Id, cancellationToken))
+                    return new(CreateProductOutcome.ImageNotApproved);
+            }
 
             var category = await categories.FindByIdAsync(request.CategoryId!, cancellationToken);
             if (category is null || !category.IsActive)

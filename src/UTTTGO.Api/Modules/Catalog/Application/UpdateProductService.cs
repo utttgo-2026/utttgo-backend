@@ -57,9 +57,12 @@ public sealed class UpdateProductService(IAuthenticatedLocalProfileReader profil
             if (current is null || current.SellerId != profile.SellerId ||
                 current.Status == ProductAvailability.Deleted)
                 return new(UpdateProductOutcome.NotFound);
-            if (request.HasMediaAssetId && request.MediaAssetId is { } assetId &&
-                (media is null || !await media.IsApprovedForOwnerAsync(assetId, profile.Id, cancellationToken)))
-                return new(UpdateProductOutcome.ImageNotApproved);
+            if (request.HasMediaAssetId && request.MediaAssetId is { } assetId)
+            {
+                if (media is null || !await media.IsApprovedForOwnerAsync(assetId, profile.Id, cancellationToken) ||
+                    !await media.PromoteApprovedAsync(assetId, profile.Id, cancellationToken))
+                    return new(UpdateProductOutcome.ImageNotApproved);
+            }
 
             var changes = new ProductChanges(request.HasName, request.HasName ? request.Name!.Trim() : null,
                 request.HasDescription, request.HasDescription ? request.Description!.Trim() : null,

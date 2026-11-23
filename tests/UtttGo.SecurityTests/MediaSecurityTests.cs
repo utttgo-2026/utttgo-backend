@@ -199,6 +199,15 @@ public sealed class MediaSecurityTests : IAsyncLifetime
             Value = Value with { Status = to, Version = version + 1 };
             return Task.FromResult(true);
         }
+        public Task<bool> PromoteAsync(string id, string owner, long version, string sourceKey, string targetKey,
+            CancellationToken ct)
+        {
+            if (Value is null || Value.Id != id || Value.OwnerUserId != owner ||
+                Value.Status != MediaStatus.Approved || Value.Version != version || Value.ObjectKey != sourceKey)
+                return Task.FromResult(false);
+            Value = Value with { ObjectKey = targetKey, Version = version + 1 };
+            return Task.FromResult(true);
+        }
     }
 
     private sealed class Store : IMediaObjectStore
@@ -221,6 +230,8 @@ public sealed class MediaSecurityTests : IAsyncLifetime
             SignGetCalls++;
             return Task.FromResult(new MediaReadUrl("https://local.invalid/get", DateTime.UtcNow.AddMinutes(4)));
         }
+        public Task CopyAsync(string sourceKey, string targetKey, string mime, CancellationToken ct) =>
+            Task.CompletedTask;
         public Task DeleteAsync(string key, CancellationToken ct) => Task.CompletedTask;
     }
 
