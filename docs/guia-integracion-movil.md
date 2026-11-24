@@ -343,7 +343,7 @@ Parámetros: `page` (≥1), `pageSize` (1..50), `status` (opcional).
 }
 ```
 
-Solo devuelve pedidos del comprador autenticado (el filtro por rol vendedor aún no existe). Cada ítem trae la relación completa: `orderId`, `productId`, `productName`, `sellerId`, `buyerId`, `quantity`, `unitPrice`, `totalAmount`, `currency`, `status`, `role`, `createdAt` y `notes`.
+Solo devuelve pedidos del comprador autenticado. Cada ítem trae `orderId`, `productId`, `productName`, `sellerId`, `buyerId`, `quantity`, `unitPrice`, `totalAmount`, `currency`, `status`, `role`, `createdAt` y `notes`. No incluye nombre visible del vendedor, `pickupPoint`, `updatedAt`, `deliveredAt` ni `completedAt`; para esos campos el móvil debe abrir `GET /api/v1/orders/{orderId}`.
 
 ### 5.3 `GET /api/v1/orders/{orderId}` → `200` (Bearer, participante)
 
@@ -465,6 +465,7 @@ Query: `page` (≥1), `pageSize` (≤50) y `status` opcional (`Pending|Accepted|
 
 - **Ficha nueva aprobada (D-ORD-05, 2026-11-18)**: es la bandeja «Pedidos Recibidos» del vendedor; no es una de las 42 fichas del Excel.
 - Cada item trae `role: "seller"`; el `sellerId` lo deriva el servidor del perfil autenticado (el cliente nunca lo envía).
+- Cada item incluye producto, cantidad, precio, total, estado, fecha de creación y nota, pero no nombre visible del comprador, `pickupPoint`, `updatedAt`, `deliveredAt` ni `completedAt`; para esos campos el móvil debe abrir `GET /api/v1/orders/{orderId}`.
 - Solo el rol `Seller` con cuenta `Active`: sin rol → `403 SELLER_ROLE_REQUIRED`; cuenta inactiva → `403 SELLER_ACCOUNT_NOT_ACTIVE`.
 - `/api/v1/orders/mine` **no cambia** (sigue siendo solo del comprador, `role: "buyer"`); para ver el detalle de un pedido ya recibido sigue existiendo `GET /api/v1/orders/{orderId}` (participantes; un tercero recibe `404`).
 - Rate limit `order-read` (60/60 s) fail-closed: Redis caído → `503 ORDER_UNAVAILABLE`.

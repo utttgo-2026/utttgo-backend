@@ -128,7 +128,7 @@ Contratos cross-module publicados para esta fase: `ICatalogOrderProducts` (Catal
 | RF-ORD-27 | **WHEN** el servicio de Redis no responde ante una operación protegida por rate limit, **THEN** el sistema rechaza la operación (`429`/`503`) sin ejecutarla (fail-closed). | §6.2 |
 | RF-ORD-28 | **WHEN** la creación incluye el header opcional `Idempotency-Key` repetido para el mismo comprador, **THEN** el sistema devolverá el mismo pedido sin crear duplicado ni reservar dos veces. | D-ORD-04 |
 | RF-ORD-29 | **WHEN** ocurre un cambio de estado, **THEN** Orders publicará la notificación vía `INotificationPublisher` (Notifications) y nunca enviará push directamente. | BR-008 |
-| RF-ORD-30 | **WHEN** se consulta `GET /orders/mine`, **THEN** el sistema devolverá paginación `page`+`pageSize` con máximo configurable, solo pedidos en los que el usuario autenticado es participante. | §12, D-ORD-05 |
+| RF-ORD-30 | **WHEN** se consulta `GET /orders/mine`, **THEN** el sistema devolverá paginación `page`+`pageSize` con máximo configurable, solo pedidos donde el usuario autenticado es comprador. | §12, D-ORD-05 |
 | RF-ORD-31 | **WHILE** el pedido existe, **THEN** ninguna respuesta expone documentos completos de MongoDB: solo DTOs explícitos con `camelCase` y `ObjectId` como string. | §11, §4.5 |
 | RF-ORD-32 | **WHEN** MongoDB o un contrato de otro módulo no responde, **THEN** la operación falla con `503`/`ORDER_UNAVAILABLE` sin dejar el pedido en un estado inconsistente (sin reserva huérfana). | §14 |
 | RF-ORD-33 | **WHEN** un usuario con rol `Seller` y cuenta `Active` consulta `GET /api/v1/sellers/me/orders`, **THEN** el sistema devolverá una página `page`+`pageSize` con `totalCount` conteniendo **solo** los pedidos cuyo `sellerId` coincide con el del perfil autenticado, con `role: "seller"`; sin rol `Seller` → `403 SELLER_ROLE_REQUIRED` y cuenta no `Active` → `403 SELLER_ACCOUNT_NOT_ACTIVE`. | BR-009, D-ORD-05 |
@@ -184,8 +184,8 @@ Crea un pedido directo (BR-001/BR-002).
 
 Lista pedidos del usuario autenticado, paginado.
 
-- **Query:** `page` (≥1, default 1), `pageSize` (default 20, máx configurable), `status` (opcional, enum), `role` (`buyer`|`seller`, opcional — D-ORD-05).
-- **Alcance:** solo pedidos donde el usuario es participante (comprador o vendedor según `role`).
+- **Query:** `page` (≥1, default 1), `pageSize` (default 20, máx configurable), `status` (opcional, enum).
+- **Alcance:** solo pedidos donde el usuario autenticado es el comprador. La bandeja del vendedor usa la ruta separada `GET /api/v1/sellers/me/orders`.
 - **Rate limit:** `order-read`, 60/60 s.
 - **Respuesta `200`:**
 
@@ -388,7 +388,7 @@ Propiedad de colecciones (matriz en `memoria.md`): `orders`, `orderAuditLogs` pe
 **Índices:**
 
 1. `{ buyerUserId: 1, createdAt: -1 }` — API-024.
-2. `{ sellerId: 1, createdAt: -1 }` — API-024 con `role=seller`.
+2. `{ sellerId: 1, createdAt: -1 }` — ficha D-ORD-05 (`GET /sellers/me/orders`).
 3. `{ status: 1, updatedAt: -1 }` — consultas operativas.
 4. **Único parcial:** `{ buyerUserId: 1, idempotencyKey: 1 }` where `idempotencyKey` existe — D-ORD-04.
 
@@ -466,7 +466,7 @@ No existe `IOrderEventPublisher` inverso desde Orders a Notifications ni depende
 |---|---|
 | T-ORD-01 | **Given** un producto `Published` con precio 85.50 y stock 5, **when** el comprador crea un pedido de cantidad 2, **then** el pedido queda `Pending` con `unitPrice` 85.50, `total` 171.00, `paymentMethod` `Cash` y la reserva de stock consume 2 unidades. |
 | T-ORD-02 | **Given** un producto con precio 85.50, **when** el vendedor cambia el precio a 99.00 después de creado el pedido, **then** `unitPrice` y `total` del pedido permanecen 85.50 y 171.00. |
-| T-ORD-03 | **Given** un producto con stock 1, **when** se crea un pedido de cantidad 2, **then** responde `409 INSUFFICIENT_STOCK` y no existe pedido ni reserva. |
+| T-ORD-03 | **Given** un producto con stock 1, **when** se crea un pedido de cantidad 2, **then** responde `400 INSUFFICIENT_STOCK` y no existe pedido ni reserva. |
 | T-ORD-04 | **Given** un producto `Paused`, **when** se crea un pedido, **then** responde `422 PRODUCT_NOT_AVAILABLE` y no hay reserva. |
 | T-ORD-05 | **Given** un pedido `Pending`, **when** el comprador lo cancela, **then** queda `CancelledByBuyer`, `completedAt` está fijado, el stock se libera una sola vez y hay registro en `orderAuditLogs`. |
 | T-ORD-06 | **Given** un pedido ya `CancelledByBuyer`, **when** se repite la cancelación, **then** responde `200` con el estado vigente y no se libera stock dos veces. |
@@ -482,7 +482,7 @@ No existe `IOrderEventPublisher` inverso desde Orders a Notifications ni depende
 | T-ORD-16 | **Given** un token expirado, **when** se envía en la confirmación, **then** responde `422 DELIVERY_TOKEN_EXPIRED` y el pedido sigue `Ready`. |
 | T-ORD-17 | **Given** Redis caído, **when** se invoca `POST /orders`, **then** la operación se rechaza fail-closed (`503 ORDER_UNAVAILABLE`) sin crear el pedido. |
 | T-ORD-18 | **Given** el mismo `Idempotency-Key`, **when** se envían dos `POST /orders`, **then** solo hay un pedido y una reserva. |
-| T-ORD-19 | **Given** `GET /orders/mine?page=2&pageSize=20`, **when** el comprador tiene 25 pedidos, **then** la página 2 tiene 5 items y `total` 25; no se exponen pedidos ajenos. |
+| T-ORD-19 | **Given** `GET /orders/mine?page=2&pageSize=20`, **when** el comprador tiene 25 pedidos, **then** la página 2 tiene 5 items y `totalCount` 25; no se exponen pedidos ajenos. |
 | T-ORD-20 | **Given** un pedido `InPreparation`, **when** el vendedor lo mueve a `Ready`, **then** la respuesta incluye `version` incrementada y hay notificación encolada vía `INotificationPublisher` (mock en pruebas). |
 | T-ORD-21 | **Given** un vendedor con dos pedidos propios y un pedido de otro vendedor, **when** consulta `GET /api/v1/sellers/me/orders`, **then** recibe solo sus dos pedidos con `role: "seller"` y `totalCount: 2`, sin exponer pedidos ajenos. |
 | T-ORD-22 | **Given** un usuario autenticado sin rol `Seller` (o con cuenta no `Active`), **when** consulta `GET /api/v1/sellers/me/orders`, **then** recibe `403 SELLER_ROLE_REQUIRED` (o `403 SELLER_ACCOUNT_NOT_ACTIVE`) y no se ejecuta la consulta. |

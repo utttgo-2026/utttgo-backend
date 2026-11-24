@@ -94,7 +94,7 @@ Detalle de cuerpos, validaciones y ejemplos JSON en `spec.md` §5 (§5.10 para l
 
 | Nivel | Cobertura mínima |
 |---|---|
-| Unitarias | cálculo de total server-side; snapshot de precio inalterable; máquina de estados (todas las transiciones válidas e inválidas); CAS por `version`; reserva/liberación/commit idempotentes por `reservationId`; generación/consumo de token (hash, TTL, single-use); validadores (cantidad, formato `ObjectId`, campos prohibidos); `/mine` solo participantes. |
+| Unitarias | cálculo de total server-side; snapshot de precio inalterable; máquina de estados (todas las transiciones válidas e inválidas); CAS por `version`; reserva/liberación/commit idempotentes por `reservationId`; generación/consumo de token (hash, TTL, single-use); validadores (cantidad, formato `ObjectId`, campos prohibidos); `/mine` solo comprador. |
 | Integración | API-023..029 y `GET /sellers/me/orders` con `WebApplicationFactory` y dobles: `201`, `200`, `400`, `401`, `403`, `404`, `409`, `422`, `429`, `503`; forma exacta del JSON de éxito y del contrato de error; paginación `{items,page,pageSize,totalCount}`; el listado del vendedor solo devuelve pedidos propios con `role: "seller"` (T-ORD-21..23). |
 | Seguridad | token ausente/inválido/expirado/revocado → `401`; no participante → `404`; rol equivocado → `403`; campos privilegios del cliente ignorados/rechazados; token de entrega no filtrado ni logueado; rate limit agotado y Redis caído → `429`/`503` sin operación; sin caché de pedidos. |
 | Concurrencia | dos `PATCH /status` con la misma `version` → un `200` y un `409`; dos `POST /orders` con el mismo `Idempotency-Key` → un pedido y una reserva; rechazo de token reutilizado. |
