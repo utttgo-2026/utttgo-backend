@@ -376,6 +376,39 @@ public sealed class OrderJourneyTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task TheSellerRejectsTheOrderAndTheStockGoesBackToTheProduct()
+    {
+        var (sellerToken, categoryId) = await CreateSellerProductAsync();
+        var buyerToken = await RegisterAndLoginAsync("comprador.rechazo@uttt.edu.mx");
+
+        var product = await GetProductAsync(sellerToken, categoryId);
+        var productId = product.GetProperty("id").GetString()!;
+        var stock = product.GetProperty("stock").GetInt32();
+
+        using var buyerClient = host.CreateClient();
+        buyerClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", buyerToken);
+        using var created = await buyerClient.PostAsJsonAsync("/api/v1/orders",
+            new { productId, quantity = 2 });
+        created.StatusCode.Should().Be(HttpStatusCode.Created);
+        using var createdDocument = JsonDocument.Parse(await created.Content.ReadAsStringAsync());
+        var orderId = createdDocument.RootElement.GetProperty("orderId").GetString()!;
+
+        using var sellerClient = host.CreateClient();
+        sellerClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", sellerToken);
+        using var rejection = await sellerClient.PatchAsJsonAsync($"/api/v1/orders/{orderId}/status",
+            new { status = "Rejected", version = 0 });
+
+        rejection.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var rejectionDocument = JsonDocument.Parse(await rejection.Content.ReadAsStringAsync());
+        rejectionDocument.RootElement.GetProperty("status").GetString().Should().Be("Rejected");
+
+        using var productAfter = await sellerClient.GetAsync($"/api/v1/products/{productId}");
+        productAfter.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var productDocument = JsonDocument.Parse(await productAfter.Content.ReadAsStringAsync());
+        productDocument.RootElement.GetProperty("stock").GetInt32().Should().Be(stock);
+    }
+
+    [Fact]
     public async Task ConcurrentStatusChangesWithTheSameVersionApplyOnlyOnce()
     {
         var (sellerToken, categoryId) = await CreateSellerProductAsync();
