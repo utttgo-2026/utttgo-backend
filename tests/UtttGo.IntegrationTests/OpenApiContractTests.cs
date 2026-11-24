@@ -105,6 +105,43 @@ public sealed class OpenApiContractTests
 
         ResponseSchema(document, "/api/v1/orders/{orderId}", "get", 200, "OrderResponse");
         ResponseSchema(document, "/api/v1/orders/{orderId}", "get", 404, "ApiError");
+
+        ResponseSchema(document, "/api/v1/orders/{orderId}/cancel", "post", 200, "OrderCancellationResponse");
+        ResponseSchema(document, "/api/v1/orders/{orderId}/cancel", "post", 401, "ApiError");
+        ResponseSchema(document, "/api/v1/orders/{orderId}/cancel", "post", 403, "ApiError");
+        ResponseSchema(document, "/api/v1/orders/{orderId}/cancel", "post", 404, "ApiError");
+        ResponseSchema(document, "/api/v1/orders/{orderId}/cancel", "post", 409, "ApiError");
+        ResponseSchema(document, "/api/v1/orders/{orderId}/cancel", "post", 429, "ApiError");
+        ResponseSchema(document, "/api/v1/orders/{orderId}/cancel", "post", 503, "ApiError");
+
+        ResponseSchema(document, "/api/v1/orders/{orderId}/status", "patch", 200, "OrderStatusUpdateResponse");
+        ResponseSchema(document, "/api/v1/orders/{orderId}/status", "patch", 400, "ApiError");
+        ResponseSchema(document, "/api/v1/orders/{orderId}/status", "patch", 401, "ApiError");
+        ResponseSchema(document, "/api/v1/orders/{orderId}/status", "patch", 403, "ApiError");
+        ResponseSchema(document, "/api/v1/orders/{orderId}/status", "patch", 404, "ApiError");
+        ResponseSchema(document, "/api/v1/orders/{orderId}/status", "patch", 409, "ApiError");
+        ResponseSchema(document, "/api/v1/orders/{orderId}/status", "patch", 429, "ApiError");
+        ResponseSchema(document, "/api/v1/orders/{orderId}/status", "patch", 503, "ApiError");
+
+        ResponseSchema(document, "/api/v1/orders/{orderId}/delivery-token", "post", 201,
+            "DeliveryTokenResponse");
+        ResponseSchema(document, "/api/v1/orders/{orderId}/delivery-token", "post", 401, "ApiError");
+        ResponseSchema(document, "/api/v1/orders/{orderId}/delivery-token", "post", 403, "ApiError");
+        ResponseSchema(document, "/api/v1/orders/{orderId}/delivery-token", "post", 404, "ApiError");
+        ResponseSchema(document, "/api/v1/orders/{orderId}/delivery-token", "post", 409, "ApiError");
+        ResponseSchema(document, "/api/v1/orders/{orderId}/delivery-token", "post", 429, "ApiError");
+        ResponseSchema(document, "/api/v1/orders/{orderId}/delivery-token", "post", 503, "ApiError");
+
+        ResponseSchema(document, "/api/v1/orders/{orderId}/delivery-confirmations", "post", 200,
+            "DeliveryConfirmationResponse");
+        ResponseSchema(document, "/api/v1/orders/{orderId}/delivery-confirmations", "post", 400, "ApiError");
+        ResponseSchema(document, "/api/v1/orders/{orderId}/delivery-confirmations", "post", 401, "ApiError");
+        ResponseSchema(document, "/api/v1/orders/{orderId}/delivery-confirmations", "post", 403, "ApiError");
+        ResponseSchema(document, "/api/v1/orders/{orderId}/delivery-confirmations", "post", 404, "ApiError");
+        ResponseSchema(document, "/api/v1/orders/{orderId}/delivery-confirmations", "post", 409, "ApiError");
+        ResponseSchema(document, "/api/v1/orders/{orderId}/delivery-confirmations", "post", 422, "ApiError");
+        ResponseSchema(document, "/api/v1/orders/{orderId}/delivery-confirmations", "post", 429, "ApiError");
+        ResponseSchema(document, "/api/v1/orders/{orderId}/delivery-confirmations", "post", 503, "ApiError");
     }
 
     [Fact]

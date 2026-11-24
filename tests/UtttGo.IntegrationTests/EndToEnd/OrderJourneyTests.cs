@@ -99,6 +99,35 @@ public sealed class OrderJourneyTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task SellerReadsItsReceivedOrdersWithoutSeeingAnotherSellersOrder()
+    {
+        var (sellerToken, categoryId) = await CreateSellerProductAsync();
+        var buyerToken = await RegisterAndLoginAsync("comprador.bandeja@uttt.edu.mx");
+        var product = await GetProductAsync(sellerToken, categoryId);
+        var productId = product.GetProperty("id").GetString()!;
+
+        using var buyerClient = host.CreateClient();
+        buyerClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", buyerToken);
+        using var created = await buyerClient.PostAsJsonAsync("/api/v1/orders",
+            new { productId, quantity = 1, notes = "Recibir en biblioteca" });
+        created.StatusCode.Should().Be(HttpStatusCode.Created);
+
+        using var sellerClient = host.CreateClient();
+        sellerClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", sellerToken);
+        using var received = await sellerClient.GetAsync("/api/v1/sellers/me/orders?status=Pending");
+
+        received.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var document = JsonDocument.Parse(await received.Content.ReadAsStringAsync());
+        document.RootElement.GetProperty("totalCount").GetInt32().Should().Be(1);
+        var item = document.RootElement.GetProperty("items")[0];
+        item.GetProperty("role").GetString().Should().Be("seller");
+        item.GetProperty("sellerId").GetString().Should().NotBeNullOrWhiteSpace();
+        item.GetProperty("productName").GetString().Should().NotBeNullOrWhiteSpace();
+        item.GetProperty("totalAmount").GetDecimal().Should().Be(product.GetProperty("price").GetDecimal());
+        item.GetProperty("notes").GetString().Should().Be("Recibir en biblioteca");
+    }
+
+    [Fact]
     public async Task PurchaseReservesTheStockAndRejectsMoreThanAvailable()
     {
         var (sellerToken, categoryId) = await CreateSellerProductAsync();

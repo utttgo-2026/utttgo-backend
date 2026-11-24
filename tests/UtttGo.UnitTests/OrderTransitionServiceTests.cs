@@ -247,6 +247,31 @@ public sealed class OrderTransitionServiceTests
     }
 
     [Fact]
+    public async Task RejectedOrderWithStockReleaseFailureHasNoRetryThroughTheSameStatusRoute()
+    {
+        var orders = RepositoryWith(OrderFixtures.Order());
+        var audit = new OrdersAuditWriter();
+        var catalog = new CatalogOrderProducts { Fail = true };
+        var service = StatusService(orders, audit, catalog);
+        var request = new UpdateOrderStatusRequest { Status = OrderStatus.Rejected, Version = 0 };
+
+        var first = await service.UpdateAsync("token", OrderFixtures.OrderId, request, "correlation",
+            CancellationToken.None);
+
+        first.Outcome.Should().Be(UpdateOrderStatusOutcome.Unavailable);
+        orders.Orders[OrderFixtures.OrderId].Status.Should().Be(OrderStatus.Rejected);
+        orders.Orders[OrderFixtures.OrderId].Version.Should().Be(1);
+
+        catalog.Fail = false;
+        var retry = await service.UpdateAsync("token", OrderFixtures.OrderId,
+            new UpdateOrderStatusRequest { Status = OrderStatus.Rejected, Version = 1 }, "correlation",
+            CancellationToken.None);
+
+        retry.Outcome.Should().Be(UpdateOrderStatusOutcome.StateConflict);
+        catalog.ReleaseCalls.Should().Be(0);
+    }
+
+    [Fact]
     public async Task TheBuyerCannotChangeTheStatus()
     {
         var orders = RepositoryWith(OrderFixtures.Order());
