@@ -72,6 +72,16 @@ credenciales.
   `buyerUserId`, `orderId` ni PII. Sellers/Catalog reciben métricas mediante
   interfaces de lectura de Reviews.
 
+## Spec FCM 2026-11-23
+
+- Rama documental `docs/spec-fcm`: solo spec/plan/task; no código, IAM/SCP,
+  Terraform ni credenciales.
+- La propuesta cubre registro/baja de `deviceTokens`, eventos de Orders,
+  `INotificationSender`, Firebase Admin SDK, outbox no bloqueante, reintentos
+  acotados, limpieza `UNREGISTERED` y SSM Parameter Store.
+- API-035/036 y Chat permanecen fuera de alcance; las preguntas abiertas están
+  en `specs/phase-06-notifications-push/spec.md`.
+
 - DEC-003/API-005 fue aprobada el 2026-11-22. Los contratos mínimos `IActiveOrderReader`
   e `IAccountDeletionCatalog` ya están publicados; Reviews y mensajes quedan para
   sus fichas dueñas. Falta ejecutar integración/seguridad con Mongo y Redis aislados
