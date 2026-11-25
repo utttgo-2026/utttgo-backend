@@ -29,7 +29,7 @@ public sealed record CreateProductResult(CreateProductOutcome Outcome, ProductRe
 
 public sealed class CreateProductService(IAuthenticatedLocalProfileReader profiles,
     ICatalogRateLimitGate rateLimit, ICategoryRepository categories, IProductRepository products,
-    ISellerDisplayNames sellers, IProductMediaAccess? media = null) : ICreateProductService
+    ISellerDisplayNames sellers, IProductMediaAccess? media = null, ICatalogCache? cache = null) : ICreateProductService
 {
     public async Task<CreateProductResult> CreateAsync(string token, CreateProductRequest request,
         CancellationToken cancellationToken)
@@ -98,6 +98,7 @@ public sealed class CreateProductService(IAuthenticatedLocalProfileReader profil
             var response = ProductProjection.ToResponse(product,
                 sellerNames.TryGetValue(product.SellerId, out var displayName) ? displayName : null,
                 category.Name, null, image);
+            if (cache is not null) await cache.InvalidateAsync(cancellationToken);
             return new(CreateProductOutcome.Created, response);
         }
         catch (Exception) when (!cancellationToken.IsCancellationRequested)

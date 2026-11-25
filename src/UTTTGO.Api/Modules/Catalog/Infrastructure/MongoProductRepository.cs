@@ -7,7 +7,8 @@ using UTTTGO.Api.Shared.Infrastructure;
 
 namespace UTTTGO.Api.Modules.Catalog.Infrastructure;
 
-public sealed class MongoProductRepository(MongoStore store) : IProductRepository, IAccountDeletionCatalog
+public sealed class MongoProductRepository(MongoStore store, ICatalogCache? cache = null)
+    : IProductRepository, IAccountDeletionCatalog
 {
     private IMongoCollection<ProductDocument> Products =>
         store.Database.GetCollection<ProductDocument>("products");
@@ -167,6 +168,7 @@ public sealed class MongoProductRepository(MongoStore store) : IProductRepositor
             Builders<ProductDocument>.Update.Inc(product => product.Version, 1),
             Builders<ProductDocument>.Update.Set(product => product.UpdatedAt, DateTime.UtcNow));
         await Products.UpdateManyAsync(filter, update, cancellationToken: cancellationToken);
+        if (cache is not null) await cache.InvalidateAsync(cancellationToken);
     }
 
     internal static string BuildSearchText(string name, string description,

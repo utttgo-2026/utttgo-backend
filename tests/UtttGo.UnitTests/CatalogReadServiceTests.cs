@@ -63,6 +63,42 @@ public sealed class CatalogReadServiceTests
     }
 
     [Fact]
+    public async Task ProductListingUsesCachedResponseBeforeReadingProducts()
+    {
+        var products = new CatalogProductRepository();
+        var categories = new CatalogCategoryRepository();
+        categories.Categories[CatalogFixtures.CategoryId] = CatalogFixtures.Category();
+        var cache = new CatalogCacheDouble
+        {
+            ProductResponse = new ProductListResponse([], 1, 20, 0)
+        };
+
+        var result = await new ListProductsService(new CatalogRateLimitGate(), products, categories,
+            new CatalogRatingsReader(), new CatalogSellerNames(), cache: cache)
+            .ListAsync(CatalogFixtures.Query(), default);
+
+        result.Outcome.Should().Be(ProductListOutcome.Success);
+        result.Response.Should().BeSameAs(cache.ProductResponse);
+        products.ListCalls.Should().Be(0);
+        cache.ProductGets.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task CategoryListingStoresResponseInCacheOnMiss()
+    {
+        var categories = new CatalogCategoryRepository();
+        categories.Categories[CatalogFixtures.CategoryId] = CatalogFixtures.Category();
+        var cache = new CatalogCacheDouble();
+
+        var result = await new ListCategoriesService(new CatalogRateLimitGate(), categories, cache)
+            .ListAsync(1, 20, default);
+
+        result.Outcome.Should().Be(CategoryListOutcome.Success);
+        cache.CategorySets.Should().Be(1);
+        cache.CategoryResponse.Should().BeSameAs(result.Response);
+    }
+
+    [Fact]
     public async Task CriticalFailureIsUnavailableWithoutDetails()
     {
         var result = await new ListProductsService(new CatalogRateLimitGate(),

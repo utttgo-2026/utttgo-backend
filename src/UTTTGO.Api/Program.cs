@@ -192,6 +192,7 @@ builder.Services.AddSingleton<IAccountDeletionCatalog>(services =>
     services.GetRequiredService<MongoProductRepository>());
 builder.Services.AddSingleton<ICategoryRepository, MongoCategoryRepository>();
 builder.Services.AddScoped<ICatalogRateLimitGate, RedisCatalogRateLimitGate>();
+builder.Services.AddSingleton<ICatalogCache, RedisCatalogCache>();
 builder.Services.AddSingleton<IProductRatingsReader, UnconfiguredProductRatingsReader>();
 builder.Services.AddScoped<IListProductsService, ListProductsService>();
 builder.Services.AddScoped<IListOwnProductsService, ListOwnProductsService>();

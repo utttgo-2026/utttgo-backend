@@ -167,6 +167,54 @@ internal sealed class CatalogRateLimitGate : ICatalogRateLimitGate
     }
 }
 
+internal sealed class CatalogCacheDouble : ICatalogCache
+{
+    public ProductListResponse? ProductResponse { get; set; }
+    public CategoryListResponse? CategoryResponse { get; set; }
+    public int ProductGets { get; private set; }
+    public int ProductSets { get; private set; }
+    public int CategoryGets { get; private set; }
+    public int CategorySets { get; private set; }
+    public int Invalidations { get; private set; }
+
+    public Task<ProductListResponse?> GetProductsAsync(ProductListQuery query, CancellationToken cancellationToken)
+    {
+        ProductGets++;
+        return Task.FromResult(ProductResponse);
+    }
+
+    public Task SetProductsAsync(ProductListQuery query, ProductListResponse response,
+        CancellationToken cancellationToken)
+    {
+        ProductSets++;
+        ProductResponse = response;
+        return Task.CompletedTask;
+    }
+
+    public Task<CategoryListResponse?> GetCategoriesAsync(int page, int pageSize,
+        CancellationToken cancellationToken)
+    {
+        CategoryGets++;
+        return Task.FromResult(CategoryResponse);
+    }
+
+    public Task SetCategoriesAsync(int page, int pageSize, CategoryListResponse response,
+        CancellationToken cancellationToken)
+    {
+        CategorySets++;
+        CategoryResponse = response;
+        return Task.CompletedTask;
+    }
+
+    public Task InvalidateAsync(CancellationToken cancellationToken)
+    {
+        Invalidations++;
+        ProductResponse = null;
+        CategoryResponse = null;
+        return Task.CompletedTask;
+    }
+}
+
 internal sealed class CatalogRatingsReader : IProductRatingsReader
 {
     public ProductRatingsSnapshot? Snapshot { get; set; }

@@ -25,7 +25,8 @@ public sealed record UpdateProductAvailabilityResult(UpdateProductAvailabilityOu
     ProductResponse? Response = null);
 
 public sealed class UpdateProductAvailabilityService(IAuthenticatedLocalProfileReader profiles,
-    ICatalogRateLimitGate rateLimit, IProductRepository products, ICategoryRepository categories)
+    ICatalogRateLimitGate rateLimit, IProductRepository products, ICategoryRepository categories,
+    ICatalogCache? cache = null)
     : IUpdateProductAvailabilityService
 {
     public async Task<UpdateProductAvailabilityResult> UpdateAsync(string token, string productId,
@@ -71,8 +72,9 @@ public sealed class UpdateProductAvailabilityService(IAuthenticatedLocalProfileR
                 return new(UpdateProductAvailabilityOutcome.Unavailable);
 
             var category = await categories.FindByIdAsync(updated.CategoryId, cancellationToken);
-            return new(UpdateProductAvailabilityOutcome.Updated,
-                ProductProjection.ToResponse(updated, null, category?.Name, null));
+            var response = ProductProjection.ToResponse(updated, null, category?.Name, null);
+            if (cache is not null) await cache.InvalidateAsync(cancellationToken);
+            return new(UpdateProductAvailabilityOutcome.Updated, response);
         }
         catch (Exception) when (!cancellationToken.IsCancellationRequested)
         {
