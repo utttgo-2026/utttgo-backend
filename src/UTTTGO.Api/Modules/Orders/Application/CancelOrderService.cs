@@ -28,7 +28,8 @@ public sealed record CancelOrderResult(CancelOrderOutcome Outcome,
 
 public sealed class CancelOrderService(IAuthenticatedLocalProfileReader profiles,
     IOrdersRateLimitGate rateLimit, IOrderRepository orders, ICatalogOrderProducts catalog,
-    IOrderAuditWriter audit, ILogger<CancelOrderService> logger) : ICancelOrderService
+    IOrderAuditWriter audit, ILogger<CancelOrderService> logger,
+    UTTTGO.Api.Modules.Notifications.Application.INotificationEventPublisher? notifications = null) : ICancelOrderService
 {
     public async Task<CancelOrderResult> CancelAsync(string token, string orderId, string correlationId,
         CancellationToken cancellationToken)
@@ -86,7 +87,17 @@ public sealed class CancelOrderService(IAuthenticatedLocalProfileReader profiles
             }
 
             if (transitioned)
+            {
                 await WriteAuditAsync(current, profile.Id, "buyer", correlationId, cancellationToken);
+                try
+                {
+                    if (notifications is not null)
+                        await notifications.PublishAsync("order.status.changed", current.BuyerUserId, current.OrderId,
+                            current.Status, correlationId, $"order.status.changed:{current.OrderId}:{current.Version}", cancellationToken);
+                }
+                catch (Exception) when (!cancellationToken.IsCancellationRequested)
+                { logger.LogWarning("Notification outbox could not record cancellation {OrderId}.", current.OrderId); }
+            }
 
             return new(transitioned ? CancelOrderOutcome.Cancelled : CancelOrderOutcome.AlreadyCancelled,
                 new OrderCancellationResponse(current.OrderId, current.Status, current.CompletedAt,

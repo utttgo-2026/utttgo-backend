@@ -1,12 +1,14 @@
 using System.IdentityModel.Tokens.Jwt;
 using Microsoft.IdentityModel.Tokens;
+using UTTTGO.Api.Modules.Notifications.Application;
 
 namespace UTTTGO.Api.Modules.Identity.Application;
 
 public sealed class LogoutService(
     ILoginJwtGate jwtGate,
     IJwtRevocationStore revocations,
-    ISupabaseSessionRevoker supabase) : ILogoutService
+    ISupabaseSessionRevoker supabase, IDeviceTokenStore? deviceTokens = null,
+    IAuthenticatedLocalProfileReader? profiles = null) : ILogoutService
 {
     public async Task<LogoutResult> LogoutAsync(string token, CancellationToken cancellationToken)
     {
@@ -43,6 +45,13 @@ public sealed class LogoutService(
             return new(LogoutOutcome.Unavailable);
         }
 
+        try
+        {
+            var profile = profiles is null ? null : await profiles.ReadAsync(token, cancellationToken);
+            if (deviceTokens is not null && profile?.Profile is not null)
+                await deviceTokens.RemoveForUserAsync(profile.Profile.Id, cancellationToken);
+        }
+        catch (Exception) when (!cancellationToken.IsCancellationRequested) { }
         await supabase.RevokeGloballyAsync(token, cancellationToken);
         return new(LogoutOutcome.Success);
     }

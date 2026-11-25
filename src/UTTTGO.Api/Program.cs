@@ -36,6 +36,10 @@ using UTTTGO.Api.Modules.Reviews.Application;
 using UTTTGO.Api.Modules.Reviews.Contracts;
 using UTTTGO.Api.Modules.Reviews.Infrastructure;
 using UTTTGO.Api.Modules.Reviews.Validators;
+using UTTTGO.Api.Modules.Notifications.Application;
+using UTTTGO.Api.Modules.Notifications.Contracts;
+using UTTTGO.Api.Modules.Notifications.Infrastructure;
+using UTTTGO.Api.Modules.Notifications.Validators;
 using UTTTGO.Api.Shared.OpenApi;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -43,6 +47,7 @@ var builder = WebApplication.CreateBuilder(args);
 // Add services to the container.
 
 builder.Services.AddControllers(options => options.Filters.Add<LoginRateLimitPartitionFilter>());
+builder.Services.AddDataProtection();
 builder.Services.AddHttpContextAccessor();
 builder.Services.Configure<MongoOptions>(options =>
 {
@@ -243,6 +248,14 @@ builder.Services.AddScoped<IListSellerReviewsService>(services => services.GetRe
 builder.Services.AddScoped<ISellerRatingsReader>(services => services.GetRequiredService<ListSellerReviewsService>());
 builder.Services.AddScoped<IProductRatingsReader>(services => services.GetRequiredService<ListSellerReviewsService>());
 builder.Services.AddHostedService<ReviewsMongoIndexes>();
+builder.Services.AddSingleton<IDeviceTokenStore, MongoDeviceTokenStore>();
+builder.Services.AddScoped<IDeviceTokenService, DeviceTokenService>();
+builder.Services.AddScoped<INotificationsRateLimitGate, RedisNotificationsRateLimitGate>();
+builder.Services.AddScoped<IValidator<RegisterDeviceTokenRequest>, RegisterDeviceTokenRequestValidator>();
+builder.Services.AddSingleton<INotificationSender, FirebaseAdminNotificationSender>();
+builder.Services.AddSingleton<INotificationEventPublisher, MongoNotificationOutbox>();
+builder.Services.AddHostedService<NotificationMongoIndexes>();
+builder.Services.AddHostedService<NotificationOutboxDispatcher>();
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi(options => options.AddDocumentTransformer<PublicApiServerTransformer>());
 

@@ -2,6 +2,7 @@ using System.IdentityModel.Tokens.Jwt;
 using Microsoft.IdentityModel.Tokens;
 using UTTTGO.Api.Modules.Catalog.Application;
 using UTTTGO.Api.Modules.Orders.Application;
+using UTTTGO.Api.Modules.Notifications.Application;
 
 namespace UTTTGO.Api.Modules.Identity.Application;
 
@@ -15,7 +16,7 @@ public sealed record DeleteOwnAccountResult(DeleteOwnAccountOutcome Outcome);
 
 public sealed class DeleteOwnAccountService(IAuthenticatedLocalProfileReader profiles,
     IAccountDeletionRepository accounts, IActiveOrderReader activeOrders, IAccountDeletionCatalog catalog,
-    IJwtRevocationStore revocations, ISupabaseSessionRevoker supabase) : IDeleteOwnAccountService
+    IJwtRevocationStore revocations, ISupabaseSessionRevoker supabase, IDeviceTokenStore? deviceTokens = null) : IDeleteOwnAccountService
 {
     public async Task<DeleteOwnAccountResult> DeleteAsync(string token, CancellationToken cancellationToken)
     {
@@ -66,6 +67,11 @@ public sealed class DeleteOwnAccountService(IAuthenticatedLocalProfileReader pro
                     cancellationToken))
                 return new(DeleteOwnAccountOutcome.Unavailable);
 
+            try
+            {
+                if (deviceTokens is not null) await deviceTokens.RemoveForUserAsync(profile.Id, cancellationToken);
+            }
+            catch (Exception) when (!cancellationToken.IsCancellationRequested) { }
             try
             {
                 await supabase.RevokeGloballyAsync(token, cancellationToken);

@@ -79,6 +79,19 @@ credenciales.
 - La propuesta cubre registro/baja de `deviceTokens`, eventos de Orders,
   `INotificationSender`, Firebase Admin SDK, outbox no bloqueante, reintentos
   acotados, limpieza `UNREGISTERED` y SSM Parameter Store.
+- Implementación FCM en `feature/fcm-push-v2`: `FirebaseAdmin 3.4.0`, tokens
+  cifrados con Data Protection y hash SHA-256, endpoints de registro/baja,
+  outbox Mongo y dispatcher con reintentos acotados. Orders publica después de
+  persistir su cambio y no espera a FCM; fallos de push no revierten el pedido.
+- La credencial se lee solo desde `FIREBASE_CREDENTIALS_JSON` o
+  `FIREBASE_CREDENTIALS_PATH`; si falta, el sender registra un warning y queda
+  desactivado. `docker-compose.yml` propaga ambas variables sin valores en Git.
+  La integración de SSM/IAM permanece fuera de esta tarea.
+- Evidencia local: build Release correcto con cuatro warnings `CS8034` del
+  analizador AWS bloqueado por la política local; unitarias `391/391`, FCM
+  unitarias `2/2`, integración FCM aislada `1/1` y seguridad FCM aislada `2/2`.
+  Las suites completas de integración y seguridad no pudieron ejecutarse porque
+  Docker Desktop no estaba disponible (`npipe://./pipe/docker_engine`).
 - API-035/036 y Chat permanecen fuera de alcance; las preguntas abiertas están
   en `specs/phase-06-notifications-push/spec.md`.
 

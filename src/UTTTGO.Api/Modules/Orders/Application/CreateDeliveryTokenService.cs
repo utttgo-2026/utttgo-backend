@@ -27,7 +27,8 @@ public sealed record CreateDeliveryTokenResult(CreateDeliveryTokenOutcome Outcom
 
 public sealed class CreateDeliveryTokenService(IAuthenticatedLocalProfileReader profiles,
     IOrdersRateLimitGate rateLimit, IOrderRepository orders, IOptions<OrderLimitsOptions> limits,
-    IOrderAuditWriter audit, ILogger<CreateDeliveryTokenService> logger) : ICreateDeliveryTokenService
+    IOrderAuditWriter audit, ILogger<CreateDeliveryTokenService> logger,
+    UTTTGO.Api.Modules.Notifications.Application.INotificationEventPublisher? notifications = null) : ICreateDeliveryTokenService
 {
     public async Task<CreateDeliveryTokenResult> CreateAsync(string token, string orderId,
         string correlationId, CancellationToken cancellationToken)
@@ -77,6 +78,14 @@ public sealed class CreateDeliveryTokenService(IAuthenticatedLocalProfileReader 
             }
 
             await WriteAuditAsync(updated, profile.Id, correlationId, cancellationToken);
+            try
+            {
+                if (notifications is not null)
+                    await notifications.PublishAsync("order.ready", updated.BuyerUserId, updated.OrderId,
+                        updated.Status, correlationId, $"order.delivery-token:{updated.OrderId}:{updated.Version}", cancellationToken);
+            }
+            catch (Exception) when (!cancellationToken.IsCancellationRequested)
+            { logger.LogWarning("Notification outbox could not record delivery-token event {OrderId}.", updated.OrderId); }
 
             return new(CreateDeliveryTokenOutcome.Created,
                 new DeliveryTokenResponse(updated.OrderId, tokenValue, expiresAt));
