@@ -22,6 +22,11 @@ public interface IAccountDeletionCatalog
     Task PauseProductsForSellerAsync(string sellerId, CancellationToken cancellationToken);
 }
 
+public interface IAccountStatusCatalog
+{
+    Task PauseProductsForSellerAsync(string sellerId, CancellationToken cancellationToken);
+}
+
 // The Catalog module owns the categories collection as well.
 public interface ICategoryRepository
 {

@@ -58,6 +58,8 @@ public sealed class AuthController(
             LoginOutcome.Success when result.Response is not null => Ok(result.Response),
             LoginOutcome.InvalidCredentials => Unauthorized(ApiError.Create(HttpContext, 401,
                 "INVALID_CREDENTIALS", "No se pudo iniciar sesión con esas credenciales.")),
+            LoginOutcome.AccountSuspended => StatusCode(403, ApiError.Create(HttpContext, 403,
+                "ACCOUNT_SUSPENDED", "La cuenta está suspendida.")),
             LoginOutcome.RateLimited => StatusCode(429,
                 ApiError.Create(HttpContext, 429, "RATE_LIMITED", "Intenta de nuevo más tarde.")),
             _ => StatusCode(503,
@@ -80,6 +82,8 @@ public sealed class AuthController(
                 "PROFILE_NOT_FOUND", "Perfil no disponible.")),
             SessionOutcome.Unauthorized => Unauthorized(ApiError.Create(HttpContext, 401,
                 "UNAUTHORIZED", "Sesión no autorizada.")),
+            SessionOutcome.Suspended => StatusCode(403, ApiError.Create(HttpContext, 403,
+                "SESSION_ACCOUNT_SUSPENDED", "La cuenta está suspendida.")),
             _ => StatusCode(503, ApiError.Create(HttpContext, 503,
                 "AUTH_UNAVAILABLE", "Servicio temporalmente no disponible."))
         };

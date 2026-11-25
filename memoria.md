@@ -61,6 +61,14 @@ credenciales.
 
 ## Pendientes
 
+## Aprobación API-040 2026-11-25
+
+- API-040 queda aprobada explícitamente en `specs/bloque-2-funcionalidades/api-040-update-user-status/spec.md`.
+- Contrato resuelto: cuerpo cerrado `Active`/`Suspended`; self-target `409 ADMIN_SELF_STATUS_CHANGE_FORBIDDEN`; suspensión idempotente `200`; objetivo inexistente `404 USER_NOT_FOUND`; inválido `400`; dependencias `503`.
+- La suspensión actualiza el perfil local, revoca sesiones con `revoked:{session_id|jti|sha256}` y TTL hasta `exp`, elimina `deviceTokens` y pausa productos del vendedor. Reactivar solo activa el perfil y no reactiva productos.
+- Login y sesión de cuenta suspendida quedan en `403 ACCOUNT_SUSPENDED` y `403 SESSION_ACCOUNT_SUSPENDED`. Auditoría Mongo sin PII en `adminUserStatusAuditLogs`; rate limit Redis `30/60` por administrador y fail-closed. No se usa `service_role`.
+- La implementación real está presente en `src/UTTTGO.Api/Modules/Admin/` y `src/UTTTGO.Api/Modules/Identity/Infrastructure/RedisAccountSessionRevoker.cs`; el estado es implementado pendiente de verificación completa, sin afirmar evidencia de curl o tests aún no ejecutados.
+
 ## Implementación Reviews 2026-11-23
 
 - Autorización explícita del propietario para implementar API-030 y API-031 en

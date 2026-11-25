@@ -87,8 +87,15 @@ public sealed class RedisJwtGate(IServiceProvider services, IOptions<SupabaseJwt
             var revocationId = JwtRevocationIdentifier.For(signed, token);
             try
             {
-                return !await services.GetRequiredService<IConnectionMultiplexer>().GetDatabase()
-                    .KeyExistsAsync($"revoked:{revocationId}");
+                var database = services.GetRequiredService<IConnectionMultiplexer>().GetDatabase();
+                if (await database.KeyExistsAsync($"revoked:{revocationId}")) return false;
+                if (signed.Payload.Expiration is { } expiration)
+                {
+                    var registry = services.GetService<IActiveSessionRegistry>();
+                    if (registry is not null)
+                        await registry.RegisterAsync(subject, revocationId, expiration, cancellationToken);
+                }
+                return true;
             }
             catch (RedisException)
             {

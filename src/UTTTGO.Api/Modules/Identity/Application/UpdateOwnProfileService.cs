@@ -22,7 +22,8 @@ public sealed class UpdateOwnProfileService(ISessionService session, IProfileUpd
         try
         {
             var authorization = await session.AuthenticateAsync(token, cancellationToken);
-            if (authorization.Outcome is SessionOutcome.Unauthorized or SessionOutcome.ProfileMissing)
+            if (authorization.Outcome is SessionOutcome.Unauthorized or SessionOutcome.ProfileMissing or
+                SessionOutcome.Suspended)
                 return new(UpdateOwnProfileOutcome.Unauthorized);
             if (authorization.Outcome != SessionOutcome.Success || authorization.Profile is null)
                 return new(UpdateOwnProfileOutcome.Unavailable);

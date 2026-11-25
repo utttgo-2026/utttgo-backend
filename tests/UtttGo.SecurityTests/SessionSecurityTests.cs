@@ -24,7 +24,7 @@ public sealed class SessionSecurityTests
     {
         using var factory = Factory(subject, notRevoked, confirmed, status, localSubject);
         using var response = await Get(factory);
-        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        response.StatusCode.Should().Be(status == "Suspended" ? HttpStatusCode.Forbidden : HttpStatusCode.Unauthorized);
         (await response.Content.ReadAsStringAsync()).Should().Contain("correlationId")
             .And.NotContain("local-id").And.NotContain("secret-token");
     }

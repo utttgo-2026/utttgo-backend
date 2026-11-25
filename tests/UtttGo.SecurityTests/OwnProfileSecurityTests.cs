@@ -23,7 +23,7 @@ public sealed class OwnProfileSecurityTests
         using var client = factory.CreateClient();
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "secret-token");
         using var response = await client.GetAsync("/api/v1/users/me?userId=other&id=local-id");
-        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        response.StatusCode.Should().Be(status == "Suspended" ? HttpStatusCode.Forbidden : HttpStatusCode.Unauthorized);
         (await response.Content.ReadAsStringAsync()).Should().Contain("correlationId")
             .And.NotContain("local-id").And.NotContain("secret-token")
             .And.NotContain("PROFILE_NOT_FOUND");

@@ -8,7 +8,7 @@ public interface ILoginService
     Task<LoginResult> LoginAsync(string email, string password, CancellationToken cancellationToken);
 }
 
-public enum LoginOutcome { Success, InvalidCredentials, RateLimited, Unavailable }
+public enum LoginOutcome { Success, InvalidCredentials, AccountSuspended, RateLimited, Unavailable }
 
 public sealed record LoginResult(LoginOutcome Outcome, LoginResponse? Response = null);
 
@@ -38,6 +38,7 @@ public sealed class LoginService(
 
             // Never create a missing profile or trust identity/roles from the token.
             var profile = await profiles.FindBySubjectAsync(identity.Subject, cancellationToken);
+            if (profile?.AccountStatus == "Suspended") return new LoginResult(LoginOutcome.AccountSuspended);
             if (profile is null || profile.AccountStatus is not ("Active" or "PendingEmailVerification") ||
                 string.IsNullOrWhiteSpace(profile.Id) ||
                 !string.Equals(profile.SupabaseUserId, identity.Subject, StringComparison.Ordinal) ||
