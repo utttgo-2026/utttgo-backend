@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Headers;
 using System.Text.Json;
 using FluentAssertions;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -57,6 +58,23 @@ public sealed class OpenApiContractTests
         var servers = document.RootElement.GetProperty("servers");
         servers.GetArrayLength().Should().Be(1);
         servers[0].GetProperty("url").GetString().Should().Be("https://3.129.142.54.nip.io");
+    }
+
+    [Fact]
+    public async Task JsonResponsesUseGzipWhenRequestedOverHttps()
+    {
+        using var factory = new WebApplicationFactory<Program>();
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
+        client.DefaultRequestHeaders.AcceptEncoding.Add(new StringWithQualityHeaderValue("gzip"));
+
+        using var response = await client.GetAsync("/openapi/v1.json", HttpCompletionOption.ResponseHeadersRead);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.Content.Headers.ContentType!.MediaType.Should().Be("application/json");
+        response.Content.Headers.ContentEncoding.Should().ContainSingle("gzip");
     }
 
     [Fact]

@@ -1,5 +1,6 @@
 using FluentValidation;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.Extensions.Options;
 using MongoDB.Driver;
 using StackExchange.Redis;
@@ -47,6 +48,15 @@ var builder = WebApplication.CreateBuilder(args);
 // Add services to the container.
 
 builder.Services.AddControllers(options => options.Filters.Add<LoginRateLimitPartitionFilter>());
+builder.Services.AddResponseCompression(options =>
+{
+    options.EnableForHttps = true;
+    options.MimeTypes = ["application/json", "application/problem+json"];
+    options.Providers.Add<BrotliCompressionProvider>();
+    options.Providers.Add<GzipCompressionProvider>();
+});
+builder.Services.Configure<BrotliCompressionProviderOptions>(options => options.Level = System.IO.Compression.CompressionLevel.Fastest);
+builder.Services.Configure<GzipCompressionProviderOptions>(options => options.Level = System.IO.Compression.CompressionLevel.Fastest);
 builder.Services.AddDataProtection();
 builder.Services.AddHttpContextAccessor();
 builder.Services.Configure<MongoOptions>(options =>
@@ -265,6 +275,7 @@ var app = builder.Build();
 app.MapOpenApi();
 app.MapGet("/openapi", () => Results.Content(OpenApiUiPage.Html, "text/html; charset=utf-8"));
 
+app.UseResponseCompression();
 app.UseHttpsRedirection();
 
 app.UseAuthorization();
