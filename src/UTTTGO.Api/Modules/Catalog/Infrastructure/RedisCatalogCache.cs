@@ -7,7 +7,7 @@ using UTTTGO.Api.Modules.Catalog.Contracts;
 
 namespace UTTTGO.Api.Modules.Catalog.Infrastructure;
 
-public sealed class RedisCatalogCache(IConnectionMultiplexer connection) : ICatalogCache
+public sealed class RedisCatalogCache(IServiceProvider services) : ICatalogCache
 {
     private static readonly TimeSpan EntryLifetime = TimeSpan.FromSeconds(60);
     private const string VersionKey = "cache:catalog:version";
@@ -45,6 +45,8 @@ public sealed class RedisCatalogCache(IConnectionMultiplexer connection) : ICata
     {
         try
         {
+            var connection = Connection;
+            if (connection is null) return;
             await connection.GetDatabase().StringIncrementAsync(VersionKey).WaitAsync(cancellationToken);
         }
         catch (Exception) when (!cancellationToken.IsCancellationRequested)
@@ -58,6 +60,8 @@ public sealed class RedisCatalogCache(IConnectionMultiplexer connection) : ICata
     {
         try
         {
+            var connection = Connection;
+            if (connection is null) return null;
             var value = await connection.GetDatabase().StringGetAsync(key).WaitAsync(cancellationToken);
             return value.IsNullOrEmpty ? null : JsonSerializer.Deserialize<T>(value.ToString(), JsonOptions);
         }
@@ -71,6 +75,8 @@ public sealed class RedisCatalogCache(IConnectionMultiplexer connection) : ICata
     {
         try
         {
+            var connection = Connection;
+            if (connection is null) return;
             var payload = JsonSerializer.Serialize(value, JsonOptions);
             await connection.GetDatabase().StringSetAsync(key, payload, EntryLifetime)
                 .WaitAsync(cancellationToken);
@@ -85,6 +91,8 @@ public sealed class RedisCatalogCache(IConnectionMultiplexer connection) : ICata
     {
         try
         {
+            var connection = Connection;
+            if (connection is null) return null;
             var version = await connection.GetDatabase().StringGetAsync(VersionKey).WaitAsync(cancellationToken);
             var versionText = version.IsNullOrEmpty ? "0" : version.ToString();
             var canonical = JsonSerializer.Serialize(request, JsonOptions);
@@ -94,6 +102,21 @@ public sealed class RedisCatalogCache(IConnectionMultiplexer connection) : ICata
         catch (Exception) when (!cancellationToken.IsCancellationRequested)
         {
             return null;
+        }
+    }
+
+    private IConnectionMultiplexer? Connection
+    {
+        get
+        {
+            try
+            {
+                return services.GetRequiredService<IConnectionMultiplexer>();
+            }
+            catch (Exception)
+            {
+                return null;
+            }
         }
     }
 }
