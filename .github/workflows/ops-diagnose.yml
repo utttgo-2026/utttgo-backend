@@ -187,8 +187,10 @@ jobs:
               "if [ -f \"$credentials_file\" ] && python3 -m json.tool \"$credentials_file\" >/dev/null 2>&1; then echo 'JSON válido: SI'; else echo 'JSON válido: NO'; fi",
               "container=$(cd /opt/utttgo && docker compose ps -q api 2>/dev/null | head -n 1)",
               "if [ -n \"$container\" ] && docker exec --user app \"$container\" test -r /run/secrets/firebase-credentials.json 2>/dev/null; then echo 'legible por el usuario del contenedor: SI'; else echo 'legible por el usuario del contenedor: NO'; fi",
-              "active_count=$(cd /opt/utttgo && docker compose logs --no-color --since 12h api 2>/dev/null | grep -c 'Firebase push sender active' || true)",
-              "disabled_count=$(cd /opt/utttgo && docker compose logs --no-color --since 12h api 2>/dev/null | grep -c 'Firebase push sender disabled' || true)",
+              "log_text=$(cd /opt/utttgo && docker compose logs --no-color --since 12h api 2>/dev/null || true)",
+              "if [ -z \"$log_text\" ] && command -v aws >/dev/null 2>&1; then log_text=$(aws logs tail /utttgo/api/dev --since 12h --format short 2>/dev/null || true); fi",
+              "active_count=$(printf '%s\\n' \"$log_text\" | grep -c 'Firebase push sender active' || true)",
+              "disabled_count=$(printf '%s\\n' \"$log_text\" | grep -c 'Firebase push sender disabled' || true)",
               "echo \"sender activo: $active_count\"",
               "echo \"sender desactivado: $disabled_count\""
             ]
