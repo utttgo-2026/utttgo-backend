@@ -79,7 +79,14 @@ public sealed class NotificationMongoIndexes(MongoStore store, ILogger<Notificat
                 new CreateIndexModel<DeviceTokenDocument>(deviceKeys.Ascending(x => x.UserId).Ascending(x => x.InstallationId),
                     new CreateIndexOptions { Unique = true, Name = "user_installation_unique" }),
                 new CreateIndexModel<DeviceTokenDocument>(deviceKeys.Ascending(x => x.UserId).Ascending(x => x.Active),
-                    new CreateIndexOptions { Name = "user_active" })
+                    new CreateIndexOptions { Name = "user_active" }),
+                new CreateIndexModel<DeviceTokenDocument>(deviceKeys.Ascending(x => x.TokenHash),
+                    new CreateIndexOptions<DeviceTokenDocument>
+                    {
+                        Name = "active_tokenHash_unique",
+                        Unique = true,
+                        PartialFilterExpression = Builders<DeviceTokenDocument>.Filter.Eq(x => x.Active, true)
+                    })
             ], ct);
 
             var outbox = store.Database.GetCollection<NotificationOutboxDocument>("notificationOutbox");

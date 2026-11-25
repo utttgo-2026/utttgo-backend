@@ -16,6 +16,9 @@ public sealed class MongoDeviceTokenStore(MongoStore store, IDataProtectionProvi
     {
         var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(token)));
         var now = DateTime.UtcNow;
+        await Collection.UpdateManyAsync(x => x.TokenHash == hash && x.Active,
+            Builders<DeviceTokenDocument>.Update.Set(x => x.Active, false)
+                .Set(x => x.UpdatedAt, now), cancellationToken: ct);
         var filter = Builders<DeviceTokenDocument>.Filter.Eq(x => x.UserId, userId) &
             Builders<DeviceTokenDocument>.Filter.Eq(x => x.InstallationId, installationId);
         var existing = await Collection.Find(filter).FirstOrDefaultAsync(ct);
