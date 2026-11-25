@@ -63,6 +63,28 @@ public sealed class OrdersEndpointTests
         body.RootElement.GetProperty("notes").GetString().Should().Be("Sin cebolla, por favor");
     }
 
+    [Theory]
+    [InlineData(2, "Sin cebolla, por favor")]
+    [InlineData(1, "Otra nota")]
+    public async Task ReusingAnIdempotencyKeyWithDifferentBodyReturnsConflict(int quantity, string notes)
+    {
+        var orders = new OrdersRepositoryDouble();
+        using var factory = Factory(orders: orders);
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", Token);
+        client.DefaultRequestHeaders.Add("Idempotency-Key", "integration-key");
+
+        using var first = await client.PostAsJsonAsync("/api/v1/orders",
+            new { productId = OrderFixtures.ProductId, quantity = 1, notes = "Primera nota" });
+        using var second = await client.PostAsJsonAsync("/api/v1/orders",
+            new { productId = OrderFixtures.ProductId, quantity, notes });
+
+        first.StatusCode.Should().Be(HttpStatusCode.Created);
+        second.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await second.Content.ReadAsStringAsync()).Should().Contain("IDEMPOTENCY_KEY_REUSED");
+        orders.CreateCalls.Should().Be(1);
+    }
+
     [Fact]
     public async Task ANoteLongerThan250CharactersIsRejected()
     {

@@ -19,8 +19,9 @@ public sealed class OrderCreationServiceTests
             gate ?? new OrdersRateLimitGate(), catalog, sellers, orders,
             audit ?? new OrdersAuditWriter(), NullLogger<CreateOrderService>.Instance, notifications);
 
-    private static CreateOrderRequest Request(int quantity = 2, string productId = OrderFixtures.ProductId) =>
-        new() { ProductId = productId, Quantity = quantity };
+    private static CreateOrderRequest Request(int quantity = 2, string productId = OrderFixtures.ProductId,
+        string? notes = null) =>
+        new() { ProductId = productId, Quantity = quantity, Notes = notes };
 
     [Fact]
     public async Task TotalIsCalculatedFromTheProductPriceAndQuantity()
@@ -203,6 +204,29 @@ public sealed class OrderCreationServiceTests
         first.Outcome.Should().Be(CreateOrderOutcome.Created);
         second.Outcome.Should().Be(CreateOrderOutcome.AlreadyCreated);
         second.Response!.OrderId.Should().Be(first.Response!.OrderId);
+        orders.CreateCalls.Should().Be(1);
+        catalog.ReserveCalls.Should().Be(1);
+    }
+
+    [Theory]
+    [InlineData(3, OrderFixtures.ProductId, "nota distinta")]
+    [InlineData(2, "665f1c2e8b3f2a0012ab34ce", null)]
+    [InlineData(2, OrderFixtures.ProductId, "nota distinta")]
+    public async Task ReusedIdempotencyKeyWithDifferentRelevantBodyIsRejected(int quantity, string productId,
+        string? notes)
+    {
+        var orders = new OrdersRepository();
+        var catalog = new CatalogOrderProducts { Product = OrderFixtures.Product() };
+        var sellers = new SellerOrderProfiles { Profile = OrderFixtures.Seller() };
+        var service = Service(orders, catalog, sellers);
+
+        await service.CreateAsync("token", Request(notes: "nota", quantity: 2), "key-1", "correlation",
+            CancellationToken.None);
+        var result = await service.CreateAsync("token", Request(quantity, productId, notes), "key-1",
+            "correlation", CancellationToken.None);
+
+        result.Outcome.Should().Be(CreateOrderOutcome.IdempotencyKeyReused);
+        result.Response.Should().BeNull();
         orders.CreateCalls.Should().Be(1);
         catalog.ReserveCalls.Should().Be(1);
     }

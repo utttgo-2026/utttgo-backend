@@ -35,6 +35,27 @@ public sealed class OrdersSecurityTests
         orders.CreateCalls.Should().Be(0);
     }
 
+    [Fact]
+    public async Task ReusingAnIdempotencyKeyWithDifferentBodyDoesNotExposeTheOriginalOrder()
+    {
+        var orders = new OrdersRepositoryDouble();
+        using var factory = Factory(orders: orders);
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", Token);
+        client.DefaultRequestHeaders.Add("Idempotency-Key", "security-key");
+
+        using var first = await client.PostAsJsonAsync("/api/v1/orders",
+            new { productId = OrderFixtures.ProductId, quantity = 1, notes = "privada" });
+        using var second = await client.PostAsJsonAsync("/api/v1/orders",
+            new { productId = OrderFixtures.ProductId, quantity = 2, notes = "otro cuerpo" });
+
+        first.StatusCode.Should().Be(HttpStatusCode.Created);
+        second.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        var text = await second.Content.ReadAsStringAsync();
+        text.Should().Contain("IDEMPOTENCY_KEY_REUSED").And.NotContain("privada");
+        orders.CreateCalls.Should().Be(1);
+    }
+
     [Theory]
     [InlineData("/api/v1/orders/mine")]
     [InlineData("/api/v1/orders/665f1d408b3f2a0012ab34ce")]

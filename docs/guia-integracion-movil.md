@@ -309,10 +309,12 @@ Reglas que la app móvil debe respetar:
 - El **total lo calcula el servidor** (`unitPrice` vigente × `quantity`); el cliente nunca decide el precio.
 - La compra **reserva stock** de forma atómica: si no hay existencias suficientes → `400 INSUFFICIENT_STOCK` y no se crea el pedido.
 - `quantity` entre 1 y 50; `productId` con 24 hex.
-- Repetir la misma `Idempotency-Key` del mismo comprador devuelve `200` con el pedido ya creado (no `201`) y **no** reserva stock otra vez.
+- Repetir la misma `Idempotency-Key` del mismo comprador con el mismo `productId`, `quantity` y `notes` devuelve `200` con el pedido ya creado (no `201`) y **no** reserva stock otra vez.
+- Las claves de idempotencia **no expiran**. El móvil debe conservar la misma clave mientras reintenta la misma compra y no reutilizarla para otra compra.
+- Reutilizar una clave con distinto `productId`, `quantity` o `notes` devuelve `409 IDEMPOTENCY_KEY_REUSED`; genera una clave nueva solo para una compra diferente.
 - Estados: el pedido nace `Pending`; las transiciones las hace el vendedor con API-027 y la entrega se confirma con API-029 (ver 5.4..5.7).
 
-Errores: `400 VALIDATION_ERROR` / `400 INSUFFICIENT_STOCK`, `401`, `403 ACCOUNT_NOT_ACTIVE`, `404 PRODUCT_NOT_FOUND`, `422 PRODUCT_NOT_AVAILABLE` (producto pausado, categoría inactiva o vendedor no activo), `429 RATE_LIMITED`, `503 ORDER_UNAVAILABLE`.
+Errores: `400 VALIDATION_ERROR` / `400 INSUFFICIENT_STOCK`, `401`, `403 ACCOUNT_NOT_ACTIVE`, `404 PRODUCT_NOT_FOUND`, `409 IDEMPOTENCY_KEY_REUSED`, `422 PRODUCT_NOT_AVAILABLE` (producto pausado, categoría inactiva o vendedor no activo), `429 RATE_LIMITED`, `503 ORDER_UNAVAILABLE`.
 
 ### 5.2 `GET /api/v1/orders/mine` → `200` (Bearer)
 

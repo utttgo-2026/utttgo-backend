@@ -16,6 +16,7 @@ public enum CreateOrderOutcome
 {
     Created,
     AlreadyCreated,
+    IdempotencyKeyReused,
     Unauthorized,
     AccountNotActive,
     ProductNotFound,
@@ -56,7 +57,9 @@ public sealed class CreateOrderService(IAuthenticatedLocalProfileReader profiles
             var key = string.IsNullOrWhiteSpace(idempotencyKey) ? null : idempotencyKey.Trim();
             if (key is not null &&
                 await orders.FindByIdempotencyKeyAsync(profile.Id, key, cancellationToken) is { } replay)
-                return new(CreateOrderOutcome.AlreadyCreated, ToResponse(replay));
+                return IsSameRequest(replay, request)
+                    ? new(CreateOrderOutcome.AlreadyCreated, ToResponse(replay))
+                    : new(CreateOrderOutcome.IdempotencyKeyReused);
 
             var product = await catalog.FindForOrderAsync(request.ProductId!, cancellationToken);
             if (product is null) return new(CreateOrderOutcome.ProductNotFound);
@@ -95,7 +98,9 @@ public sealed class CreateOrderService(IAuthenticatedLocalProfileReader profiles
                     : await orders.FindByIdempotencyKeyAsync(profile.Id, key, cancellationToken);
                 return winner is null
                     ? new(CreateOrderOutcome.Unavailable)
-                    : new(CreateOrderOutcome.AlreadyCreated, ToResponse(winner));
+                    : IsSameRequest(winner, request)
+                        ? new(CreateOrderOutcome.AlreadyCreated, ToResponse(winner))
+                        : new(CreateOrderOutcome.IdempotencyKeyReused);
             }
             catch (Exception) when (!cancellationToken.IsCancellationRequested)
             {
@@ -139,4 +144,12 @@ public sealed class CreateOrderService(IAuthenticatedLocalProfileReader profiles
             order.Quantity, order.UnitPrice, order.Total, order.Currency, order.PaymentMethod, order.Status,
             order.PickupPoint, order.DeliveredAt, order.CompletedAt, order.CreatedAt, order.UpdatedAt,
             order.Version, order.Notes);
+
+    private static bool IsSameRequest(OrderRecord order, CreateOrderRequest request) =>
+        string.Equals(order.ProductId, request.ProductId, StringComparison.Ordinal)
+        && order.Quantity == request.Quantity
+        && string.Equals(NormalizeNotes(order.Notes), NormalizeNotes(request.Notes), StringComparison.Ordinal);
+
+    private static string? NormalizeNotes(string? notes) =>
+        string.IsNullOrWhiteSpace(notes) ? null : notes.Trim();
 }
