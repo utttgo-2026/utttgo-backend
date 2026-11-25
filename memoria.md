@@ -69,6 +69,13 @@ credenciales.
 - Login y sesión de cuenta suspendida quedan en `403 ACCOUNT_SUSPENDED` y `403 SESSION_ACCOUNT_SUSPENDED`. Auditoría Mongo sin PII en `adminUserStatusAuditLogs`; rate limit Redis `30/60` por administrador y fail-closed. No se usa `service_role`.
 - La implementación real está presente en `src/UTTTGO.Api/Modules/Admin/` y `src/UTTTGO.Api/Modules/Identity/Infrastructure/RedisAccountSessionRevoker.cs`; el estado es implementado pendiente de verificación completa, sin afirmar evidencia de curl o tests aún no ejecutados.
 
+## Implementación Chat API-037/API-038 2026-11-25
+
+- Rama aislada `feature/chat-api-037-038`, creada desde `origin/main` `66fccdc`.
+- Contrato ratificado para esta entrega: historial `page/pageSize` máximo 50; envío `{content}` sanitizado a 1..1000 caracteres; `Idempotency-Key` obligatorio; `404 ORDER_NOT_FOUND` para no participantes; `409 ORDER_CHAT_CLOSED` para pedidos terminales.
+- Chat posee la colección Mongo `orderMessages`, índices de orden/idempotencia y consume `IOrderChatParticipantReader` de Orders; no lee colecciones ajenas. La autorización usa `IAuthenticatedLocalProfileReader`.
+- SignalR, FCM de mensajes, purga programada dentro de tres días y coordinación DEC-003 quedan como trabajo posterior. Build Release, format y suites Unit/Integration/Security se ejecutaron con Docker activo el 2026-11-25: 409/308/172 pruebas superadas.
+
 ## Implementación Reviews 2026-11-23
 
 - Autorización explícita del propietario para implementar API-030 y API-031 en

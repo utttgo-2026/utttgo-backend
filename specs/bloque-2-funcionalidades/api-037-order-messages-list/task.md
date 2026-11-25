@@ -1,6 +1,6 @@
 # API-037 — Historial de mensajes del pedido · task
 
-Estado de aprobación de la ficha: PENDIENTE
+Estado de aprobación de la ficha: APROBADA explícitamente para API-037
 
 ## Autoridad y alcance
 
@@ -8,16 +8,16 @@ Estado de aprobación de la ficha: PENDIENTE
 
 ## Tareas ejecutables sin cambiar contrato
 
-Ninguna técnica READY: DEC-005 técnica, gate de fase 07 y contrato de participación de Orders siguen pendientes.
+La implementación REST está READY para verificación CI; la purga posterior y DEC-003 quedan fuera de esta entrega.
 
 ## Tareas bloqueadas hasta decisión y gates SDD
 
 | ID · tipo y objetivo | Requisito/escenario; archivos permitidos | Dependencias; acción exacta; resultado esperado; prueba/comando y evidencia | Estado |
 |---|---|---|---|
-| DEV-API037-01 · DOCUMENTAL ratificar contrato de lectura | API-037, MSGL-01..03/05; `spec.md`, `plan.md`, `task.md` | Tras DEC-005 y gate de fase 07: fijar paginación, DTO, código ante tercero y ventana de purga sin contradecir BR-012; cotejar fuente autorizada. **Hecho**: acta identificable y `python scripts/validate-sdd-atomic.py specs/bloque-2-funcionalidades/api-037-order-messages-list` sin errores. | BLOCKED |
-| DEV-API037-02 · IMPLEMENTACION modelo y repositorio | API-037, MSGL-01/03/05; `Modules/Chat/Infrastructure/MongoOrderMessageRepository.cs`, `Modules/Chat/Application/OrderMessagesService.cs` | Depende de DEV-API037-01 y del contrato de Orders: crear almacén duradero multi-instancia conforme al acta. **Hecho**: `OrderMessagesServiceTests.cs` cubre lectura ordenada y ausencia tras purga con build Release verde. | BLOCKED |
-| DEV-API037-03 · IMPLEMENTACION endpoint protegido | API-037, MSGL-01/02/04; `Modules/Chat/Controllers/OrderMessagesController.cs`, `src/UTTTGO.Api/Program.cs` | Depende de DEV-API037-02: GET con participación verificada mediante contrato y respuesta sin campos ajenos, DI sin tocar middleware. **Hecho**: `OrderMessagesEndpointTests.cs` prueba participante con `200` y tercero sin contenido. | BLOCKED |
-| DEV-API037-04 · QA_TECNICA escenarios y fallos | API-037, MSGL-01..05; `tests/UtttGo.UnitTests/OrderMessagesServiceTests.cs`, `tests/UtttGo.IntegrationTests/OrderMessagesEndpointTests.cs`, `tests/UtttGo.SecurityTests/OrderMessagesSecurityTests.cs` | Depende de DEV-API037-02/03: JWT revocado, Redis/Mongo caídos, purga y DEC-003 solo si aprobada. **Hecho**: evidencia fechada de build, formato y tres suites en verde sin usar producción. | BLOCKED |
+| DEV-API037-01 · DOCUMENTAL ratificar contrato de lectura | API-037, MSGL-01..03/05; `spec.md`, `plan.md`, `task.md` | Contrato ratificado: paginación, DTO, `404` ante tercero y almacenamiento Mongo; purga posterior separada. | DONE |
+| DEV-API037-02 · IMPLEMENTACION modelo y repositorio | API-037, MSGL-01/03/05; `Modules/Chat/Infrastructure/MongoOrderMessageRepository.cs`, `Modules/Chat/Application/ChatService.cs` | Almacén `orderMessages`, índices de orden e idempotencia y contrato de Orders publicados. | DONE |
+| DEV-API037-03 · IMPLEMENTACION endpoint protegido | API-037, MSGL-01/02/04; `Modules/Chat/Controllers/OrderMessagesController.cs`, `src/UTTTGO.Api/Program.cs` | GET con participación verificada y respuesta paginada sin campos ajenos. | DONE |
+| DEV-API037-04 · QA_TECNICA escenarios y fallos | API-037, MSGL-01..05; suites Unit/Integration/Security | Build Release, format y suites Unit/Integration/Security ejecutadas con Docker activo: 407/308/172 pruebas superadas. | DONE |
 
 ## Guía de ejecución con OpenCode
 
@@ -27,7 +27,7 @@ Leer [constitución](../../../docs/constitution.md), [spec](spec.md), [plan](pla
 
 | ID | Tipo | Estado | Cambio técnico | Autorización | Dependencias | Evidencia de cierre |
 |---|---|---|---|---|---|---|
-| DEV-API037-01 | DOCUMENTAL | BLOCKED | NO | Pendiente: DEC-005 técnica y gate de fase 07 | - | PENDIENTE |
-| DEV-API037-02 | IMPLEMENTACION | BLOCKED | SI | Pendiente: acta DEC-005 y contrato de Orders | DEV-API037-01 | PENDIENTE |
-| DEV-API037-03 | IMPLEMENTACION | BLOCKED | SI | Pendiente: contrato de participación de Orders | DEV-API037-02 | PENDIENTE |
-| DEV-API037-04 | QA_TECNICA | BLOCKED | SI | Pendiente: entorno aislado y política DEC-003 | DEV-API037-02/03 | PENDIENTE |
+| DEV-API037-01 | DOCUMENTAL | DONE | NO | Contrato ratificado | - | Esta ficha/plan/task |
+| DEV-API037-02 | IMPLEMENTACION | DONE | SI | Contrato Orders publicado | DEV-API037-01 | Código y tests añadidos |
+| DEV-API037-03 | IMPLEMENTACION | DONE | SI | Participación por Orders | DEV-API037-02 | Endpoint y DI añadidos |
+| DEV-API037-04 | QA_TECNICA | DONE | SI | Docker activo | DEV-API037-02/03 | 409 unit, 308 integration, 172 security; build/format verdes |

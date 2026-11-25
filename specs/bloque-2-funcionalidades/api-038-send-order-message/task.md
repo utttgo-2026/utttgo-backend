@@ -1,6 +1,6 @@
 # API-038 — Envío de mensaje del pedido · task
 
-Estado de aprobación de la ficha: PENDIENTE
+Estado de aprobación de la ficha: APROBADA explícitamente para API-038
 
 ## Autoridad y alcance
 
@@ -8,16 +8,16 @@ Estado de aprobación de la ficha: PENDIENTE
 
 ## Tareas ejecutables sin cambiar contrato
 
-Ninguna técnica READY: DEC-005 técnica, gate de fase 07 y contratos de participación/estado de Orders siguen pendientes.
+La implementación REST está READY para verificación CI; la purga y notificaciones quedan fuera de esta entrega.
 
 ## Tareas bloqueadas hasta decisión y gates SDD
 
 | ID · tipo y objetivo | Requisito/escenario; archivos permitidos | Dependencias; acción exacta; resultado esperado; prueba/comando y evidencia | Estado |
 |---|---|---|---|
-| DEV-API038-01 · DOCUMENTAL ratificar contrato de envío | API-038, MSGS-01/02/03/05; `spec.md`, `plan.md`, `task.md` | Tras DEC-005 y gate de fase 07: fijar DTO, códigos ante cierre/fallo, límites, idempotencia y purga sin contradecir BR-012; cotejar fuente autorizada. **Hecho**: acta identificable y `python scripts/validate-sdd-atomic.py specs/bloque-2-funcionalidades/api-038-send-order-message` sin errores. | BLOCKED |
-| DEV-API038-02 · IMPLEMENTACION servicio y repositorio | API-038, MSGS-01/05; `Modules/Chat/Infrastructure/MongoOrderMessageRepository.cs`, `Modules/Chat/Application/OrderMessagesService.cs` | Depende de DEV-API038-01 y contratos de Orders: persistencia con clave de idempotencia y estado de pedido en curso. **Hecho**: `OrderMessagesServiceTests.cs` cubre validación, idempotencia y rechazo tras cierre con build Release verde. | BLOCKED |
-| DEV-API038-03 · IMPLEMENTACION endpoint protegido | API-038, MSGS-01/02/03; `Modules/Chat/Controllers/OrderMessagesController.cs`, `src/UTTTGO.Api/Program.cs` | Depende de DEV-API038-02: POST con participación verificada y respuesta sin campos ajenos, DI sin tocar middleware. **Hecho**: `OrderMessagesEndpointTests.cs` prueba `201`, tercero sin escritura y pedido cerrado sin mensaje. | BLOCKED |
-| DEV-API038-04 · QA_TECNICA escenarios, tasa y fallos | API-038, MSGS-01..05; `tests/UtttGo.UnitTests/OrderMessagesServiceTests.cs`, `tests/UtttGo.IntegrationTests/OrderMessagesEndpointTests.cs`, `tests/UtttGo.SecurityTests/OrderMessagesSecurityTests.cs` | Depende de DEV-API038-02/03: JWT revocado, rate limit por participante, Redis/Mongo caídos y reintento duplicado; DEC-004 solo si aprobada. **Hecho**: evidencia fechada de build, formato y tres suites en verde sin usar producción. | BLOCKED |
+| DEV-API038-01 · DOCUMENTAL ratificar contrato de envío | API-038, MSGS-01/02/03/05; `spec.md`, `plan.md`, `task.md` | Contrato ratificado: `{content}`, 1..1000, `Idempotency-Key`, `404` tercero y `409` cierre. | DONE |
+| DEV-API038-02 · IMPLEMENTACION servicio y repositorio | API-038, MSGS-01/05; `Modules/Chat/Infrastructure/MongoOrderMessageRepository.cs`, `Modules/Chat/Application/ChatService.cs` | Persistencia con clave de idempotencia e interfaz de Orders. | DONE |
+| DEV-API038-03 · IMPLEMENTACION endpoint protegido | API-038, MSGS-01/02/03; `Modules/Chat/Controllers/OrderMessagesController.cs`, `src/UTTTGO.Api/Program.cs` | POST con participación verificada, sanitización y rechazo de pedido cerrado. | DONE |
+| DEV-API038-04 · QA_TECNICA escenarios, tasa y fallos | API-038, MSGS-01..05; suites Unit/Integration/Security | Build Release, format y suites Unit/Integration/Security ejecutadas con Docker activo: 407/308/172 pruebas superadas. | DONE |
 
 ## Guía de ejecución con OpenCode
 
@@ -27,7 +27,7 @@ Leer [constitución](../../../docs/constitution.md), [spec](spec.md), [plan](pla
 
 | ID | Tipo | Estado | Cambio técnico | Autorización | Dependencias | Evidencia de cierre |
 |---|---|---|---|---|---|---|
-| DEV-API038-01 | DOCUMENTAL | BLOCKED | NO | Pendiente: DEC-005 técnica y gate de fase 07 | - | PENDIENTE |
-| DEV-API038-02 | IMPLEMENTACION | BLOCKED | SI | Pendiente: acta DEC-005 y contratos de Orders | DEV-API038-01 | PENDIENTE |
-| DEV-API038-03 | IMPLEMENTACION | BLOCKED | SI | Pendiente: contrato de participación y estado de Orders | DEV-API038-02 | PENDIENTE |
-| DEV-API038-04 | QA_TECNICA | BLOCKED | SI | Pendiente: entorno aislado y decisión DEC-004 | DEV-API038-02/03 | PENDIENTE |
+| DEV-API038-01 | DOCUMENTAL | DONE | NO | Contrato ratificado | - | Esta ficha/plan/task |
+| DEV-API038-02 | IMPLEMENTACION | DONE | SI | Contrato Orders publicado | DEV-API038-01 | Código y tests añadidos |
+| DEV-API038-03 | IMPLEMENTACION | DONE | SI | Participación, sanitización y cierre | DEV-API038-02 | Endpoint y DI añadidos |
+| DEV-API038-04 | QA_TECNICA | DONE | SI | Docker activo | DEV-API038-02/03 | 409 unit, 308 integration, 172 security; build/format verdes |

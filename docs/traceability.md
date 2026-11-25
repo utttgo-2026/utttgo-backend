@@ -101,8 +101,8 @@ El orden de trabajo vigente mantiene FCM como prioridad operativa. Reviews ya es
 | API-034 | `DELETE /api/v1/favorites/{productId}` | `phase-09-favorites` · — | **Pendiente de fase**. |
 | API-035 | `GET /api/v1/notifications` | `phase-06-notifications-push` · — | **Pendiente de fase**; paginación y alcance al usuario propio. |
 | API-036 | `PATCH /api/v1/notifications/{notificationId}/read` | `phase-06-notifications-push` · — | **Pendiente de fase**; autorización por recurso. |
-| API-037 | `GET /api/v1/orders/{orderId}/messages` | H `spec.md` v0.1; plan/task — | **DEC-005 funcional resuelta**: historial temporal de pedido activo, purga dentro de tres días de completarse; almacenamiento/paginación y cierres pendientes. |
-| API-038 | `POST /api/v1/orders/{orderId}/messages` | H `spec.md` v0.1; plan/task — | **DEC-005 funcional resuelta**: envío de participantes durante pedido en curso; disparador de purga y datos compartidos pendientes. |
+| API-037 | `GET /api/v1/orders/{orderId}/messages` | A `spec.md` v0.2 → `plan.md` → `task.md` | **Implementada en rama `feature/chat-api-037-038`**: lectura paginada `page/pageSize` máximo 50, autorización por contrato de Orders, `404 ORDER_NOT_FOUND` para terceros y persistencia Mongo `orderMessages`; purga posterior pendiente. |
+| API-038 | `POST /api/v1/orders/{orderId}/messages` | A `spec.md` v0.2 → `plan.md` → `task.md` | **Implementada en rama `feature/chat-api-037-038`**: `{content}` sanitizado 1..1000, `Idempotency-Key`, `404` para terceros y `409 ORDER_CHAT_CLOSED` en terminal; purga/SignalR/FCM posteriores pendientes. |
 
 ## Administración (API-039 a API-042)
 

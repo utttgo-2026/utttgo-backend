@@ -499,6 +499,48 @@ Valores permitidos: `Active` y `Suspended`. Suspender revoca las sesiones activa
 
 Errores: `400 VALIDATION_ERROR`, `401 UNAUTHORIZED`, `403 FORBIDDEN`, `404 USER_NOT_FOUND`, `409 ADMIN_SELF_STATUS_CHANGE_FORBIDDEN`, `429 RATE_LIMIT_EXCEEDED`, `503 DEPENDENCY_UNAVAILABLE`.
 
+## 5.9 Chat del pedido (API-037 y API-038)
+
+### `GET /api/v1/orders/{orderId}/messages` → `200` (Bearer, comprador o vendedor)
+
+Query: `page` (mínimo 1, por defecto 1) y `pageSize` (1..50, por defecto 20).
+
+```json
+{
+  "items": [
+    {
+      "id": "665f1f77bcf86cd799439011",
+      "authorId": "665f1f77bcf86cd799439001",
+      "content": "Tu pedido estará listo pronto.",
+      "createdAt": "2026-11-25T18:00:00Z"
+    }
+  ],
+  "page": 1,
+  "pageSize": 20,
+  "totalCount": 1
+}
+```
+
+Solo pueden consultar el comprador o el vendedor asignado. Un tercero recibe `404 ORDER_NOT_FOUND` sin revelar la existencia del pedido. Los mensajes se ordenan por `createdAt` ascendente y luego por `id`.
+
+### `POST /api/v1/orders/{orderId}/messages` → `201` (Bearer, comprador o vendedor)
+
+El móvil debe enviar `Idempotency-Key` y únicamente el campo `content`:
+
+```json
+{ "content": "¿Ya está listo?" }
+```
+
+La respuesta contiene `id`, `authorId`, `content` y `createdAt`. El contenido se recorta, se elimina HTML/control characters y debe quedar entre 1 y 1000 caracteres. El servidor fija autor y fecha.
+
+- Repetir la misma clave con el mismo contenido devuelve `201` sin duplicar.
+- Reutilizar la clave con otro contenido devuelve `409 IDEMPOTENCY_KEY_REUSED`.
+- Un pedido `Delivered`, `Rejected` o `CancelledByBuyer` devuelve `409 ORDER_CHAT_CLOSED`.
+- Un tercero recibe `404 ORDER_NOT_FOUND`.
+- Redis o MongoDB no disponibles devuelven `503 CHAT_UNAVAILABLE`.
+
+La purga posterior debe eliminar el historial dentro de tres días de `completedAt`. SignalR, notificaciones push y la purga programada no forman parte de esta entrega.
+
 ## 7. Reseñas (API-030 y API-031)
 
 ### 6.1 Crear reseña
@@ -545,7 +587,7 @@ Las reseñas públicas no exponen comprador, pedido ni datos personales.
 }
 ```
 
-Códigos en uso: `VALIDATION_ERROR`, `UNAUTHORIZED`, `INVALID_CREDENTIALS`, `INSTITUTIONAL_EMAIL_REQUIRED`, `PROFILE_NOT_FOUND`, `ACCOUNT_NOT_ACTIVE`, `SELLER_ROLE_REQUIRED`, `SELLER_ACCOUNT_NOT_ACTIVE`, `SELLER_CONFLICT`, `SELLER_PROFILE_NOT_FOUND`, `PRODUCT_NOT_FOUND`, `CATEGORY_NOT_FOUND`, `INVALID_PRODUCT_ID`, `PRODUCT_CONFLICT`, `ORDER_NOT_FOUND`, `ORDER_FORBIDDEN`, `ORDER_STATE_CONFLICT`, `ORDER_VERSION_CONFLICT`, `ACTIVE_ORDER_CONFLICT`, `DELIVERY_TOKEN_INVALID`, `DELIVERY_TOKEN_EXPIRED`, `DELIVERY_TOKEN_ALREADY_USED`, `INSUFFICIENT_STOCK`, `PRODUCT_NOT_AVAILABLE`, `IMAGE_NOT_AVAILABLE`, `ADMIN_SELF_STATUS_CHANGE_FORBIDDEN`, `USER_NOT_FOUND`, `RATE_LIMITED`, `RATE_LIMIT_EXCEEDED`, `AUTH_UNAVAILABLE`, `CATALOG_UNAVAILABLE`, `ORDER_UNAVAILABLE`, `SELLER_UNAVAILABLE`, `DEPENDENCY_UNAVAILABLE`, `ACCOUNT_DELETION_UNAVAILABLE`.
+Códigos en uso: `VALIDATION_ERROR`, `UNAUTHORIZED`, `INVALID_CREDENTIALS`, `INSTITUTIONAL_EMAIL_REQUIRED`, `PROFILE_NOT_FOUND`, `ACCOUNT_NOT_ACTIVE`, `SELLER_ROLE_REQUIRED`, `SELLER_ACCOUNT_NOT_ACTIVE`, `SELLER_CONFLICT`, `SELLER_PROFILE_NOT_FOUND`, `PRODUCT_NOT_FOUND`, `CATEGORY_NOT_FOUND`, `INVALID_PRODUCT_ID`, `PRODUCT_CONFLICT`, `ORDER_NOT_FOUND`, `ORDER_FORBIDDEN`, `ORDER_STATE_CONFLICT`, `ORDER_VERSION_CONFLICT`, `ORDER_CHAT_CLOSED`, `IDEMPOTENCY_KEY_REUSED`, `ACTIVE_ORDER_CONFLICT`, `DELIVERY_TOKEN_INVALID`, `DELIVERY_TOKEN_EXPIRED`, `DELIVERY_TOKEN_ALREADY_USED`, `INSUFFICIENT_STOCK`, `PRODUCT_NOT_AVAILABLE`, `IMAGE_NOT_AVAILABLE`, `ADMIN_SELF_STATUS_CHANGE_FORBIDDEN`, `USER_NOT_FOUND`, `RATE_LIMITED`, `RATE_LIMIT_EXCEEDED`, `AUTH_UNAVAILABLE`, `CATALOG_UNAVAILABLE`, `ORDER_UNAVAILABLE`, `CHAT_UNAVAILABLE`, `SELLER_UNAVAILABLE`, `DEPENDENCY_UNAVAILABLE`, `ACCOUNT_DELETION_UNAVAILABLE`.
 
 ## 8. Flujo mínimo de integración
 

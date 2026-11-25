@@ -1,6 +1,6 @@
 # API-037 — Historial de mensajes del pedido · plan
 
-Estado de aprobación de la ficha: PENDIENTE
+Estado de aprobación de la ficha: APROBADA explícitamente para API-037
 
 ## Autoridad y alcance
 
@@ -8,20 +8,20 @@ Estado de aprobación de la ficha: PENDIENTE
 
 ## Arquitectura existente
 
-No hay módulo Chat ni Orders en `src/UTTTGO.Api/Modules/` (existen Admin, Identity y Sellers). Las fichas de Orders ([API-025](../api-025-order-detail/spec.md) y vecinas) son borrador sin código; la participación del pedido debe llegar mediante contrato del dueño de Orders, nunca por lectura directa de su colección.
+Chat consume el contrato publicado por Orders para participación y estado; no lee directamente la colección `orders`.
 
 ## Componentes involucrados
 
 | Capa | Componente actual o previsto | Responsabilidad y fuente |
 |---|---|---|
-| API | `src/UTTTGO.Api/Modules/Chat/Controllers/OrderMessagesController.cs` (previsto) | GET con `{orderId}` y paginación. |
-| Aplicación | `src/UTTTGO.Api/Modules/Chat/Application/OrderMessagesService.cs` (previsto) | Participación, lectura y ventana temporal. |
-| Datos | `src/UTTTGO.Api/Modules/Chat/Infrastructure/MongoOrderMessageRepository.cs` (previsto) | Mensajes; colección e índices por definir. |
-| Contrato | `IOrderParticipation` del dueño de Orders (previsto) | Comprador/vendedor del pedido; sin colección cruzada. |
+| API | `src/UTTTGO.Api/Modules/Chat/Controllers/OrderMessagesController.cs` | GET con `{orderId}` y paginación. |
+| Aplicación | `src/UTTTGO.Api/Modules/Chat/Application/ChatService.cs` | Participación, lectura y DTO seguro. |
+| Datos | `src/UTTTGO.Api/Modules/Chat/Infrastructure/MongoOrderMessageRepository.cs` | Colección `orderMessages` e índices de orden/idempotencia. |
+| Contrato | `IOrderChatParticipantReader` de Orders | Comprador/vendedor/estado; sin colección cruzada. |
 
 ## Secuencia técnica
 
-JWT/blacklist → rate limit Redis → validar `orderId` → consultar participación mediante contrato de Orders → leer mensajes paginados en orden estable → responder sin campos ajenos. Pasos candidatos hasta acta: parámetros, DTO, código ante tercero y comportamiento tras purga. Mongo/Redis caídos ⇒ `503` fail-closed; nunca mensajes de otro pedido.
+JWT/blacklist → rate limit Redis → validar `orderId` → consultar participación mediante contrato de Orders → leer mensajes paginados en orden estable → responder sin campos ajenos. Mongo/Redis caídos ⇒ `503` fail-closed; nunca mensajes de otro pedido.
 
 ## Componentes reutilizables del Bloque 1
 
@@ -31,21 +31,21 @@ JWT/blacklist → rate limit Redis → validar `orderId` → consultar participa
 
 | Escenario/brecha | Ruta del archivo o componente | Cambio condicionado; decisión previa |
 |---|---|---|
-| MSGL-01/02 | `Modules/Chat/Controllers/OrderMessagesController.cs`, `Modules/Chat/Application/OrderMessagesService.cs`, `src/UTTTGO.Api/Program.cs` | Solo tras acta DEC-005 y gate de fase 07; middleware intacto. |
-| MSGL-01/03/05 | `Modules/Chat/Infrastructure/MongoOrderMessageRepository.cs` | Almacén, índices y purga según acta; sin colecciones de otros módulos. |
-| MSGL-01..05 | `tests/UtttGo.UnitTests/OrderMessagesServiceTests.cs`, `tests/UtttGo.IntegrationTests/OrderMessagesEndpointTests.cs`, `tests/UtttGo.SecurityTests/OrderMessagesSecurityTests.cs` | Pruebas locales nuevas; dobles solo en tests. |
+| MSGL-01/02 | `Modules/Chat/Controllers/OrderMessagesController.cs`, `Modules/Chat/Application/ChatService.cs`, `src/UTTTGO.Api/Program.cs` | Implementado; middleware intacto. |
+| MSGL-01/03/05 | `Modules/Chat/Infrastructure/MongoOrderMessageRepository.cs` | Almacén e índices implementados; purga posterior. |
+| MSGL-01..05 | `tests/UtttGo.UnitTests/ChatServiceTests.cs`, `tests/UtttGo.IntegrationTests/ChatEndpointTests.cs`, `tests/UtttGo.SecurityTests/ChatSecurityTests.cs` | Suites Release ejecutadas con Docker activo; pruebas específicas cubren sanitización, idempotencia, cierre, perfil inactivo, autenticación y ownership nulo. |
 
 ## Orden de implementación
 
-DEV-API037-01 ratifica DTO, paginación, almacén y purga; DEV-API037-02 crea modelo y repositorio tras 01 y el contrato de Orders; DEV-API037-03 expone el endpoint y la autorización tras 02; DEV-API037-04 cubre escenarios y fallos tras 02/03. No hay código previo de Chat que reutilizar.
+DEV-API037-01 ratifica DTO y paginación; DEV-API037-02/03 implementan modelo, repositorio, endpoint y autorización; DEV-API037-04 cubre escenarios y fallos. La purga posterior queda separada.
 
 ## Dependencias y bloqueos
 
 | Gate transversal o decisión particular (ID original) | Tarea DEV afectada | Evidencia para desbloquear |
 |---|---|---|
-| DEC-005 (almacenamiento, disparador, purga) | DEV-API037-01..04 | Acta de diseño que no contradice BR-012. |
-| Gate de fase 07 (spec → plan → task) | DEV-API037-01..04 | Aprobación integral de la fase 07. |
-| Contrato de participación de Orders (API-025) | DEV-API037-02/03 | Interfaz publicada por el dueño de Orders. |
+| DEC-005 (almacenamiento, disparador, purga) | Purga posterior | Acta y job UTC; no bloquea REST de esta entrega. |
+| Gate de fase 07 (spec → plan → task) | DEV-API037-01..04 | Ratificación de esta ficha, plan y task. |
+| Contrato de participación de Orders | DEV-API037-02/03 | `IOrderChatParticipantReader` publicado por Orders. |
 | DEC-003 (cuenta eliminada con chat compartido) | DEV-API037-04 | Política de privacidad aprobada. |
 
 ## Estrategia de pruebas
@@ -58,4 +58,4 @@ JWT/blacklist y rate limit distribuido fail-closed, autorización por participac
 
 ## Criterios de cierre técnico
 
-MSGL-01..05 con pruebas verdes de lectura, tercero, fallos y purga cuando exista; build Release, `dotnet format` y suites pertinentes en verde con evidencia fechada; aprobación documental y cierre del gate de fase 07 por separado.
+MSGL-01, MSGL-02, MSGL-04 y MSGL-05 con pruebas de REST, seguridad y almacenamiento; build Release, `dotnet format` y suites pertinentes en verde. La purga queda como tarea posterior.
