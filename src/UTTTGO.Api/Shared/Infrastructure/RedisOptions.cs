@@ -23,6 +23,7 @@ public sealed class RateLimitingOptions
     public RateLimitPolicy AuthLoginEmail { get; set; } = new();
     public RateLimitPolicy PublicSeller { get; set; } = new();
     public RateLimitPolicy AdminUsers { get; set; } = new();
+    public RateLimitPolicy AdminUserStatus { get; set; } = new();
     public RateLimitPolicy Health { get; set; } = new();
     public RateLimitPolicy SellerActivation { get; set; } = new();
     public RateLimitPolicy SellerWrite { get; set; } = new();
@@ -74,6 +75,7 @@ public sealed class RedisRateLimiter(IServiceProvider services, IOptionsMonitor<
                 "auth-login-email" => policies.AuthLoginEmail,
                 "public-seller" => policies.PublicSeller,
                 "admin-users" => policies.AdminUsers,
+                "admin-user-status" => policies.AdminUserStatus,
                 "health" => policies.Health,
                 "seller-activation" => policies.SellerActivation,
                 "seller-write" => policies.SellerWrite,

@@ -6,7 +6,7 @@ using UTTTGO.Api.Shared.Infrastructure;
 namespace UTTTGO.Api.Modules.Identity.Infrastructure;
 
 public sealed class MongoUserRepositories(MongoStore store) : IUserRegistrationRepository,
-    ILoginProfileRepository, IProfileUpdateRepository, IAccountDeletionRepository
+    ILoginProfileRepository, IProfileUpdateRepository, IAccountDeletionRepository, IAdminUserStatusWriter
 {
     private IMongoCollection<UserDocument> Users => store.Database.GetCollection<UserDocument>("users");
 
@@ -82,6 +82,34 @@ public sealed class MongoUserRepositories(MongoStore store) : IUserRegistrationR
         var exists = await Users.Find(user => user.Id == id && user.SupabaseUserId == subject &&
             user.AccountStatus == "Active").AnyAsync(cancellationToken);
         return new(exists ? ProfileUpdateOutcome.Conflict : ProfileUpdateOutcome.Missing);
+    }
+
+    public async Task<AdminUserStatusTarget?> FindAsync(string userId, CancellationToken cancellationToken)
+    {
+        if (!ObjectId.TryParse(userId, out var id)) return null;
+        var user = await Users.Find(item => item.Id == id).FirstOrDefaultAsync(cancellationToken);
+        return user is null ? null : new(user.Id.ToString(), user.SupabaseUserId, user.AccountStatus, user.SellerId);
+    }
+
+    public async Task<AdminUserStatusWriteResult> SetStatusAsync(string userId, string expectedStatus,
+        string newStatus, CancellationToken cancellationToken)
+    {
+        if (!ObjectId.TryParse(userId, out var id)) return new(AdminUserStatusWriteOutcome.Missing);
+        var filter = Builders<UserDocument>.Filter.Eq(user => user.Id, id) &
+            Builders<UserDocument>.Filter.Eq(user => user.AccountStatus, expectedStatus);
+        var update = Builders<UserDocument>.Update.Set(user => user.AccountStatus, newStatus)
+            .Inc(user => user.Version, 1);
+        var updated = await Users.FindOneAndUpdateAsync(filter, update,
+            new FindOneAndUpdateOptions<UserDocument> { ReturnDocument = ReturnDocument.After }, cancellationToken);
+        if (updated is not null)
+            return new(AdminUserStatusWriteOutcome.Updated,
+                new(updated.Id.ToString(), updated.SupabaseUserId, updated.AccountStatus, updated.SellerId), expectedStatus);
+        var current = await Users.Find(user => user.Id == id).FirstOrDefaultAsync(cancellationToken);
+        return current is null ? new(AdminUserStatusWriteOutcome.Missing) :
+            current.AccountStatus == newStatus
+                ? new(AdminUserStatusWriteOutcome.Unchanged,
+                    new(current.Id.ToString(), current.SupabaseUserId, current.AccountStatus, current.SellerId), expectedStatus)
+                : new(AdminUserStatusWriteOutcome.Conflict);
     }
 
     public async Task<AccountDeletionResult> DeleteOwnAsync(string subject, string localId, long expectedVersion,

@@ -473,7 +473,33 @@ Query: `page` (≥1), `pageSize` (≤50) y `status` opcional (`Pending|Accepted|
 
 Errores: `400 VALIDATION_ERROR`, `401`, `403 SELLER_ROLE_REQUIRED`/`403 SELLER_ACCOUNT_NOT_ACTIVE`, `429 RATE_LIMITED`, `503 ORDER_UNAVAILABLE`.
 
-## 6. Reseñas (API-030 y API-031)
+## 6. Administración de cuentas (API-040)
+
+### 6.1 `PATCH /api/v1/admin/users/{userId}/status` → `200` (Bearer, admin)
+
+Solo una cuenta con rol `Admin` y estado `Active` puede cambiar el estado de otro usuario. El móvil administrativo envía únicamente el estado deseado:
+
+```json
+{ "accountStatus": "Suspended" }
+```
+
+La respuesta devuelve el estado efectivo:
+
+```json
+{ "userId": "665f1f77bcf86cd799439001", "accountStatus": "Suspended" }
+```
+
+Valores permitidos: `Active` y `Suspended`. Suspender revoca las sesiones activas, elimina los tokens de dispositivo y pausa los productos publicados del vendedor. Reactivar no vuelve a publicar productos automáticamente.
+
+- El administrador no puede cambiar su propio estado: `409 ADMIN_SELF_STATUS_CHANGE_FORBIDDEN`.
+- Repetir el estado `Suspended` es idempotente y responde `200`.
+- Un usuario inexistente responde `404 USER_NOT_FOUND` sin revelar información adicional.
+- La operación usa el rate limit `admin-user-status` (30/60 s por administrador) y requiere Redis; si Redis, MongoDB o la auditoría no están disponibles responde `503 DEPENDENCY_UNAVAILABLE`.
+- Una sesión de usuario suspendido no puede iniciar sesión ni crear una nueva sesión; el backend responde `401`/`403` según la operación.
+
+Errores: `400 VALIDATION_ERROR`, `401 UNAUTHORIZED`, `403 FORBIDDEN`, `404 USER_NOT_FOUND`, `409 ADMIN_SELF_STATUS_CHANGE_FORBIDDEN`, `429 RATE_LIMIT_EXCEEDED`, `503 DEPENDENCY_UNAVAILABLE`.
+
+## 7. Reseñas (API-030 y API-031)
 
 ### 6.1 Crear reseña
 
@@ -508,7 +534,7 @@ máximo de `pageSize` es 50 y el orden es más reciente primero.
 
 Las reseñas públicas no exponen comprador, pedido ni datos personales.
 
-## 7. Contrato único de error
+## 8. Contrato único de error
 
 ```json
 {
@@ -519,9 +545,9 @@ Las reseñas públicas no exponen comprador, pedido ni datos personales.
 }
 ```
 
-Códigos en uso: `VALIDATION_ERROR`, `UNAUTHORIZED`, `INVALID_CREDENTIALS`, `INSTITUTIONAL_EMAIL_REQUIRED`, `PROFILE_NOT_FOUND`, `ACCOUNT_NOT_ACTIVE`, `SELLER_ROLE_REQUIRED`, `SELLER_ACCOUNT_NOT_ACTIVE`, `SELLER_CONFLICT`, `SELLER_PROFILE_NOT_FOUND`, `PRODUCT_NOT_FOUND`, `CATEGORY_NOT_FOUND`, `INVALID_PRODUCT_ID`, `PRODUCT_CONFLICT`, `ORDER_NOT_FOUND`, `ORDER_FORBIDDEN`, `ORDER_STATE_CONFLICT`, `ORDER_VERSION_CONFLICT`, `ACTIVE_ORDER_CONFLICT`, `DELIVERY_TOKEN_INVALID`, `DELIVERY_TOKEN_EXPIRED`, `DELIVERY_TOKEN_ALREADY_USED`, `INSUFFICIENT_STOCK`, `PRODUCT_NOT_AVAILABLE`, `IMAGE_NOT_AVAILABLE`, `RATE_LIMITED`, `AUTH_UNAVAILABLE`, `CATALOG_UNAVAILABLE`, `ORDER_UNAVAILABLE`, `SELLER_UNAVAILABLE`, `ACCOUNT_DELETION_UNAVAILABLE`.
+Códigos en uso: `VALIDATION_ERROR`, `UNAUTHORIZED`, `INVALID_CREDENTIALS`, `INSTITUTIONAL_EMAIL_REQUIRED`, `PROFILE_NOT_FOUND`, `ACCOUNT_NOT_ACTIVE`, `SELLER_ROLE_REQUIRED`, `SELLER_ACCOUNT_NOT_ACTIVE`, `SELLER_CONFLICT`, `SELLER_PROFILE_NOT_FOUND`, `PRODUCT_NOT_FOUND`, `CATEGORY_NOT_FOUND`, `INVALID_PRODUCT_ID`, `PRODUCT_CONFLICT`, `ORDER_NOT_FOUND`, `ORDER_FORBIDDEN`, `ORDER_STATE_CONFLICT`, `ORDER_VERSION_CONFLICT`, `ACTIVE_ORDER_CONFLICT`, `DELIVERY_TOKEN_INVALID`, `DELIVERY_TOKEN_EXPIRED`, `DELIVERY_TOKEN_ALREADY_USED`, `INSUFFICIENT_STOCK`, `PRODUCT_NOT_AVAILABLE`, `IMAGE_NOT_AVAILABLE`, `ADMIN_SELF_STATUS_CHANGE_FORBIDDEN`, `USER_NOT_FOUND`, `RATE_LIMITED`, `RATE_LIMIT_EXCEEDED`, `AUTH_UNAVAILABLE`, `CATALOG_UNAVAILABLE`, `ORDER_UNAVAILABLE`, `SELLER_UNAVAILABLE`, `DEPENDENCY_UNAVAILABLE`, `ACCOUNT_DELETION_UNAVAILABLE`.
 
-## 7. Flujo mínimo de integración
+## 8. Flujo mínimo de integración
 
 1. `POST /api/v1/auth/register` → `202`; el móvil pide a Supabase `verifyOtp`/`resend` con el correo `@uttt.edu.mx` confirmado.
 2. `POST /api/v1/auth/login` → `200`; guardar `accessToken` (expira en 3600 s) y `user.roles`.
@@ -537,7 +563,7 @@ Códigos en uso: `VALIDATION_ERROR`, `UNAUTHORIZED`, `INVALID_CREDENTIALS`, `INS
 
 `DELETE /api/v1/users/me` no recibe body ni identificadores. El backend obtiene la identidad del Bearer validado. Ante `204`, el móvil debe borrar el access token y los datos locales de sesión. La operación devuelve `409 ACTIVE_ORDER_CONFLICT` si existen pedidos `Pending`, `Accepted`, `InPreparation` o `Ready`; devuelve `401 UNAUTHORIZED` para una sesión inválida/revocada y `503 ACCOUNT_DELETION_UNAVAILABLE` si Mongo, Orders, Catalog o Redis no están disponibles. El logout global de Supabase es best-effort y no cambia el `204` local.
 
-## 8. Límites conocidos (no confundir con fallos)
+## 9. Límites conocidos (no confundir con fallos)
 
 - **Sin imágenes**: no existe Media/S3 presigned; `avatarUrl` es `null`, los productos no tienen imágenes y `POST /products` con `imageUrl` con valor responde `422 IMAGE_NOT_AVAILABLE`.
 - El logout revoca el access token actual en Redis e invalida globalmente la sesión Supabase, incluidos sus refresh tokens; el móvil debe borrar sus tokens locales después del `204`.
@@ -549,7 +575,7 @@ Códigos en uso: `VALIDATION_ERROR`, `UNAUTHORIZED`, `INVALID_CREDENTIALS`, `INS
 - **Sin `role` en `/orders/mine`**: siempre `buyer`. El listado del vendedor es la ruta separada `GET /sellers/me/orders` (§5.8) con `role: "seller"`.
 - **Sin reseñas tras la entrega**: la entrega no genera automáticamente una reseña (fase 06 pendiente).
 
-## 9. Cambios incompatibles del contrato (v1.3, 2026-11-16)
+## 10. Cambios incompatibles del contrato (v1.3, 2026-11-16)
 
 Estos cambios son **rompientes** para el móvil y deben aplicarse en el mismo despliegue:
 

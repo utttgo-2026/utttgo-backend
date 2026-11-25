@@ -8,7 +8,7 @@ using UTTTGO.Api.Shared.Infrastructure;
 namespace UTTTGO.Api.Modules.Catalog.Infrastructure;
 
 public sealed class MongoProductRepository(MongoStore store, ICatalogCache? cache = null)
-    : IProductRepository, IAccountDeletionCatalog
+    : IProductRepository, IAccountDeletionCatalog, IAccountStatusCatalog
 {
     private IMongoCollection<ProductDocument> Products =>
         store.Database.GetCollection<ProductDocument>("products");

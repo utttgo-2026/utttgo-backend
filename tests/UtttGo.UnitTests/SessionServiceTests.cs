@@ -43,13 +43,20 @@ public sealed class SessionServiceTests
 
     [Theory]
     [InlineData("PendingEmailVerification")]
-    [InlineData("Suspended")]
     [InlineData("Deleted")]
     public async Task InactiveAccountIsRejected(string status)
     {
         var result = await Service(profile: Active with { AccountStatus = status })
             .GetSessionAsync("test-token", default);
         result.Outcome.Should().Be(SessionOutcome.Unauthorized);
+    }
+
+    [Fact]
+    public async Task SuspendedAccountIsRejectedWithExplicitOutcome()
+    {
+        var result = await Service(profile: Active with { AccountStatus = "Suspended" })
+            .GetSessionAsync("test-token", default);
+        result.Outcome.Should().Be(SessionOutcome.Suspended);
     }
 
     [Fact]

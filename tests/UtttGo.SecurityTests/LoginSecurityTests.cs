@@ -31,7 +31,6 @@ public sealed class LoginSecurityTests
             (Verified with { CredentialsValid = false }, Active),
             (Verified with { EmailConfirmed = false }, Active),
             (Verified, Active with { AccountStatus = "PendingEmailVerification" }),
-            (Verified, Active with { AccountStatus = "Suspended" }),
             (Verified, null)
         };
         var publicErrors = new List<(HttpStatusCode, string, string)>();
@@ -54,6 +53,17 @@ public sealed class LoginSecurityTests
         publicErrors[0].Item1.Should().Be(HttpStatusCode.Unauthorized);
         publicErrors[0].Item2.Should().Be("INVALID_CREDENTIALS");
         // Equality of status/code/message does not establish resistance to timing attacks.
+    }
+
+    [Fact]
+    public async Task SuspendedAccountHasExplicitForbiddenError()
+    {
+        using var factory = CreateFactory(Verified, Active with { AccountStatus = "Suspended" });
+        using var client = factory.CreateClient();
+        using var response = await Login(client);
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        body.RootElement.GetProperty("code").GetString().Should().Be("ACCOUNT_SUSPENDED");
     }
 
     [Fact]

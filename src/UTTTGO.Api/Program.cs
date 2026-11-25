@@ -157,6 +157,8 @@ builder.Services.AddSingleton<IJwtRevocationStore, RedisJwtRevocationStore>();
 builder.Services.AddScoped<IValidatedJwtSubjectReader, ValidatedJwtSubjectReader>();
 builder.Services.AddScoped<ISupabaseSessionIdentity>(services => services.GetRequiredService<SupabaseAuthClient>());
 builder.Services.AddScoped<IAdminUsersService, AdminUsersService>();
+builder.Services.AddScoped<IAdminUserStatusService, AdminUserStatusService>();
+builder.Services.AddScoped<IValidator<AdminUserStatusRequest>, AdminUserStatusRequestValidator>();
 builder.Services.AddScoped<IValidator<AdminUsersQueryRequest>, AdminUsersQueryRequestValidator>();
 builder.Services.AddSingleton<IAdminUserListReader, MongoAdminUserListReader>();
 builder.Services.AddSingleton<IMongoHealthProbe, MongoHealthProbe>();
@@ -165,6 +167,11 @@ builder.Services.AddSingleton<IHealthService, HealthService>();
 builder.Services.AddScoped<IHealthRateLimitGate, RedisHealthRateLimitGate>();
 builder.Services.AddScoped<IAdminUsersRateLimitGate, RedisAdminUsersRateLimitGate>();
 builder.Services.AddSingleton<IAdminUsersAudit, UnconfiguredAdminUsersAudit>();
+builder.Services.AddScoped<IAdminUserStatusRateLimitGate, RedisAdminUserStatusRateLimitGate>();
+builder.Services.AddSingleton<IAdminUserStatusAudit, MongoAdminUserStatusAudit>();
+builder.Services.AddSingleton<IAdminUserStatusWriter>(services => services.GetRequiredService<MongoUserRepositories>());
+builder.Services.AddSingleton<IAccountSessionRevoker, RedisAccountSessionRevoker>();
+builder.Services.AddSingleton<IActiveSessionRegistry, RedisActiveSessionRegistry>();
 builder.Services.AddScoped<IValidator<SellerIdRequest>, SellerIdRequestValidator>();
 builder.Services.AddScoped<ISellerProfileService, SellerProfileService>();
 builder.Services.AddScoped<IPublicSellerRateLimitGate, RedisPublicSellerRateLimitGate>();
@@ -189,6 +196,8 @@ builder.Services.AddSingleton<MongoProductRepository>();
 builder.Services.AddSingleton<IProductRepository>(services =>
     services.GetRequiredService<MongoProductRepository>());
 builder.Services.AddSingleton<IAccountDeletionCatalog>(services =>
+    services.GetRequiredService<MongoProductRepository>());
+builder.Services.AddSingleton<IAccountStatusCatalog>(services =>
     services.GetRequiredService<MongoProductRepository>());
 builder.Services.AddSingleton<ICategoryRepository, MongoCategoryRepository>();
 builder.Services.AddScoped<ICatalogRateLimitGate, RedisCatalogRateLimitGate>();
@@ -260,6 +269,7 @@ builder.Services.AddScoped<ISellerRatingsReader>(services => services.GetRequire
 builder.Services.AddScoped<IProductRatingsReader>(services => services.GetRequiredService<ListSellerReviewsService>());
 builder.Services.AddHostedService<ReviewsMongoIndexes>();
 builder.Services.AddSingleton<IDeviceTokenStore, MongoDeviceTokenStore>();
+builder.Services.AddScoped<IDeviceTokenStatusRemover, AdminDeviceTokenStatusRemover>();
 builder.Services.AddScoped<IDeviceTokenService, DeviceTokenService>();
 builder.Services.AddScoped<INotificationsRateLimitGate, RedisNotificationsRateLimitGate>();
 builder.Services.AddScoped<IValidator<RegisterDeviceTokenRequest>, RegisterDeviceTokenRequestValidator>();

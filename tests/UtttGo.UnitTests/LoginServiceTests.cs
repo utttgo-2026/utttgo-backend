@@ -49,7 +49,6 @@ public sealed class LoginServiceTests
     }
 
     [Theory]
-    [InlineData("Suspended")]
     [InlineData("Deleted")]
     public async Task ConfirmedButNonPendingProfileIsNeverActivated(string status)
     {
@@ -59,6 +58,15 @@ public sealed class LoginServiceTests
 
         result.Outcome.Should().Be(LoginOutcome.InvalidCredentials);
         profiles.Activations.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task SuspendedProfileReturnsExplicitAccountSuspendedOutcome()
+    {
+        var result = await CreateService(Authenticated, Active with { AccountStatus = "Suspended" })
+            .LoginAsync(Email, "private-password", default);
+        result.Outcome.Should().Be(LoginOutcome.AccountSuspended);
+        result.Response.Should().BeNull();
     }
 
     [Fact]
@@ -86,7 +94,6 @@ public sealed class LoginServiceTests
     }
 
     [Theory]
-    [InlineData("Suspended")]
     [InlineData("Deleted")]
     public async Task InactiveProfileNeverReturnsToken(string status)
     {
@@ -94,6 +101,15 @@ public sealed class LoginServiceTests
             .LoginAsync(Email, "private-password", default);
 
         result.Outcome.Should().Be(LoginOutcome.InvalidCredentials);
+        result.Response.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task SuspendedProfileNeverReturnsToken()
+    {
+        var result = await CreateService(Authenticated, Active with { AccountStatus = "Suspended" })
+            .LoginAsync(Email, "private-password", default);
+        result.Outcome.Should().Be(LoginOutcome.AccountSuspended);
         result.Response.Should().BeNull();
     }
 

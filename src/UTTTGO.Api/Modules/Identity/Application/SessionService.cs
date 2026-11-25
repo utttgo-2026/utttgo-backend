@@ -8,7 +8,7 @@ public interface ISessionService
     Task<SessionAuthorization> AuthenticateAsync(string token, CancellationToken cancellationToken);
 }
 
-public enum SessionOutcome { Success, Unauthorized, ProfileMissing, Unavailable }
+public enum SessionOutcome { Success, Unauthorized, Suspended, ProfileMissing, Unavailable }
 
 public sealed record SessionResult(SessionOutcome Outcome, SessionResponse? Response = null);
 public sealed record SessionAuthorization(SessionOutcome Outcome, LocalLoginProfile? Profile = null);
@@ -47,6 +47,7 @@ public sealed class SessionService(
 
             var profile = await profiles.FindBySubjectAsync(subject, cancellationToken);
             if (profile is null) return new(SessionOutcome.ProfileMissing);
+            if (profile.AccountStatus == "Suspended") return new(SessionOutcome.Suspended, profile);
             if (profile.AccountStatus != "Active" || string.IsNullOrWhiteSpace(profile.Id) ||
                 string.IsNullOrWhiteSpace(profile.DisplayName) ||
                 !string.Equals(profile.SupabaseUserId, subject, StringComparison.Ordinal) ||

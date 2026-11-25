@@ -25,6 +25,8 @@ public sealed class UsersController(IOwnProfileService profiles, IUpdateOwnProfi
             SessionOutcome.Success when result.Response is not null => Ok(result.Response),
             SessionOutcome.Unauthorized or SessionOutcome.ProfileMissing => Unauthorized(ApiError.Create(
                 HttpContext, 401, "UNAUTHORIZED", "Sesión no autorizada.")),
+            SessionOutcome.Suspended => StatusCode(403, ApiError.Create(HttpContext, 403,
+                "SESSION_ACCOUNT_SUSPENDED", "La cuenta está suspendida.")),
             _ => StatusCode(503, ApiError.Create(HttpContext, 503,
                 "AUTH_UNAVAILABLE", "Servicio temporalmente no disponible."))
         };
