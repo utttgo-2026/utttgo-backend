@@ -1,4 +1,5 @@
 using FluentAssertions;
+using UTTTGO.Api.Modules.Notifications.Application;
 using UTTTGO.Api.Modules.Notifications.Contracts;
 using UTTTGO.Api.Modules.Notifications.Validators;
 using Xunit;
@@ -21,5 +22,12 @@ public sealed class NotificationContractTests
     {
         typeof(RegisterDeviceTokenRequest).GetProperties().Select(x => x.Name)
             .Should().NotContain(new[] { "UserId", "Role", "AccountStatus" });
+    }
+
+    [Fact]
+    public void OrderEventKeyIsDeterministicAcrossRetries()
+    {
+        NotificationEventKeys.For("order.status.changed", "order-1", "Ready")
+            .Should().Be("order.status.changed:order-1:Ready");
     }
 }
