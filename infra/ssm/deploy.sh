@@ -22,11 +22,6 @@
 #   GHCR_USERNAME usuario de GHCR (opcional; solo si la imagen es privada)
 #   GHCR_TOKEN    token de solo lectura de GHCR (opcional; nunca se muestra)
 #   GITHUBTOKEN   token de solo lectura del repositorio (opcional)
-#
-# FCM se configura únicamente en el .env privado de la instancia y lo consume
-# docker-compose al crear la API: FIREBASE_CREDENTIALS_JSON o
-# FIREBASE_CREDENTIALS_PATH. Este script no lee, imprime ni transporta el
-# contenido de la credencial.
 # =============================================================================
 set -euo pipefail
 
