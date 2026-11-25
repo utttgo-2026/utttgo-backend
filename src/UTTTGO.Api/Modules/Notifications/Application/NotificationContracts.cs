@@ -17,6 +17,12 @@ public interface INotificationEventPublisher
         string correlationId, string idempotencyKey, CancellationToken cancellationToken);
 }
 
+public static class NotificationEventKeys
+{
+    public static string For(string eventType, string orderId, string status) =>
+        $"{eventType}:{orderId}:{status}";
+}
+
 public interface IDeviceTokenStore
 {
     Task<DeviceTokenRegistration> UpsertAsync(string userId, string token, string installationId,

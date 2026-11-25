@@ -5,6 +5,7 @@ using UTTTGO.Api.Modules.Catalog.Application;
 using UTTTGO.Api.Modules.Identity.Application;
 using UTTTGO.Api.Modules.Orders.Application;
 using UTTTGO.Api.Modules.Orders.Contracts;
+using UTTTGO.Api.Modules.Sellers.Application;
 using Xunit;
 
 namespace UtttGo.UnitTests;
@@ -13,10 +14,10 @@ public sealed class OrderCreationServiceTests
 {
     private static CreateOrderService Service(OrdersRepository orders, CatalogOrderProducts catalog,
         SellerOrderProfiles sellers, OrdersRateLimitGate? gate = null, OrdersAuditWriter? audit = null,
-        AuthenticatedProfileDouble? profile = null) =>
+        AuthenticatedProfileDouble? profile = null, NotificationPublisher? notifications = null) =>
         new(profile ?? new AuthenticatedProfileDouble { Profile = SellerFixtures.Buyer() },
             gate ?? new OrdersRateLimitGate(), catalog, sellers, orders,
-            audit ?? new OrdersAuditWriter(), NullLogger<CreateOrderService>.Instance);
+            audit ?? new OrdersAuditWriter(), NullLogger<CreateOrderService>.Instance, notifications);
 
     private static CreateOrderRequest Request(int quantity = 2, string productId = OrderFixtures.ProductId) =>
         new() { ProductId = productId, Quantity = quantity };
@@ -223,6 +224,38 @@ public sealed class OrderCreationServiceTests
         audit.Records[0].ActorRole.Should().Be("buyer");
         audit.Records[0].ToStatus.Should().Be("Pending");
         audit.Records[0].CorrelationId.Should().Be("correlation-1");
+    }
+
+    [Fact]
+    public async Task CreationNotificationTargetsTheSellerOwnerUser()
+    {
+        var notifications = new NotificationPublisher();
+        var sellers = new SellerOrderProfiles { Profile = OrderFixtures.Seller() };
+
+        await Service(new OrdersRepository(), new CatalogOrderProducts { Product = OrderFixtures.Product() },
+            sellers, notifications: notifications).CreateAsync("token", Request(), null, "correlation",
+            CancellationToken.None);
+
+        notifications.Events.Should().ContainSingle()
+            .Which.RecipientUserId.Should().Be(OrderFixtures.SellerUserId);
+    }
+
+    [Fact]
+    public async Task MissingSellerOwnerDoesNotFailOrderCreation()
+    {
+        var notifications = new NotificationPublisher();
+        var sellers = new SellerOrderProfiles
+        {
+            Profile = new SellerOrderProfile(OrderFixtures.SellerId, "Active", "pickup")
+        };
+
+        var result = await Service(new OrdersRepository(),
+            new CatalogOrderProducts { Product = OrderFixtures.Product() }, sellers,
+            notifications: notifications).CreateAsync("token", Request(), null, "correlation",
+            CancellationToken.None);
+
+        result.Outcome.Should().Be(CreateOrderOutcome.Created);
+        notifications.Events.Should().BeEmpty();
     }
 
     [Fact]

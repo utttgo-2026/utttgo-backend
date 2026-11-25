@@ -1,5 +1,6 @@
 using UTTTGO.Api.Modules.Catalog.Application;
 using UTTTGO.Api.Modules.Identity.Application;
+using UTTTGO.Api.Modules.Notifications.Application;
 using UTTTGO.Api.Modules.Orders.Contracts;
 using UTTTGO.Api.Modules.Sellers.Application;
 
@@ -29,7 +30,7 @@ public sealed record CreateOrderResult(CreateOrderOutcome Outcome, OrderResponse
 public sealed class CreateOrderService(IAuthenticatedLocalProfileReader profiles,
     IOrdersRateLimitGate rateLimit, ICatalogOrderProducts catalog, ISellerOrderProfiles sellers,
     IOrderRepository orders, IOrderAuditWriter audit, ILogger<CreateOrderService> logger,
-    UTTTGO.Api.Modules.Notifications.Application.INotificationEventPublisher? notifications = null)
+    INotificationEventPublisher? notifications = null)
     : ICreateOrderService
 {
     public async Task<CreateOrderResult> CreateAsync(string token, CreateOrderRequest request,
@@ -104,9 +105,13 @@ public sealed class CreateOrderService(IAuthenticatedLocalProfileReader profiles
 
             try
             {
-                if (notifications is not null)
-                    await notifications.PublishAsync("order.created", created.SellerId, created.OrderId,
-                        created.Status, correlationId, $"order.created:{created.OrderId}", cancellationToken);
+                if (notifications is not null && !string.IsNullOrWhiteSpace(seller.OwnerUserId))
+                    await notifications.PublishAsync("order.created", seller.OwnerUserId, created.OrderId,
+                        created.Status, correlationId,
+                        NotificationEventKeys.For("order.created", created.OrderId, created.Status),
+                        cancellationToken);
+                else if (notifications is not null)
+                    logger.LogWarning("Order notification recipient could not be resolved.");
             }
             catch (Exception) when (!cancellationToken.IsCancellationRequested)
             { logger.LogWarning("Notification outbox could not record order creation {OrderId}.", created.OrderId); }

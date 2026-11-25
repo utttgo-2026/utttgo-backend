@@ -7,4 +7,5 @@ public interface ISellerOrderProfiles
     Task<SellerOrderProfile?> FindOrderProfileAsync(string sellerId, CancellationToken cancellationToken);
 }
 
-public sealed record SellerOrderProfile(string SellerId, string Status, string PickupPoint);
+public sealed record SellerOrderProfile(string SellerId, string Status, string PickupPoint,
+    string OwnerUserId = "");
