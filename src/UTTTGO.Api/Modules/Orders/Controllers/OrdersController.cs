@@ -20,6 +20,7 @@ public sealed class OrdersController(ICreateOrderService create, IListOwnOrdersS
     [HttpPost]
     [ProducesResponseType(typeof(OrderResponse), StatusCodes.Status201Created)]
     [ProducesResponseType(typeof(OrderResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status409Conflict)]
     [ProducesResponseType(typeof(ApiError), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ApiError), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ApiError), StatusCodes.Status403Forbidden)]
@@ -28,6 +29,7 @@ public sealed class OrdersController(ICreateOrderService create, IListOwnOrdersS
     [ProducesResponseType(typeof(ApiError), StatusCodes.Status429TooManyRequests)]
     [ProducesResponseType(typeof(ApiError), StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> Create([FromBody] CreateOrderRequest request,
+        [FromHeader(Name = "Idempotency-Key")] string? idempotencyKey,
         CancellationToken cancellationToken)
     {
         var token = BearerTokenReader.Read(Request);
@@ -37,13 +39,14 @@ public sealed class OrdersController(ICreateOrderService create, IListOwnOrdersS
         if (!(await createValidator.ValidateAsync(request, cancellationToken)).IsValid)
             return BadRequest(ApiError.Create(HttpContext, 400, "VALIDATION_ERROR", "Solicitud inválida."));
 
-        var idempotencyKey = Request.Headers["Idempotency-Key"].ToString();
         var result = await create.CreateAsync(token, request, idempotencyKey, HttpContext.TraceIdentifier,
             cancellationToken);
         return result.Outcome switch
         {
             CreateOrderOutcome.Created => StatusCode(201, result.Response),
             CreateOrderOutcome.AlreadyCreated => Ok(result.Response),
+            CreateOrderOutcome.IdempotencyKeyReused => Conflict(ApiError.Create(HttpContext, 409,
+                "IDEMPOTENCY_KEY_REUSED", "La Idempotency-Key ya fue utilizada con otro cuerpo.")),
             CreateOrderOutcome.Unauthorized => Unauthorized(ApiError.Create(HttpContext, 401,
                 "UNAUTHORIZED", "Sesión no autorizada.")),
             CreateOrderOutcome.AccountNotActive => StatusCode(403, ApiError.Create(HttpContext, 403,

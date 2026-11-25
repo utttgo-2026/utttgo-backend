@@ -31,6 +31,7 @@ public sealed class UsersController(IOwnProfileService profiles, IUpdateOwnProfi
     }
 
     [HttpPatch("me")]
+    [ProducesResponseType(typeof(OwnProfileResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> UpdateMe([FromBody] JsonElement json, CancellationToken cancellationToken)
     {
         var token = BearerTokenReader.Read(Request);

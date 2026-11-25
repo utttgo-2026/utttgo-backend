@@ -126,7 +126,7 @@ Contratos cross-module publicados para esta fase: `ICatalogOrderProducts` (Catal
 | RF-ORD-25 | **WHEN** el vendedor confirma la entrega con un token válido sobre un pedido en `Ready`, **THEN** el sistema transicionará a `Delivered`, fijará `deliveredAt` y `completedAt`, marcará el token como usado, confirmará la reserva de stock, registrará auditoría y publicará el hecho de entrega a Reviews. | BR-003, BR-012, D-ORD-03 |
 | RF-ORD-26 | **WHEN** el pedido llega a un estado terminal (`Delivered`, `Rejected`, `CancelledByBuyer`), **THEN** `completedAt` se fija y se expone vía `IOrderReader` como ancla de purga de chat (3 días, BR-012). | BR-012, D-ORD-08 |
 | RF-ORD-27 | **WHEN** el servicio de Redis no responde ante una operación protegida por rate limit, **THEN** el sistema rechaza la operación (`429`/`503`) sin ejecutarla (fail-closed). | §6.2 |
-| RF-ORD-28 | **WHEN** la creación incluye el header opcional `Idempotency-Key` repetido para el mismo comprador, **THEN** el sistema devolverá el mismo pedido sin crear duplicado ni reservar dos veces. | D-ORD-04 |
+| RF-ORD-28 | **WHEN** la creación incluye el header opcional `Idempotency-Key` repetido para el mismo comprador con el mismo `productId`, `quantity` y `notes`, **THEN** el sistema devolverá el mismo pedido con `200` sin crear duplicado ni reservar dos veces; si alguno de esos campos cambia, devolverá `409 IDEMPOTENCY_KEY_REUSED`. Las claves no expiran. | D-ORD-04 |
 | RF-ORD-29 | **WHEN** ocurre un cambio de estado, **THEN** Orders publicará la notificación vía `INotificationPublisher` (Notifications) y nunca enviará push directamente. | BR-008 |
 | RF-ORD-30 | **WHEN** se consulta `GET /orders/mine`, **THEN** el sistema devolverá paginación `page`+`pageSize` con máximo configurable, solo pedidos en los que el usuario autenticado es participante. | §12, D-ORD-05 |
 | RF-ORD-31 | **WHILE** el pedido existe, **THEN** ninguna respuesta expone documentos completos de MongoDB: solo DTOs explícitos con `camelCase` y `ObjectId` como string. | §11, §4.5 |
@@ -154,7 +154,7 @@ Crea un pedido directo (BR-001/BR-002).
 
 - **`notes` (opcional):** nota del comprador para el vendedor, máximo 250 caracteres tras recortar (D-ORD-14). Vacía o ausente se persiste como `null`. Más de 250 caracteres → `400 VALIDATION_ERROR`.
 
-- **Header opcional:** `Idempotency-Key: <uuid>` (D-ORD-04).
+- **Header opcional:** `Idempotency-Key: <uuid>` (D-ORD-04). La clave se conserva indefinidamente; no tiene TTL.
 - **Campos prohibidos (ignorados o `400`):** `price`, `unitPrice`, `total`, `totalAmount`, `sellerId`, `buyerId`, `buyerUserId`, `status`, `paymentMethod`, `currency`.
 - **Derivación server-side:** `sellerId`, `productName`, `unitPrice` (vigente), `total = unitPrice × quantity` (decimal MXN), `paymentMethod = "Cash"`.
 - **Reserva de stock:** vía `ICatalogProductCommands` (D-ORD-02). Si falla, no se crea el pedido.
@@ -178,7 +178,7 @@ Crea un pedido directo (BR-001/BR-002).
 }
 ```
 
-- **Errores:** `400 VALIDATION_ERROR` (forma/cantidad) y `400 INSUFFICIENT_STOCK` (D-ORD-11), `401 UNAUTHORIZED`, `403 ACCOUNT_NOT_ACTIVE`, `404 PRODUCT_NOT_FOUND`, `409 ORDER_VERSION_CONFLICT`, `422 PRODUCT_NOT_AVAILABLE` (no publicado / categoría inactiva / vendedor no activo), `429 RATE_LIMITED`, `503 ORDER_UNAVAILABLE`. Un replay del mismo `Idempotency-Key` devuelve `200` con el pedido ya creado (D-ORD-13).
+- **Errores:** `400 VALIDATION_ERROR` (forma/cantidad) y `400 INSUFFICIENT_STOCK` (D-ORD-11), `401 UNAUTHORIZED`, `403 ACCOUNT_NOT_ACTIVE`, `404 PRODUCT_NOT_FOUND`, `409 IDEMPOTENCY_KEY_REUSED` si cambia `productId`, `quantity` o `notes`, `422 PRODUCT_NOT_AVAILABLE` (no publicado / categoría inactiva / vendedor no activo), `429 RATE_LIMITED`, `503 ORDER_UNAVAILABLE`. Un replay con el mismo cuerpo devuelve `200` con el pedido ya creado (D-ORD-13).
 
 ### 5.2 API-024 — `GET /api/v1/orders/mine`
 
@@ -327,7 +327,7 @@ Confirmación de entrega y cobro en efectivo por el vendedor (BR-003, §13).
 
 ### 5.9 Idempotencia y concurrencia (resumen)
 
-- **Creación:** `Idempotency-Key` opcional (D-ORD-04); índice único parcial `(buyerUserId, idempotencyKey)`. Sin header, cada POST crea un pedido nuevo.
+- **Creación:** `Idempotency-Key` opcional (D-ORD-04); índice único parcial `(buyerUserId, idempotencyKey)`. Las claves no expiran. Sin header, cada POST crea un pedido nuevo. El replay exige igualdad de `productId`, `quantity` y `notes`; una diferencia produce `409 IDEMPOTENCY_KEY_REUSED`.
 - **Escrituras de estado:** CAS por `version` (int64) → `409 ORDER_VERSION_CONFLICT`.
 - **Cancelación y rechazo:** liberación de stock idempotente por `reservationId` (D-ORD-02); repetir no libera dos veces.
 - **Token de entrega:** single-use marcado en el mismo documento del token; carrera resuelta por update condicional.
