@@ -1,5 +1,6 @@
 using UTTTGO.Api.Modules.Catalog.Application;
 using UTTTGO.Api.Modules.Identity.Application;
+using UTTTGO.Api.Modules.Notifications.Application;
 using UTTTGO.Api.Modules.Orders.Application;
 using UTTTGO.Api.Modules.Sellers.Application;
 
@@ -194,6 +195,18 @@ internal sealed class SellerOrderProfiles : ISellerOrderProfiles
     }
 }
 
+internal sealed class NotificationPublisher : INotificationEventPublisher
+{
+    public List<(string EventType, string RecipientUserId, string OrderId, string Status, string Key)> Events { get; } = [];
+
+    public Task PublishAsync(string eventType, string recipientUserId, string orderId, string status,
+        string correlationId, string idempotencyKey, CancellationToken cancellationToken)
+    {
+        Events.Add((eventType, recipientUserId, orderId, status, idempotencyKey));
+        return Task.CompletedTask;
+    }
+}
+
 internal static class OrderFixtures
 {
     public const string ProductId = "665f1c2e8b3f2a0012ab34cd";
@@ -207,7 +220,7 @@ internal static class OrderFixtures
         new(ProductId, SellerId, "Quesadillas de huitlacoche (6 pza)", price, stock, published);
 
     public static SellerOrderProfile Seller(string status = "Active") =>
-        new(SellerId, status, "Biblioteca central, entrada norte");
+        new(SellerId, status, "Biblioteca central, entrada norte", SellerUserId);
 
     public static OrderRecord Order(string buyerUserId = BuyerUserId, string sellerId = SellerId,
         string status = "Pending", long version = 0, string? deliveryTokenHash = null,

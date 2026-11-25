@@ -15,6 +15,7 @@ public sealed class MongoSellerOrderProfiles(MongoStore store) : ISellerOrderPro
         var seller = await sellers.Find(item => item.Id == id).FirstOrDefaultAsync(cancellationToken);
         return seller is null
             ? null
-            : new SellerOrderProfile(seller.Id.ToString(), seller.Status, seller.PickupPoint);
+            : new SellerOrderProfile(seller.Id.ToString(), seller.Status, seller.PickupPoint,
+                seller.OwnerUserId);
     }
 }
