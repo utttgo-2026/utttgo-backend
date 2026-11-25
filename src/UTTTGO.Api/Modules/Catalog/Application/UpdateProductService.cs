@@ -27,7 +27,7 @@ public sealed record UpdateProductResult(UpdateProductOutcome Outcome, ProductRe
 
 public sealed class UpdateProductService(IAuthenticatedLocalProfileReader profiles,
     ICatalogRateLimitGate rateLimit, IProductRepository products, ICategoryRepository categories,
-    IProductMediaAccess? media = null)
+    IProductMediaAccess? media = null, ICatalogCache? cache = null)
     : IUpdateProductService
 {
     public async Task<UpdateProductResult> UpdateAsync(string token, string productId,
@@ -88,8 +88,9 @@ public sealed class UpdateProductService(IAuthenticatedLocalProfileReader profil
             var category = await categories.FindByIdAsync(updated.CategoryId, cancellationToken);
             var image = updated.MediaAssetId is { } id && media is not null
                 ? await media.GetApprovedReadUrlAsync(id, cancellationToken) : null;
-            return new(UpdateProductOutcome.Updated,
-                ProductProjection.ToResponse(updated, null, category?.Name, null, image));
+            var response = ProductProjection.ToResponse(updated, null, category?.Name, null, image);
+            if (cache is not null) await cache.InvalidateAsync(cancellationToken);
+            return new(UpdateProductOutcome.Updated, response);
         }
         catch (Exception) when (!cancellationToken.IsCancellationRequested)
         {

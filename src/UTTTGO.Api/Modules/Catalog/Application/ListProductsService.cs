@@ -15,7 +15,7 @@ public sealed record ProductListResult(ProductListOutcome Outcome, ProductListRe
 
 public sealed class ListProductsService(ICatalogRateLimitGate rateLimit, IProductRepository products,
     ICategoryRepository categories, IProductRatingsReader ratings, ISellerDisplayNames sellers,
-    IProductMediaAccess? media = null)
+    IProductMediaAccess? media = null, ICatalogCache? cache = null)
     : IListProductsService
 {
     public async Task<ProductListResult> ListAsync(ProductListQuery query,
@@ -28,9 +28,15 @@ public sealed class ListProductsService(ICatalogRateLimitGate rateLimit, IProduc
 
             var activeCategories = await categories.ListActiveAsync(cancellationToken);
             var effective = query with { AllowedCategoryIds = activeCategories.Select(item => item.CategoryId).ToList() };
+            var cached = cache is null ? null : await cache.GetProductsAsync(effective, cancellationToken);
+            if (cached is not null) return new(ProductListOutcome.Success, cached);
             var page = await products.ListAsync(effective, cancellationToken);
-            if (page.Items.Count == 0) return new(ProductListOutcome.Success,
-                ProductProjection.ToListResponse([], query, page.Total));
+            if (page.Items.Count == 0)
+            {
+                var empty = ProductProjection.ToListResponse([], query, page.Total);
+                if (cache is not null) await cache.SetProductsAsync(effective, empty, cancellationToken);
+                return new(ProductListOutcome.Success, empty);
+            }
 
             var categoryNames = activeCategories.ToDictionary(item => item.CategoryId,
                 item => item.Name, StringComparer.Ordinal);
@@ -54,7 +60,9 @@ public sealed class ListProductsService(ICatalogRateLimitGate rateLimit, IProduc
                     rating, image));
             }
 
-            return new(ProductListOutcome.Success, ProductProjection.ToListResponse(items, query, page.Total));
+            var response = ProductProjection.ToListResponse(items, query, page.Total);
+            if (cache is not null) await cache.SetProductsAsync(effective, response, cancellationToken);
+            return new(ProductListOutcome.Success, response);
         }
         catch (Exception) when (!cancellationToken.IsCancellationRequested)
         {

@@ -58,6 +58,18 @@ public interface ICatalogRateLimitGate
     Task<bool> IsAllowedForWriteAsync(string sellerId, CancellationToken cancellationToken);
 }
 
+public interface ICatalogCache
+{
+    Task<ProductListResponse?> GetProductsAsync(ProductListQuery query, CancellationToken cancellationToken);
+    Task SetProductsAsync(ProductListQuery query, ProductListResponse response,
+        CancellationToken cancellationToken);
+    Task<CategoryListResponse?> GetCategoriesAsync(int page, int pageSize,
+        CancellationToken cancellationToken);
+    Task SetCategoriesAsync(int page, int pageSize, CategoryListResponse response,
+        CancellationToken cancellationToken);
+    Task InvalidateAsync(CancellationToken cancellationToken);
+}
+
 // Reviews owns the ratings. No rating is inferred from product records or from seller data.
 public interface IProductRatingsReader
 {

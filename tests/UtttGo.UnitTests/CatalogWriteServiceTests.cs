@@ -330,6 +330,18 @@ public sealed class CatalogWriteServiceTests
     }
 
     [Fact]
+    public async Task SuccessfulProductCreationInvalidatesCatalogCache()
+    {
+        var cache = new CatalogCacheDouble();
+
+        var result = await CreateService(SellerProfile(), new CatalogProductRepository(), ActiveCategories(),
+            cache: cache).CreateAsync("token", ValidRequest, default);
+
+        result.Outcome.Should().Be(CreateProductOutcome.Created);
+        cache.Invalidations.Should().Be(1);
+    }
+
+    [Fact]
     public async Task SellerCanLogicallyDeleteItsProduct()
     {
         var products = new CatalogProductRepository();
@@ -355,8 +367,10 @@ public sealed class CatalogWriteServiceTests
 
     private static CreateProductService CreateService(AuthenticatedProfileDouble profiles,
         CatalogProductRepository products, CatalogCategoryRepository categories,
-        CatalogRateLimitGate? rateLimit = null, IProductMediaAccess? media = null) =>
-        new(profiles, rateLimit ?? new CatalogRateLimitGate(), categories, products, new CatalogSellerNames(), media);
+        CatalogRateLimitGate? rateLimit = null, IProductMediaAccess? media = null,
+        ICatalogCache? cache = null) =>
+        new(profiles, rateLimit ?? new CatalogRateLimitGate(), categories, products,
+            new CatalogSellerNames(), media, cache);
 
     private static UpdateProductService UpdateService(AuthenticatedProfileDouble profiles,
         CatalogProductRepository products, CatalogCategoryRepository categories,
