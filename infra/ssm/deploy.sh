@@ -49,6 +49,9 @@ DEPLOY_PATH="${DEPLOYPATH:-/opt/utttgo}"
 TARGET_SHA="${DEPLOY_SHA:-}"
 REPO_URL="${REPOURL:-https://github.com/utttgo-2026/utttgo-backend.git}"
 DEPLOY_USER="${DEPLOY_USER:-ubuntu}"
+FIREBASE_CREDENTIALS_HOST_PATH="${FIREBASE_CREDENTIALS_HOST_PATH:-$DEPLOY_PATH/secrets/firebase-credentials.json}"
+FIREBASE_CREDENTIALS_PATH="${FIREBASE_CREDENTIALS_PATH:-/run/secrets/firebase-credentials.json}"
+export FIREBASE_CREDENTIALS_HOST_PATH FIREBASE_CREDENTIALS_PATH
 
 case "$TARGET_SHA" in
   *'{{'*)
@@ -134,6 +137,39 @@ if [ ! -f "$DEPLOY_PATH/.env" ]; then
   echo "::warning::No existe .env en $DEPLOY_PATH: Atlas, Supabase y S3 deben estar configurados en la instancia."
 fi
 
+validate_firebase_credentials() {
+  local credentials_file="$FIREBASE_CREDENTIALS_HOST_PATH"
+  if [ ! -e "$credentials_file" ]; then
+    echo "::warning::No existe el archivo de credenciales Firebase; FCM queda desactivado."
+    return 1
+  fi
+  if [ ! -f "$credentials_file" ]; then
+    echo "::warning::La ruta de credenciales Firebase no es un archivo; FCM queda desactivado."
+    return 1
+  fi
+  if ! python3 -m json.tool "$credentials_file" >/dev/null 2>&1; then
+    echo "::warning::El archivo de credenciales Firebase no contiene JSON valido; FCM queda desactivado."
+    return 1
+  fi
+  local mode
+  mode="$(stat -c '%a' "$credentials_file" 2>/dev/null || true)"
+  if [ -z "$mode" ] || ! python3 - "$mode" <<'PY'
+import sys
+mode = int(sys.argv[1], 8)
+raise SystemExit(0 if mode & 0o040 else 1)
+PY
+  then
+    echo "::warning::El archivo de credenciales Firebase no es legible por grupo; FCM queda desactivado."
+    return 1
+  fi
+  return 0
+}
+
+firebase_credentials_valid=0
+if validate_firebase_credentials; then
+  firebase_credentials_valid=1
+fi
+
 # -----------------------------------------------------------------------------
 # Lock de despliegue: dos despliegues simultaneos se contradicen.
 # -----------------------------------------------------------------------------
@@ -201,6 +237,10 @@ docker compose pull --ignore-buildable redis nginx
 if ! docker compose pull api; then
   echo "No se pudo descargar $API_IMAGE. Si el paquete es privado, hay que autenticar GHCR en la instancia." >&2
   exit 1
+fi
+
+if [ "$firebase_credentials_valid" = "1" ] && ! docker compose run --rm --no-deps --entrypoint /bin/sh api -c 'test -r "$FIREBASE_CREDENTIALS_PATH"'; then
+  echo "::warning::El usuario app no puede leer las credenciales Firebase montadas; FCM queda desactivado."
 fi
 
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --no-build --remove-orphans --scale api=2

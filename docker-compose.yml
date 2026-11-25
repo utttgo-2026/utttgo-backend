@@ -32,6 +32,12 @@ services:
       S3_BUCKET_IMAGES: ${S3_BUCKET_IMAGES:-}
       AWS_REGION: ${AWS_REGION:-us-east-2}
       CATALOG_SEED_ENABLED: ${CATALOG_SEED_ENABLED:-false}
+      FIREBASE_CREDENTIALS_PATH: ${FIREBASE_CREDENTIALS_PATH:-/run/secrets/firebase-credentials.json}
+    volumes:
+      - type: bind
+        source: ${FIREBASE_CREDENTIALS_HOST_PATH:-/opt/utttgo/secrets/firebase-credentials.json}
+        target: ${FIREBASE_CREDENTIALS_PATH:-/run/secrets/firebase-credentials.json}
+        read_only: true
     expose:
       - "8080"
     healthcheck:
