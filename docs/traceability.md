@@ -92,6 +92,13 @@ El orden de trabajo vigente es FCM primero. Reviews, Favorites y Chat quedan des
 | API-034 | `DELETE /api/v1/favorites/{productId}` | `phase-09-favorites` · — | **Pendiente de fase**. |
 | API-035 | `GET /api/v1/notifications` | `phase-06-notifications-push` · — | **Pendiente de fase**; paginación y alcance al usuario propio. |
 | API-036 | `PATCH /api/v1/notifications/{notificationId}/read` | `phase-06-notifications-push` · — | **Pendiente de fase**; autorización por recurso. |
+
+La fase FCM implementa las rutas nuevas aprobadas por su spec:
+`POST /api/v1/notifications/device-tokens` y
+`DELETE /api/v1/notifications/device-tokens/{deviceTokenId}`. API-035 y API-036
+siguen fuera de alcance. El envío queda desacoplado mediante `notificationOutbox`;
+la evidencia productiva y las suites con Testcontainers requieren Docker y un
+entorno configurado, sin usar credenciales Firebase reales en CI.
 | API-037 | `GET /api/v1/orders/{orderId}/messages` | H `spec.md` v0.1; plan/task — | **DEC-005 funcional resuelta**: historial temporal de pedido activo, purga dentro de tres días de completarse; almacenamiento/paginación y cierres pendientes. |
 | API-038 | `POST /api/v1/orders/{orderId}/messages` | H `spec.md` v0.1; plan/task — | **DEC-005 funcional resuelta**: envío de participantes durante pedido en curso; disparador de purga y datos compartidos pendientes. |
 

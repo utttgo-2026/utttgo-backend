@@ -18,7 +18,7 @@
 
 | Requisito | Estado | Verificado local | Verificado en producción | Spec/evidencia y falta |
 |---|---|---|---|---|
-| Notificaciones push FCM | **Parcial** | Spec aprobada en `feature/fcm-push`; no cliente Firebase disponible ni adaptador implementado | **No** | Falta Firebase Admin SDK, envío server-side, limpieza `UNREGISTERED` y prueba no productiva; no iniciar Reviews antes de esto |
+| Notificaciones push FCM | **Parcial implementado** | `FirebaseAdmin 3.4.0`, endpoints de tokens, outbox, dispatcher, dobles y eventos de Orders; unitarias 391/391 y casos FCM aislados verdes | **No** | Falta Docker para las suites Testcontainers, configuración privada en EC2 y evidencia productiva; no se ejecutó FCM real |
 | Logout | **Parcial** | API-003 y suites específicas presentes | **No acreditado** | Falta evidencia externa reproducible y cierre documental de refresh/coordinación móvil |
 | Eliminar cuenta | **Parcial** | API-005 y suites específicas presentes | **No acreditado** | Falta evidencia externa de `204`, `409 ACTIVE_ORDER_CONFLICT` y revocación; DEC-003 requiere reconciliación técnica |
 | Observabilidad / CloudWatch | **Parcial** | Compose, `awslogs`, health y configuración de CloudWatch documentados | **Histórica, no vigente**: streams recibieron logs el 2026-11-11; el estado actual de la instancia no está en verde | Falta nuevo CD-2 y evidencia actual de logs de API más `/health` 200 |
@@ -41,7 +41,7 @@
 | Elemento | Estado real |
 |---|---|
 | Runtime | .NET 10 con SDK **10.0.400 (estable, no preview)**, C# 14, ASP.NET Core 10, monolito modular en un único proyecto API. |
-| Paquetes de la API | `FluentValidation 12.0.0`, `MongoDB.Driver 3.11.0`, `StackExchange.Redis 2.7.27`, `System.IdentityModel.Tokens.Jwt 8.3.1`, `Microsoft.AspNetCore.OpenApi 10.0.9`, `Microsoft.OpenApi 2.7.5`. **Sin SDK de AWS** (S3 presigned), sin cliente de Content Safety, sin FCM y sin SignalR. |
+| Paquetes de la API | `FluentValidation 12.0.0`, `MongoDB.Driver 3.11.0`, `StackExchange.Redis 2.7.27`, `System.IdentityModel.Tokens.Jwt 8.3.1`, `Microsoft.AspNetCore.OpenApi 10.0.9`, `Microsoft.OpenApi 2.7.5`, `FirebaseAdmin 3.4.0`. **Sin SDK de AWS** (S3 presigned), sin cliente de Content Safety y sin SignalR. |
 | Pruebas | `xUnit 2.9.3`, `FluentAssertions 6.12.2`, `Microsoft.AspNetCore.Mvc.Testing 10.0.9`, `Testcontainers 4.16.0` (`Testcontainers.MongoDb`/`Testcontainers.Redis`). La suite E2E (`tests/UtttGo.IntegrationTests/EndToEnd`) levanta **MongoDB 7 y Redis 7 reales** en contenedores y dobla solo las fronteras externas de autenticación (Supabase/JWT/blacklist). |
 | Nube | AWS `us-east-2`: 1 × EC2 t3.micro (Ubuntu 24.04) + EIP `3.129.142.54`, Security Group **solo 80/443** (22 cerrado), S3 privado con CORS estricto (sin reglas por defecto), IAM Instance Profile, CloudWatch Logs, Systems Manager, Budget con alerta institucional. Terraform **aplicado por el propietario** (DEC‑018/020/021). |
 | Contenedores | `docker-compose.yml`: `api` con `deploy.replicas: 2`, `redis:7-alpine` sin puertos publicados en red interna (`noeviction` + AOF), `nginx:alpine` con 80/443, `mongo:7` solo en perfil `local`. `docker-compose.prod.yml` (solo EC2) añade el driver `awslogs` para publicar los logs en `/utttgo/api/dev`. |

@@ -28,7 +28,8 @@ public sealed record CreateOrderResult(CreateOrderOutcome Outcome, OrderResponse
 
 public sealed class CreateOrderService(IAuthenticatedLocalProfileReader profiles,
     IOrdersRateLimitGate rateLimit, ICatalogOrderProducts catalog, ISellerOrderProfiles sellers,
-    IOrderRepository orders, IOrderAuditWriter audit, ILogger<CreateOrderService> logger)
+    IOrderRepository orders, IOrderAuditWriter audit, ILogger<CreateOrderService> logger,
+    UTTTGO.Api.Modules.Notifications.Application.INotificationEventPublisher? notifications = null)
     : ICreateOrderService
 {
     public async Task<CreateOrderResult> CreateAsync(string token, CreateOrderRequest request,
@@ -100,6 +101,15 @@ public sealed class CreateOrderService(IAuthenticatedLocalProfileReader profiles
                 await catalog.ReleaseStockAsync(product.ProductId, quantity, reservationId, cancellationToken);
                 return new(CreateOrderOutcome.Unavailable);
             }
+
+            try
+            {
+                if (notifications is not null)
+                    await notifications.PublishAsync("order.created", created.SellerId, created.OrderId,
+                        created.Status, correlationId, $"order.created:{created.OrderId}", cancellationToken);
+            }
+            catch (Exception) when (!cancellationToken.IsCancellationRequested)
+            { logger.LogWarning("Notification outbox could not record order creation {OrderId}.", created.OrderId); }
 
             try
             {

@@ -28,7 +28,8 @@ public sealed record UpdateOrderStatusResult(UpdateOrderStatusOutcome Outcome,
 
 public sealed class UpdateOrderStatusService(IAuthenticatedLocalProfileReader profiles,
     IOrdersRateLimitGate rateLimit, IOrderRepository orders, ICatalogOrderProducts catalog,
-    IOrderAuditWriter audit, ILogger<UpdateOrderStatusService> logger) : IUpdateOrderStatusService
+    IOrderAuditWriter audit, ILogger<UpdateOrderStatusService> logger,
+    UTTTGO.Api.Modules.Notifications.Application.INotificationEventPublisher? notifications = null) : IUpdateOrderStatusService
 {
     public async Task<UpdateOrderStatusResult> UpdateAsync(string token, string orderId,
         UpdateOrderStatusRequest request, string correlationId, CancellationToken cancellationToken)
@@ -95,6 +96,19 @@ public sealed class UpdateOrderStatusService(IAuthenticatedLocalProfileReader pr
 
             await WriteAuditAsync(updated, profile.Id, "seller", order.Status, target, correlationId,
                 cancellationToken);
+            try
+            {
+                if (notifications is not null)
+                {
+                    await notifications.PublishAsync("order.status.changed", updated.BuyerUserId, updated.OrderId,
+                        updated.Status, correlationId, $"order.status.changed:{updated.OrderId}:{updated.Version}", cancellationToken);
+                    if (target == OrderStatus.Ready)
+                        await notifications.PublishAsync("order.ready", updated.BuyerUserId, updated.OrderId,
+                            updated.Status, correlationId, $"order.ready:{updated.OrderId}:{updated.Version}", cancellationToken);
+                }
+            }
+            catch (Exception) when (!cancellationToken.IsCancellationRequested)
+            { logger.LogWarning("Notification outbox could not record status change {OrderId}.", updated.OrderId); }
 
             return new(UpdateOrderStatusOutcome.Updated, new OrderStatusUpdateResponse(updated.OrderId,
                 updated.Status, updated.Version, updated.UpdatedAt));

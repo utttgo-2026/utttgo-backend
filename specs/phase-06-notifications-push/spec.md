@@ -1,6 +1,8 @@
 # Spec mínima — Notificaciones push FCM
 
-**Estado:** propuesta documental, sin implementación.
+**Estado:** aprobada para implementación; rutas nuevas limitadas a registro y
+baja de `deviceTokens`. API-035/036, Chat e infraestructura IAM/SSM quedan
+fuera de esta entrega.
 
 **Rama:** `docs/spec-fcm`
 

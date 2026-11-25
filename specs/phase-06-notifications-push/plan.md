@@ -1,6 +1,7 @@
 # Plan documental — Notificaciones push FCM
 
-**Estado:** propuesta; no autoriza código ni despliegue.
+**Estado:** implementación autorizada en `feature/fcm-push-v2`; no autoriza
+credenciales reales, IAM/SCP, Terraform apply ni despliegue desde esta rama.
 
 ## Secuencia propuesta
 

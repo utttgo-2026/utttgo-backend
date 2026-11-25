@@ -39,6 +39,7 @@ public sealed class RateLimitingOptions
     public RateLimitPolicy MediaConfirm { get; set; } = new();
     public RateLimitPolicy ReviewCreate { get; set; } = new();
     public RateLimitPolicy ReviewRead { get; set; } = new();
+    public RateLimitPolicy NotificationDeviceToken { get; set; } = new();
 }
 
 public sealed class RedisRateLimiter(IServiceProvider services, IOptionsMonitor<RateLimitingOptions> options,
@@ -89,6 +90,7 @@ public sealed class RedisRateLimiter(IServiceProvider services, IOptionsMonitor<
                 "media-confirm" => policies.MediaConfirm,
                 "review-create" => policies.ReviewCreate,
                 "review-read" => policies.ReviewRead,
+                "notification-device-token" => policies.NotificationDeviceToken,
                 _ => throw new InvalidOperationException("Unknown rate limit policy.")
             };
             if (policy.Limit <= 0 || policy.WindowSeconds <= 0 || string.IsNullOrWhiteSpace(partition))
