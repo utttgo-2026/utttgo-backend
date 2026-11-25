@@ -79,19 +79,20 @@ credenciales.
 - La propuesta cubre registro/baja de `deviceTokens`, eventos de Orders,
   `INotificationSender`, Firebase Admin SDK, outbox no bloqueante, reintentos
   acotados, limpieza `UNREGISTERED` y SSM Parameter Store.
-- Implementación FCM en `feature/fcm-push-v2`: `FirebaseAdmin 3.4.0`, tokens
+- Implementación FCM fusionada en `main` por PR #58: `FirebaseAdmin 3.4.0`, tokens
   cifrados con Data Protection y hash SHA-256, endpoints de registro/baja,
   outbox Mongo y dispatcher con reintentos acotados. Orders publica después de
   persistir su cambio y no espera a FCM; fallos de push no revierten el pedido.
 - La credencial se lee solo desde `FIREBASE_CREDENTIALS_JSON` o
   `FIREBASE_CREDENTIALS_PATH`; si falta, el sender registra un warning y queda
-  desactivado. `docker-compose.yml` propaga ambas variables sin valores en Git.
-  La integración de SSM/IAM permanece fuera de esta tarea.
+  desactivado. La propagación de la ruta y el montaje de solo lectura se revisan
+  en la rama operativa independiente `ops/fcm-credentials`; no se registran
+  valores de credencial.
 - Evidencia local: build Release correcto con cuatro warnings `CS8034` del
   analizador AWS bloqueado por la política local; unitarias `391/391`, FCM
   unitarias `2/2`, integración FCM aislada `1/1` y seguridad FCM aislada `2/2`.
-  Las suites completas de integración y seguridad no pudieron ejecutarse porque
-  Docker Desktop no estaba disponible (`npipe://./pipe/docker_engine`).
+  Las suites completas de integración y seguridad quedaron pendientes en el
+  corte anterior porque Docker Desktop no estaba disponible.
 - API-035/036 y Chat permanecen fuera de alcance; las preguntas abiertas están
   en `specs/phase-06-notifications-push/spec.md`.
 
@@ -125,9 +126,19 @@ credenciales.
   caché, rate limiting, versionamiento, script de BD e IaC tienen estado
   separado por local/producción/spec. Compresión de respuestas es un faltante
   explícito; paginación está cumplida en los contratos implementados.
-- La spec FCM está aprobada en la rama `feature/fcm-push`; el adaptador Firebase
-  y su paquete local siguen bloqueados hasta disponer del Firebase Admin SDK.
-  No se implementan API-035/036 en esta prioridad.
+- La implementación FCM y su paquete están fusionados en `main` por PR #58.
+  API-035/036 permanecen fuera de alcance para esta entrega.
 - Reviews, Favorites y Chat no son requisitos prioritarios del documento del
   proyecto; quedan después de la entrega salvo aprobación explícita. No se
   inicia trabajo de esas áreas por esta conciliación.
+
+## Conciliación de producción 2026-11-25
+
+- `origin/main` contiene el merge de PR #58 (`8d48ae9`); CD #241 lo dejó
+  desplegado en la EC2.
+- `GET /health` respondió `200` con MongoDB y Redis saludables.
+- El OpenAPI productivo expone las rutas de registro/baja de `device-tokens` y
+  las rutas de Reviews API-030/API-031.
+- Esta evidencia confirma despliegue, salud y exposición contractual. No cierra
+  pruebas productivas de login, logout, pedidos, device tokens, FCM ni Reviews,
+  y ninguna de esas áreas se marca como 100% funcional por este corte.
