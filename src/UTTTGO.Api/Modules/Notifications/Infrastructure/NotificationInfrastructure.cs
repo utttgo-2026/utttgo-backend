@@ -18,12 +18,17 @@ public sealed class FirebaseAdminNotificationSender(IConfiguration configuration
         {
             var json = config["FIREBASE_CREDENTIALS_JSON"];
             var path = config["FIREBASE_CREDENTIALS_PATH"];
-            if (string.IsNullOrWhiteSpace(json) && string.IsNullOrWhiteSpace(path)) { logger.LogWarning("Firebase credentials are not configured; push is disabled."); return null; }
+            if (string.IsNullOrWhiteSpace(json) && string.IsNullOrWhiteSpace(path))
+            {
+                logger.LogWarning("Firebase push sender disabled: credentials are not configured.");
+                return null;
+            }
             var credential = string.IsNullOrWhiteSpace(json) ? GoogleCredential.FromFile(path!) : GoogleCredential.FromJson(json);
             var app = FirebaseApp.DefaultInstance ?? FirebaseApp.Create(new AppOptions { Credential = credential });
+            logger.LogInformation("Firebase push sender active.");
             return FirebaseMessaging.GetMessaging(app);
         }
-        catch { logger.LogWarning("Firebase credentials could not be loaded; push is disabled."); return null; }
+        catch { logger.LogWarning("Firebase push sender disabled: credentials could not be loaded."); return null; }
     }
     public async Task<NotificationSendResult> SendAsync(NotificationMessage message, string token, CancellationToken ct)
     {
