@@ -200,7 +200,7 @@ public sealed class NotificationOutboxDispatcher(MongoStore store, IDeviceTokenS
         Builders<NotificationOutboxDocument>.Update.Combine(
             Builders<NotificationOutboxDocument>.Update.Set(x => x.ProcessingStatus, "Sent"),
             Builders<NotificationOutboxDocument>.Update.Set(x => x.SentAt, DateTime.UtcNow),
-            Builders<NotificationOutboxDocument>.Update.Set< string?>(x => x.WorkerId, null),
+            Builders<NotificationOutboxDocument>.Update.Set<string?>(x => x.WorkerId, null),
             Builders<NotificationOutboxDocument>.Update.Set<DateTime?>(x => x.LeaseUntil, null)), cancellationToken: ct);
 
     private Task ScheduleRetryAsync(IMongoCollection<NotificationOutboxDocument> collection,
