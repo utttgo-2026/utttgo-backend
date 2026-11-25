@@ -43,7 +43,6 @@ public sealed class LoginEndpointTests
     [InlineData(false, true, "Active")]
     [InlineData(true, false, "Active")]
     [InlineData(true, true, "PendingEmailVerification")]
-    [InlineData(true, true, "Suspended")]
     [InlineData(true, true, "Deleted")]
     public async Task UnauthenticatedOrInactiveAccountsGetGeneric401WithoutToken(
         bool valid, bool confirmed, string status)
@@ -60,6 +59,18 @@ public sealed class LoginEndpointTests
         body.Should().Contain("INVALID_CREDENTIALS").And.Contain("correlationId")
             .And.NotContain("test-only-jwt").And.NotContain("private-password")
             .And.NotContain("PendingEmailVerification").And.NotContain("Suspended");
+    }
+
+    [Fact]
+    public async Task SuspendedAccountGets403WithoutToken()
+    {
+        using var factory = CreateFactory(profile: Active with { AccountStatus = "Suspended" });
+        using var response = await Post(factory);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        var body = await response.Content.ReadAsStringAsync();
+        body.Should().Contain("ACCOUNT_SUSPENDED").And.Contain("correlationId")
+            .And.NotContain("test-only-jwt").And.NotContain("private-password");
     }
 
     [Fact]
