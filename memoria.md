@@ -86,3 +86,25 @@ credenciales.
   solo ejecutar `fmt`, `validate` y `plan` sin aplicar infraestructura.
 - Preparar `scripts/test-media-flow.ps1` sin ejecutarlo hasta autorización
   explícita.
+
+## Conciliación de inventario 2026-11-24
+
+- Rama documental: `docs/reconcile-status`, creada desde `origin/main`
+  `e391223` (PR #56 ya fusionado en la referencia remota).
+- El propietario confirmó que API-003 (logout), API-005 (eliminación de cuenta)
+  y API-039 (listado admin) están fusionadas y desplegadas (PR #39, fix de
+  Supabase y PR #46). La matriz corregida separa esa declaración de la
+  evidencia reproducible disponible: API-003 y API-005 no tienen en este
+  checkout SHA/run y sonda productiva individual; API-039 tiene sonda `401`
+  productiva del 2026-11-08, pero falta `200` autenticado y cierre de AC-005.
+- La matriz de cumplimiento del documento del proyecto queda en
+  `PROJECT_STATUS.md` §0: FCM es la prioridad; logout, eliminación, CloudWatch,
+  caché, rate limiting, versionamiento, script de BD e IaC tienen estado
+  separado por local/producción/spec. Compresión de respuestas es un faltante
+  explícito; paginación está cumplida en los contratos implementados.
+- La spec FCM está aprobada en la rama `feature/fcm-push`; el adaptador Firebase
+  y su paquete local siguen bloqueados hasta disponer del Firebase Admin SDK.
+  No se implementan API-035/036 en esta prioridad.
+- Reviews, Favorites y Chat no son requisitos prioritarios del documento del
+  proyecto; quedan después de la entrega salvo aprobación explícita. No se
+  inicia trabajo de esas áreas por esta conciliación.

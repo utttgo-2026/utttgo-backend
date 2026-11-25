@@ -2,6 +2,40 @@
 
 > Corte: 2026-11-16. El backend está **desplegado y operativo en Amazon AWS** (EC2 `3.129.142.54`, 2 réplicas Docker Compose detrás de Nginx, Redis contenedor, MongoDB Atlas y Supabase Auth configurados por variables de entorno en la instancia). El **cierre de infraestructura** (DEC‑020/021) está aplicado y verificado en vivo: puerto 22 cerrado, despliegue CD‑1 por AWS Systems Manager, Budget con alerta institucional, CORS de S3 estricto y logs de contenedores en CloudWatch Logs. Este documento separa lo **verificado externamente** (sondas HTTP contra la instancia, despliegue por SSM y logs publicados) de lo **verificado con dobles** (suites locales) y de lo **verificado contra dependencias reales** (la suite E2E con MongoDB 7 y Redis 7 en Testcontainers). Un `200` con dobles no prueba una integración externa.
 
+## 0. Conciliación de inventario y cumplimiento
+
+> Corte de conciliación: 2026-11-24. «Producción» solo significa que existe evidencia fechada en este repositorio; un reporte de que una PR fue desplegada no sustituye un SHA, run, curl, sonda o log verificable.
+
+### API-003, API-005 y API-039
+
+| Código | Verificado local | Verificado en producción | Spec aprobada | Evidencia y falta |
+|---|---|---|---|---|
+| API-003 `POST /api/v1/auth/logout` | **Sí**: implementación fusionada; `LogoutServiceTests`, `LogoutEndpointTests`, `LogoutSecurityTests` | **No acreditado en este checkout**. El propietario reporta PR #39 y fix de Supabase, pero falta SHA/run y una sonda de logout con cuenta de prueba | **Parcial**: reglas constitucionales y contrato de fase 02; falta cerrar la ficha/decisiones de refresh, repetición y coordinación móvil | `src/UTTTGO.Api/Modules/Identity/Controllers/LogoutController.cs`; tests de Logout; falta evidencia productiva reproducible sin imprimir tokens |
+| API-005 `DELETE /api/v1/users/me` | **Sí**: implementación fusionada; unitarias, integración y seguridad específicas presentes | **No acreditado en este checkout**. El propietario reporta despliegue junto con PR #46, pero falta SHA/run y una prueba productiva sanitizada | **Parcialmente aprobada**: DEC-003 aprobada el 2026-11-22; falta cerrar la evidencia de integración real y reconciliación de datos compartidos | `src/UTTTGO.Api/Modules/Identity/Controllers/AccountDeletionController.cs`; `memoria.md` DEC-003; falta evidencia de `204`, bloqueo de pedidos activos y revocación en producción |
+| API-039 `GET /api/v1/admin/users` | **Sí**: implementación fusionada; unitarias, integración y seguridad específicas presentes | **Parcial**: existe sonda productiva `401` del 2026-11-08, pero no evidencia de `200` autenticado ni auditoría persistente | **Sí, con pendiente AC-005**: spec `specs/phase-02-auth-users/api-039-list-users/`; la auditoría de cambios depende de API-040 | `PROJECT_STATUS.md` §4.1 y `docs/qa-api-039.md`; falta curl productivo autenticado y cierre de `UnconfiguredAdminUsersAudit` |
+
+### Cumplimiento contra el documento del proyecto
+
+| Requisito | Estado | Verificado local | Verificado en producción | Spec/evidencia y falta |
+|---|---|---|---|---|
+| Notificaciones push FCM | **Parcial** | Spec aprobada en `feature/fcm-push`; no cliente Firebase disponible ni adaptador implementado | **No** | Falta Firebase Admin SDK, envío server-side, limpieza `UNREGISTERED` y prueba no productiva; no iniciar Reviews antes de esto |
+| Logout | **Parcial** | API-003 y suites específicas presentes | **No acreditado** | Falta evidencia externa reproducible y cierre documental de refresh/coordinación móvil |
+| Eliminar cuenta | **Parcial** | API-005 y suites específicas presentes | **No acreditado** | Falta evidencia externa de `204`, `409 ACTIVE_ORDER_CONFLICT` y revocación; DEC-003 requiere reconciliación técnica |
+| Observabilidad / CloudWatch | **Parcial** | Compose, `awslogs`, health y configuración de CloudWatch documentados | **Histórica, no vigente**: streams recibieron logs el 2026-11-11; el estado actual de la instancia no está en verde | Falta nuevo CD-2 y evidencia actual de logs de API más `/health` 200 |
+| Caché Redis / catálogo | **Parcial** | Redis operativo para blacklist/rate limit; no hay caché de catálogo demostrada | **No acreditado para caché de catálogo** | Falta decisión y evidencia de `cache:{recurso}:{clave}`, TTL e invalidación; nunca cachear datos sensibles |
+| Rate limiting | **Parcial** | Políticas Redis fail-closed y pruebas locales | **No acreditado por ruta** | Falta evidencia externa de `429` y de Redis caído en entorno no productivo controlado |
+| Paginación | **Cumplido en contratos implementados** | Listados con `page`, `pageSize`, `totalCount` y pruebas | **No acreditado integralmente** | Falta evidencia productiva autenticada; no bloquea FCM |
+| Compresión de respuestas | **Falta** | No hay configuración ni prueba de compresión | **No** | Añadir después una decisión segura para clientes móviles y prueba de `Content-Encoding`; no hacerlo como parte de FCM sin aprobación |
+| Versionamiento | **Parcial** | Prefijo `/api/v1` y política SemVer/DEP documentada | **No acreditado por release** | Falta aprobación formal del gate TASK-AUTH-007/008 y registro DEP de despliegues reales |
+| Script de BD | **Parcial** | Índices Mongo y seeding idempotente; no hay migraciones SQL | **No** | Falta un procedimiento/script verificable de inicialización, índices, seed y limpieza local; Mongo no requiere migraciones EF |
+| IaC crear/destruir | **Parcial** | Terraform existe, `fmt/init/validate` documentados y recursos declarados | **Creación aplicada; destrucción no acreditada** | Falta evidencia de plan de destrucción seguro y procedimiento aprobado; nunca ejecutar `apply/destroy` desde esta rama |
+
+### Prioridad vigente
+
+1. FCM sobre la spec aprobada de `feature/fcm-push`.
+2. Cerrar faltantes baratos de la tabla, empezando por evidencia/configuración no destructiva y compresión/versionamiento solo tras aprobación.
+3. Reviews, Favorites y Chat quedan después de la entrega y no son requisitos del documento vigente; no se trabajarán sin aprobación explícita.
+
 ## 1. Stack, estructura y despliegue
 
 | Elemento | Estado real |
@@ -55,7 +89,7 @@ Las rutas se derivan de los atributos de los controladores y de `Program.cs`. La
 | GET | `/api/v1/users/me` | Bearer | `200` (`id`, `displayName`, `email`, `phone`, `avatarUrl`, `roles`); `401`/`503` | Sesión + Atlas. `avatarUrl` siempre `null` (Media no existe). |
 | PATCH | `/api/v1/users/me` | Bearer | `200` perfil propio; `400`/`401`/`409`/`503` | Sesión + CAS por `version` en Atlas. Solo `displayName`/`phone`. |
 | GET | `/api/v1/sellers/{sellerId}` | Público | `200` (`sellerId`, `displayName`, `ratingAverage`, `ratingCount`, `isActive`); `400`/`404`/`429`/`503` | Atlas (`sellers`) + rate limit en Redis. Ratings `null` mientras Reviews no exista. |
-| GET | `/api/v1/admin/users` | Bearer + rol `Admin` | `200` (`items`, `page`, `pageSize`, `total`); `400`/`401`/`403`/`429`/`503` | Sesión + listado paginado en Atlas. Roles del perfil local, nunca del JWT. |
+| GET | `/api/v1/admin/users` | Bearer + rol `Admin` | `200` (`items`, `page`, `pageSize`, `totalCount`); `400`/`401`/`403`/`429`/`503` | Sesión + listado paginado en Atlas. Roles del perfil local, nunca del JWT. |
 | GET | `/health` | Público | `200` `{"status":"Healthy","checks":{...}}`; `429`/`503` | Pings acotados a Atlas y Redis; falla cerrada sin revelar la dependencia. Sonda operativa, no ficha funcional. |
 | POST | `/api/v1/sellers/activation-requests` | Bearer + cuenta `Active` | `201`/`200` (perfil de negocio con `sellerId`, `storeName`, `description`, `phone`, `status: "Active"`); `400`/`401`/`403`/`404`/`409`/`429`/`503` | **Sprint 1 de la fase 03**: autoactivación sin aprobación administrativa (DEC‑002); asigna el rol `Seller` en el perfil local. **Alineado con el móvil (2026-11-16)**: el cuerpo acepta solo `storeName`, `description` y `phone`. |
 | GET | `/api/v1/sellers/me` | Bearer | `200` perfil de negocio propio (`storeName`, `description`, `phone`, `status`, `isActive`, `roles`); `401`/`404` `SELLER_PROFILE_NOT_FOUND`/`429`/`503` | Ficha nueva aprobada (DEC‑019.d). No expone `email`, `supabaseUserId` ni `version` (el `phone` es el contacto del negocio). |
@@ -77,7 +111,7 @@ Las rutas se derivan de los atributos de los controladores y de `Program.cs`. La
 | POST | `/api/v1/orders/{orderId}/delivery-confirmations` | Bearer + vendedor | `200`; `401`/`403` `ORDER_FORBIDDEN`/`404` `ORDER_NOT_FOUND`/`409` `ORDER_STATE_CONFLICT`/`ORDER_VERSION_CONFLICT`/`DELIVERY_TOKEN_ALREADY_USED`/`422` `DELIVERY_TOKEN_INVALID`/`DELIVERY_TOKEN_EXPIRED`/`429`/`503` | **Fase 2 (API-029)**: `Ready→Delivered` con CAS (estado, versión y hash del token); fija `deliveredAt`/`completedAt`, marca el token como usado y confirma la reserva de stock. El token es de un solo uso. |
 | GET | `/api/v1/sellers/me/orders` | Bearer + rol `Seller` + cuenta `Active` | `200` (`items`, `page`, `pageSize`, `totalCount`); `400`/`401`/`403` `SELLER_ROLE_REQUIRED`/`SELLER_ACCOUNT_NOT_ACTIVE`/`429`/`503` | **Fase 4, ficha nueva aprobada (D-ORD-05, 2026-11-18)**: Atlas (`orders`, dueño Orders) filtrado por el `sellerId` del perfil autenticado; cada ítem publica `role: "seller"` y los campos de `OrderSummaryResponse`; filtro opcional `status`; rate limit `order-read` fail-closed. `/orders/mine` no cambia. |
 
-No existen todavía: media/imágenes, reseñas, favoritos, notificaciones push, chat, recuperación de contraseña, logout y refresh token. La Fase 2 de pedidos (API‑026..029) está **fusionada en `main`** (PR #25, merge `cac164f`) pero **aún no desplegada**: el CI‑1 sobre el merge commit (run `43979116661`) falló por un flake del contenedor de MongoDB en la suite E2E (`exit code 48`) y el CD‑1 quedó *skipped*; el arreglo (contenedor MongoDB sin fase de inicialización, espera explícita de disponibilidad y reintentos) está en el **PR #26 con CI‑1 en verde** (run `43986405691`), pendiente de fusión. La notificación push y el hecho de Reviews quedan diferidos (D‑ORD‑15).
+No existen todavía: media/imágenes completas, notificaciones push FCM, recuperación de contraseña y refresh token. Logout (API‑003), eliminación de cuenta (API‑005) y API‑039 están fusionados según el inventario corregido; su evidencia productiva individual queda separada en §0. Reviews, favoritos y chat no son requisitos prioritarios del documento vigente y quedan después de la entrega salvo aprobación explícita.
 
 ## 3. Servicios externos y configuración
 
@@ -150,7 +184,7 @@ Evidencia de la Fase 2 de pedidos (2026-11-16, rama `feature/orders-phase2-statu
 - **Media e imágenes (fase 05):** no hay `AWSSDK.S3` ni cliente de Content Safety; `avatarUrl` es siempre `null` y no se puede publicar ninguna imagen (BR‑007).
 - **Catálogo (Sprint 2 de la fase 03):** `products` y `categories` **ya existen** (API‑011..015/019: búsqueda, filtros, publicación y disponibilidad del vendedor); sus fichas atómicas siguen PENDIENTE de conciliación y no hay filtro público `sellerId` ni “mis productos” (decisión registrada para la iteración siguiente).
 - **Pedidos (Fases 1 y 2 de la fase 04):** API‑023/024/025 y API‑026/027/028/029 implementadas con `orders` y `orderAuditLogs`; el PR #25 está fusionado (`cac164f`) pero **falta el despliegue por CD‑1** (el CI‑1 del merge commit falló por el flake del contenedor de MongoDB en la E2E y el CD‑1 quedó *skipped*; el arreglo está en el **PR #26 con CI‑1 en verde**, pendiente de fusión). La notificación push (fase 08) y el hecho de Reviews (fase 06) siguen diferidos por D‑ORD‑15. No hay listado de pedidos del vendedor (D‑ORD‑05 sin aprobar).
-- **Sesiones:** no hay `POST /api/v1/auth/logout` (API‑003) ni refresh token; el access token expira (3600 s) y la app móvil debe volver a autenticarse. TASK‑AUTH‑003 abierto.
+- **Sesiones:** API‑003 logout está fusionada; no existe refresh token. El access token expira (3600 s) y la app móvil debe volver a autenticarse. La evidencia productiva y el cierre documental de refresh siguen pendientes.
 - **OTP y correo:** el backend no envía ni verifica OTP; el móvil usa operaciones Supabase (`verifyOtp`/`resend`). SMTP institucional y costo cero siguen pendientes (TASK‑AUTH‑002).
 - **Middleware de autenticación y CORS:** no hay `AddAuthentication()`/`UseAuthentication()`; la validación del JWT se hace por servicio con gate de Redis. No hay política CORS (irrelevante para móvil nativo; necesaria si hay cliente web).
 - **Auditoría administrativa:** `UnconfiguredAdminUsersAudit` no persiste eventos (AC‑005 abierto por API‑040).
