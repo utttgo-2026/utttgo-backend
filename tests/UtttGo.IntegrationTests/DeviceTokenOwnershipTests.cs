@@ -3,7 +3,6 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using MongoDB.Driver;
-using Testcontainers.MongoDb;
 using UTTTGO.Api.Modules.Notifications.Infrastructure;
 using UTTTGO.Api.Shared.Infrastructure;
 using Xunit;
@@ -15,10 +14,8 @@ public sealed class DeviceTokenOwnershipTests
     [Fact]
     public async Task RegisteringAnExistingTokenDeactivatesItsPreviousOwner()
     {
-        await using var container = new MongoDbBuilder("mongo:7").Build();
-        await container.StartAsync();
-
-        var uri = container.GetConnectionString();
+        var uri = Environment.GetEnvironmentVariable("UTTTGO_TEST_MONGODB_URI")
+            ?? "mongodb://127.0.0.1:27017/?directConnection=true";
         var services = new ServiceCollection()
             .AddSingleton<IMongoClient>(_ => new MongoClient(uri))
             .BuildServiceProvider();

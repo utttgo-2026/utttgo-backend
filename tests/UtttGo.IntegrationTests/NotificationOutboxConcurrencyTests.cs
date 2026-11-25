@@ -4,7 +4,6 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using MongoDB.Bson;
 using MongoDB.Driver;
-using Testcontainers.MongoDb;
 using UTTTGO.Api.Modules.Notifications.Application;
 using UTTTGO.Api.Modules.Notifications.Infrastructure;
 using UTTTGO.Api.Shared.Infrastructure;
@@ -17,9 +16,8 @@ public sealed class NotificationOutboxConcurrencyTests
     [Fact]
     public async Task TwoDispatchersClaimAnEventOnlyOnce()
     {
-        await using var container = new MongoDbBuilder("mongo:7").Build();
-        await container.StartAsync();
-        var uri = container.GetConnectionString();
+        var uri = Environment.GetEnvironmentVariable("UTTTGO_TEST_MONGODB_URI")
+            ?? "mongodb://127.0.0.1:27017/?directConnection=true";
         var client = new MongoClient(uri);
         var databaseName = "utttgo-outbox-test";
         var services = new ServiceCollection().AddSingleton<IMongoClient>(client).BuildServiceProvider();

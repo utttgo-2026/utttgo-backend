@@ -161,7 +161,7 @@ public sealed class NotificationOutboxDispatcher(MongoStore store, IDeviceTokenS
                 continue;
             }
 
-            var delay = item.Attempts switch { 0 => TimeSpan.FromSeconds(1), 1 => TimeSpan.FromSeconds(5), _ => TimeSpan.FromSeconds(30) };
+            var delay = item.Attempts switch { 1 => TimeSpan.FromSeconds(1), 2 => TimeSpan.FromSeconds(5), _ => TimeSpan.FromSeconds(30) };
             await ScheduleRetryAsync(collection, item, delay, ct);
         }
     }
