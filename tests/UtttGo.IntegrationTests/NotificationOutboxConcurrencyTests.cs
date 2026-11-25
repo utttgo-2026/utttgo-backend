@@ -1,12 +1,11 @@
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using UTTTGO.Api.Modules.Notifications.Application;
 using UTTTGO.Api.Modules.Notifications.Infrastructure;
-using UTTTGO.Api.Shared.Infrastructure;
+using UtttGo.IntegrationTests.EndToEnd;
 using Xunit;
 
 namespace UtttGo.IntegrationTests;
@@ -16,13 +15,9 @@ public sealed class NotificationOutboxConcurrencyTests
     [Fact]
     public async Task TwoDispatchersClaimAnEventOnlyOnce()
     {
-        var uri = Environment.GetEnvironmentVariable("UTTTGO_TEST_MONGODB_URI")
-            ?? "mongodb://127.0.0.1:27017/?directConnection=true";
-        var client = new MongoClient(uri);
-        var databaseName = "utttgo-outbox-test";
-        var services = new ServiceCollection().AddSingleton<IMongoClient>(client).BuildServiceProvider();
-        var mongo = new MongoStore(services, Options.Create(new MongoOptions { Uri = uri, Database = databaseName }));
-        var collection = mongo.Database.GetCollection<NotificationOutboxDocument>("notificationOutbox");
+        await using var host = await EndToEndHost.StartAsync();
+        var mongo = host.Services.GetRequiredService<UTTTGO.Api.Shared.Infrastructure.MongoStore>();
+        var collection = host.Database.GetCollection<NotificationOutboxDocument>("notificationOutbox");
         var eventId = ObjectId.GenerateNewId();
         await collection.InsertOneAsync(new NotificationOutboxDocument
         {
