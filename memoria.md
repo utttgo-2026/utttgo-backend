@@ -142,3 +142,23 @@ credenciales.
 - Esta evidencia confirma despliegue, salud y exposición contractual. No cierra
   pruebas productivas de login, logout, pedidos, device tokens, FCM ni Reviews,
   y ninguna de esas áreas se marca como 100% funcional por este corte.
+
+## Hardening FCM 2026-11-25
+
+- Rama `fix/fcm-hardening`, creada desde `origin/main` `041ee96`; no se usaron
+  credenciales, IAM/SCP, Terraform ni despliegues.
+- Orders resuelve `OwnerUserId` mediante `ISellerOrderProfiles`; si falta,
+  registra warning sin PII y el pedido permanece creado.
+- Se conserva `order.status.changed` para Ready: es el evento general de
+  transición. La emisión `order.ready` y la emisión al regenerar delivery-token
+  fueron eliminadas. Las claves son `eventType:orderId:status`.
+- El outbox usa reclamo atómico Mongo con worker/lease, recuperación de leases,
+  estados `Pending`, `Processing`, `Sent`/`Failed`, backoff y restricción única
+  de idempotencia.
+- Un token FCM activo se desactiva para cualquier propietario anterior antes de
+  registrarse para el usuario actual; la prueba usa Mongo local de Docker.
+- Commits de la rama: `ee99de4`, `d883929`, `4df32d7`, `ea0f14f`, `64c637d`,
+  `6c6650a`, `f139848`, `f8c5e08`, `ef4743f`, `981e823`, `00b3a7f`.
+- Evidencia: unitarias `397/397`, seguridad `164/164`, integración `300/300`
+  excluyendo el snapshot OpenAPI. El snapshot completo aún difiere por un
+  contrato previo de `PATCH /api/v1/users/me` (`200`/`204`), no por FCM.
