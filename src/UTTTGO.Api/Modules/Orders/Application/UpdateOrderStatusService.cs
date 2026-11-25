@@ -1,5 +1,6 @@
 using UTTTGO.Api.Modules.Catalog.Application;
 using UTTTGO.Api.Modules.Identity.Application;
+using UTTTGO.Api.Modules.Notifications.Application;
 using UTTTGO.Api.Modules.Orders.Contracts;
 
 namespace UTTTGO.Api.Modules.Orders.Application;
@@ -29,7 +30,7 @@ public sealed record UpdateOrderStatusResult(UpdateOrderStatusOutcome Outcome,
 public sealed class UpdateOrderStatusService(IAuthenticatedLocalProfileReader profiles,
     IOrdersRateLimitGate rateLimit, IOrderRepository orders, ICatalogOrderProducts catalog,
     IOrderAuditWriter audit, ILogger<UpdateOrderStatusService> logger,
-    UTTTGO.Api.Modules.Notifications.Application.INotificationEventPublisher? notifications = null) : IUpdateOrderStatusService
+    INotificationEventPublisher? notifications = null) : IUpdateOrderStatusService
 {
     public async Task<UpdateOrderStatusResult> UpdateAsync(string token, string orderId,
         UpdateOrderStatusRequest request, string correlationId, CancellationToken cancellationToken)
@@ -101,10 +102,9 @@ public sealed class UpdateOrderStatusService(IAuthenticatedLocalProfileReader pr
                 if (notifications is not null)
                 {
                     await notifications.PublishAsync("order.status.changed", updated.BuyerUserId, updated.OrderId,
-                        updated.Status, correlationId, $"order.status.changed:{updated.OrderId}:{updated.Version}", cancellationToken);
-                    if (target == OrderStatus.Ready)
-                        await notifications.PublishAsync("order.ready", updated.BuyerUserId, updated.OrderId,
-                            updated.Status, correlationId, $"order.ready:{updated.OrderId}:{updated.Version}", cancellationToken);
+                        updated.Status, correlationId,
+                        NotificationEventKeys.For("order.status.changed", updated.OrderId, updated.Status),
+                        cancellationToken);
                 }
             }
             catch (Exception) when (!cancellationToken.IsCancellationRequested)
