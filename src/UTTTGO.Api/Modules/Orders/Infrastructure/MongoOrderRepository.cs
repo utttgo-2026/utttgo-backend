@@ -6,7 +6,7 @@ using UTTTGO.Api.Shared.Infrastructure;
 namespace UTTTGO.Api.Modules.Orders.Infrastructure;
 
 public sealed class MongoOrderRepository(MongoStore store) : IOrderRepository, IActiveOrderReader,
-    IDeliveredOrderReader
+    IDeliveredOrderReader, IOrderChatParticipantReader
 {
     private IMongoCollection<OrderDocument> Orders =>
         store.Database.GetCollection<OrderDocument>("orders");
@@ -67,6 +67,14 @@ public sealed class MongoOrderRepository(MongoStore store) : IOrderRepository, I
             ? null
             : new(document.Id.ToString(), document.BuyerUserId, document.SellerId, document.ProductId,
                 document.Status, document.DeliveredAt);
+    }
+
+    public async Task<OrderChatSnapshot?> FindForChatAsync(string orderId, CancellationToken cancellationToken)
+    {
+        if (!ObjectId.TryParse(orderId, out var id)) return null;
+        var document = await Orders.Find(item => item.Id == id).FirstOrDefaultAsync(cancellationToken);
+        return document is null ? null : new(document.Id.ToString(), document.BuyerUserId,
+            document.SellerId, document.Status);
     }
 
     public Task<bool> HasActiveOrdersAsync(string buyerUserId, string? sellerId,

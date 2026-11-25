@@ -1,6 +1,6 @@
 # API-038 — Envío de mensaje del pedido · plan
 
-Estado de aprobación de la ficha: PENDIENTE
+Estado de aprobación de la ficha: APROBADA explícitamente para API-038
 
 ## Autoridad y alcance
 
@@ -8,21 +8,21 @@ Estado de aprobación de la ficha: PENDIENTE
 
 ## Arquitectura existente
 
-No hay módulo Chat ni Orders en `src/UTTTGO.Api/Modules/` (existen Admin, Identity y Sellers). Las fichas de Orders ([API-025](../api-025-order-detail/spec.md) y vecinas) son borrador sin código; la participación y el estado del pedido llegan por contrato del dueño de Orders, sin lectura directa de su colección. SignalR/FCM solo si la notificación de mensajes se aprueba (BR-008, DEC-004).
+Chat consume el contrato publicado por Orders para participación y estado, sin leer directamente su colección. SignalR/FCM y la purga quedan fuera de esta entrega.
 
 ## Componentes involucrados
 
 | Capa | Componente actual o previsto | Responsabilidad y fuente |
 |---|---|---|
-| API | `src/UTTTGO.Api/Modules/Chat/Controllers/OrderMessagesController.cs` (previsto) | POST con `{orderId}` y cuerpo de mensaje. |
-| Aplicación | `src/UTTTGO.Api/Modules/Chat/Application/OrderMessagesService.cs` (previsto) | Validación, participación, persistencia e idempotencia. |
-| Datos | `src/UTTTGO.Api/Modules/Chat/Infrastructure/MongoOrderMessageRepository.cs` (previsto) | Escritura atómica; colección e índices por definir. |
-| Contrato | `IOrderParticipation` y `IOrderStateReader` del dueño de Orders (previstos) | Participante y estado; sin colección cruzada. |
+| API | `src/UTTTGO.Api/Modules/Chat/Controllers/OrderMessagesController.cs` | POST con `{orderId}` y `{content}`. |
+| Aplicación | `src/UTTTGO.Api/Modules/Chat/Application/ChatService.cs` | Validación, participación, persistencia e idempotencia. |
+| Datos | `src/UTTTGO.Api/Modules/Chat/Infrastructure/MongoOrderMessageRepository.cs` | Escritura atómica e índices únicos por idempotencia. |
+| Contrato | `IOrderChatParticipantReader` de Orders | Participante y estado; sin colección cruzada. |
 | Tiempo real | SignalR + backplane Redis (si aplica) | Entrega efímera; histórico sigue en MongoDB. |
 
 ## Secuencia técnica
 
-JWT/blacklist → rate limit Redis (por participante) → validar `{orderId}` → verificar participación y estado vía contratos de Orders → validar y sanitizar contenido → persistir con clave de idempotencia → responder `201`; publicar en SignalR/FCM solo si aprobado. Candidato hasta acta: DTO, códigos ante cierre/fallo, límites y reintento. Redis/Mongo caídos ⇒ `503` fail-closed sin mensaje fantasma.
+JWT/blacklist → rate limit Redis (por participante) → validar `{orderId}` → verificar participación y estado vía Orders → validar/sanitizar `content` → persistir con `Idempotency-Key` → responder `201`. Redis/Mongo caídos ⇒ `503` fail-closed sin mensaje fantasma.
 
 ## Componentes reutilizables del Bloque 1
 
@@ -32,21 +32,21 @@ JWT/blacklist → rate limit Redis (por participante) → validar `{orderId}` �
 
 | Escenario/brecha | Ruta del archivo o componente | Cambio condicionado; decisión previa |
 |---|---|---|
-| MSGS-01/02/03 | `Modules/Chat/Controllers/OrderMessagesController.cs`, `Modules/Chat/Application/OrderMessagesService.cs`, `src/UTTTGO.Api/Program.cs` | Tras acta DEC-005 y gate de fase 07; middleware intacto. |
-| MSGS-01/05 | `Modules/Chat/Infrastructure/MongoOrderMessageRepository.cs` | Escritura, índice único de idempotencia y purga según acta. |
-| MSGS-01..05 | `tests/UtttGo.UnitTests/OrderMessagesServiceTests.cs`, `tests/UtttGo.IntegrationTests/OrderMessagesEndpointTests.cs`, `tests/UtttGo.SecurityTests/OrderMessagesSecurityTests.cs` | Pruebas locales nuevas; dobles solo en tests. |
+| MSGS-01/02/03 | `Modules/Chat/Controllers/OrderMessagesController.cs`, `Modules/Chat/Application/ChatService.cs`, `src/UTTTGO.Api/Program.cs` | Implementado; middleware intacto. |
+| MSGS-01/05 | `Modules/Chat/Infrastructure/MongoOrderMessageRepository.cs` | Escritura e índice único de idempotencia implementados; purga posterior. |
+| MSGS-01..05 | `tests/UtttGo.UnitTests/ChatServiceTests.cs`, `tests/UtttGo.IntegrationTests/ChatEndpointTests.cs`, `tests/UtttGo.SecurityTests/ChatSecurityTests.cs` | Suites Release ejecutadas con Docker activo; pruebas específicas cubren sanitización, idempotencia, cierre, perfil inactivo, autenticación y ownership nulo. |
 
 ## Orden de implementación
 
-DEV-API038-01 ratifica DTO, códigos, límites, idempotencia y purga; DEV-API038-02 crea repositorio y servicio tras 01 y los contratos de Orders; DEV-API038-03 expone el endpoint con autorización tras 02; DEV-API038-04 cubre escenarios, tasa y fallos tras 02/03. No hay código previo de Chat que reutilizar.
+DEV-API038-01 ratifica DTO, códigos, límites e idempotencia; DEV-API038-02/03 implementan repositorio, servicio, endpoint y autorización; DEV-API038-04 cubre escenarios, tasa y fallos. La purga queda separada.
 
 ## Dependencias y bloqueos
 
 | Gate transversal o decisión particular (ID original) | Tarea DEV afectada | Evidencia para desbloquear |
 |---|---|---|
-| DEC-005 (almacenamiento, idempotencia, purga) | DEV-API038-01..04 | Acta de diseño que no contradice BR-012. |
-| Gate de fase 07 (spec → plan → task) | DEV-API038-01..04 | Aprobación integral de la fase 07. |
-| Contrato de participación y estado de Orders (API-025) | DEV-API038-02/03 | Interfaz publicada por el dueño de Orders. |
+| DEC-005 (almacenamiento, idempotencia, purga) | Purga posterior | Acta y job UTC; no bloquea REST de esta entrega. |
+| Gate de fase 07 (spec → plan → task) | DEV-API038-01..04 | Ratificación de esta ficha, plan y task. |
+| Contrato de participación y estado de Orders | DEV-API038-02/03 | `IOrderChatParticipantReader` publicado por Orders. |
 | DEC-004 (notificación de mensajes) | DEV-API038-01/04 | Decisión explícita; FCM solo backend si aplica. |
 
 ## Estrategia de pruebas
@@ -59,4 +59,4 @@ JWT/blacklist y rate limit distribuido fail-closed, autorización por participac
 
 ## Criterios de cierre técnico
 
-MSGS-01..05 con pruebas verdes de envío, tercero, cierre de pedido, tasa/fallos e idempotencia; build Release, `dotnet format` y suites pertinentes en verde con evidencia fechada; aprobación documental y gate de fase 07 por separado.
+MSGS-01..05 con pruebas de envío, tercero, cierre, tasa/fallos e idempotencia; build Release, `dotnet format` y suites pertinentes en verde. Purga y notificaciones quedan como trabajo posterior.

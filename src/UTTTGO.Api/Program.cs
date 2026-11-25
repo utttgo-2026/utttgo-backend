@@ -41,6 +41,8 @@ using UTTTGO.Api.Modules.Notifications.Application;
 using UTTTGO.Api.Modules.Notifications.Contracts;
 using UTTTGO.Api.Modules.Notifications.Infrastructure;
 using UTTTGO.Api.Modules.Notifications.Validators;
+using UTTTGO.Api.Modules.Chat.Application;
+using UTTTGO.Api.Modules.Chat.Infrastructure;
 using UTTTGO.Api.Shared.OpenApi;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -246,6 +248,8 @@ builder.Services.AddSingleton<IOrderRepository>(services =>
     services.GetRequiredService<MongoOrderRepository>());
 builder.Services.AddSingleton<IActiveOrderReader>(services => services.GetRequiredService<MongoOrderRepository>());
 builder.Services.AddSingleton<IDeliveredOrderReader>(services => services.GetRequiredService<MongoOrderRepository>());
+builder.Services.AddSingleton<IOrderChatParticipantReader>(services =>
+    services.GetRequiredService<MongoOrderRepository>());
 builder.Services.AddSingleton<IOrderAuditWriter, MongoOrderAuditWriter>();
 builder.Services.AddScoped<IOrdersRateLimitGate, RedisOrdersRateLimitGate>();
 builder.Services.AddScoped<ICreateOrderService, CreateOrderService>();
@@ -277,6 +281,10 @@ builder.Services.AddSingleton<INotificationSender, FirebaseAdminNotificationSend
 builder.Services.AddSingleton<INotificationEventPublisher, MongoNotificationOutbox>();
 builder.Services.AddHostedService<NotificationMongoIndexes>();
 builder.Services.AddHostedService<NotificationOutboxDispatcher>();
+builder.Services.AddSingleton<IOrderMessageRepository, MongoOrderMessageRepository>();
+builder.Services.AddScoped<IChatRateLimitGate, RedisChatRateLimitGate>();
+builder.Services.AddScoped<IChatService, ChatService>();
+builder.Services.AddHostedService<ChatMongoIndexes>();
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi(options => options.AddDocumentTransformer<PublicApiServerTransformer>());
 

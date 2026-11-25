@@ -27,6 +27,14 @@ public interface IDeliveredOrderReader
         CancellationToken cancellationToken);
 }
 
+// Published contract consumed by Chat. Chat must not read the orders collection.
+public interface IOrderChatParticipantReader
+{
+    Task<OrderChatSnapshot?> FindForChatAsync(string orderId, CancellationToken cancellationToken);
+}
+
+public sealed record OrderChatSnapshot(string OrderId, string BuyerUserId, string SellerId, string Status);
+
 public sealed record DeliveredOrderSnapshot(string OrderId, string BuyerUserId, string SellerId,
     string ProductId, string Status, DateTime? DeliveredAt);
 
