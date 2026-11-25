@@ -1,13 +1,14 @@
 # Trazabilidad de contratos API — Backend UTTT-GO
 
 > Evidencia 2026-11-08: el backend está **desplegado y operativo en AWS** (EC2 `3.129.142.54`, 2 réplicas Compose detrás de Nginx, Redis contenedor, Atlas y Supabase configurados con `.env` en la instancia). Sondas externas desde Internet: `GET /health` → `200` `{"status":"Healthy","checks":{"mongodb":"Healthy","redis":"Healthy"}}`; `GET /api/v1/auth/me` → `401`; `GET /api/v1/users/me` → `401`; `GET /api/v1/sellers/{id}` inexistente → `404 SELLER_NOT_FOUND` (Atlas responde, ya no `503`); `GET /api/v1/admin/users?page=1&pageSize=20` → `401`. API‑001/002/004/006/007/008/039 usan adaptadores **reales** de MongoDB, Redis y Supabase (no dobles) en la instancia; las pruebas de repositorio siguen siendo con dobles.
+> Evidencia productiva 2026-11-25: CD #241 (PR #58) está desplegado; `GET /health` → `200` con MongoDB y Redis saludables; el OpenAPI de producción expone `device-tokens` y Reviews. Esta evidencia confirma despliegue, salud y exposición contractual, pero no prueba por sí sola flujos autenticados completos ni permite marcar rutas como 100% funcionales.
 
-> Corte documental: 2026-11-08 · Estado: **fase 03 v2.1 aprobada para el Sprint 1 de vendedor (DEC‑019)**; las fichas del catálogo (API‑011..015, API‑019..022) siguen pendientes de aprobación propia.
+> Corte documental: 2026-11-25 · Estado: **fase 03 v2.1 aprobada para el Sprint 1 de vendedor (DEC‑019)**; las fichas del catálogo (API‑011..015, API‑019..022) siguen pendientes de aprobación propia.
 > Alcance funcional provisional aprobado por el equipo: **solo API-001 a API-042**, con método y ruta exactamente como en `material/UTTT_GO_Punto_4_Especificacion_API_v1.xlsx` («Inventario endpoints»), más las **fichas nuevas aprobadas** que constan como tales en este documento (`GET /api/v1/sellers/me`, DEC‑019.d; `GET /api/v1/sellers/me/orders`, D‑ORD‑05). Una ampliación requiere nuevas fichas y aprobación del equipo.
 
-## Conciliación de estado 2026-11-24
+## Conciliación de estado 2026-11-25
 
-La siguiente matriz corrige el inventario de API-003, API-005 y API-039. «Producción» solo se marca cuando existe evidencia fechada en el repositorio; el reporte de una PR desplegada queda registrado como contexto, no como prueba suficiente.
+La siguiente matriz corrige el inventario de API-003, API-005 y API-039. «Producción» solo se marca cuando existe evidencia fechada; el CD #241 y `/health` 200 acreditan despliegue y salud, pero no sustituyen las pruebas productivas de cada flujo.
 
 | Código | Local | Producción | Spec aprobada | Estado y evidencia faltante |
 |---|---|---|---|---|
@@ -15,7 +16,15 @@ La siguiente matriz corrige el inventario de API-003, API-005 y API-039. «Produ
 | API-005 `DELETE /api/v1/users/me` | Sí: implementación y suites `DeleteOwnAccount*Tests` fusionadas | No acreditado individualmente; falta SHA/run y evidencia de `204`/`409`/revocación | Parcialmente aprobada por DEC-003 el 2026-11-22; falta cierre técnico de consistencia compartida | Reporte del propietario: desplegado junto con PR #46. Falta evidencia externa verificable |
 | API-039 `GET /api/v1/admin/users` | Sí: implementación y suites `AdminUsers*Tests` fusionadas | Parcial: sonda `401` del 2026-11-08; falta `200` autenticado y auditoría persistente | Sí, con AC-005 pendiente | `docs/qa-api-039.md` y la sonda de `PROJECT_STATUS.md` acreditan acceso sin sesión, no el flujo admin completo |
 
-El orden de trabajo vigente es FCM primero. Reviews, Favorites y Chat quedan después de la entrega y no son requisitos prioritarios del documento del proyecto sin aprobación expresa.
+El orden de trabajo vigente mantiene FCM como prioridad operativa. Reviews ya están implementadas y expuestas en el OpenAPI productivo, pero requieren pruebas productivas de flujo para cerrar su evidencia. Favorites y Chat quedan después de la entrega y no son requisitos prioritarios del documento del proyecto sin aprobación expresa.
+
+### FCM y Reviews en producción
+
+| Área | Código y pruebas | Evidencia productiva 2026-11-25 | Estado |
+|---|---|---|---|
+| FCM device tokens | `src/UTTTGO.Api/Modules/Notifications/Controllers/NotificationsController.cs`; `NotificationEndpointTests`, `NotificationSecurityTests` | OpenAPI productivo expone `POST` y `DELETE /api/v1/notifications/device-tokens` | Implementado y desplegado; falta probar registro, baja y envío FCM con cuentas de prueba; no 100% |
+| Reviews | `src/UTTTGO.Api/Modules/Reviews/Controllers/ReviewsController.cs`; `ReviewsEndpointTests`, `ReviewSecurityTests` | OpenAPI productivo expone API-030 y API-031 | Implementado y desplegado; falta probar creación/listado en producción; no 100% |
+| Health | `src/UTTTGO.Api/Shared/Health/HealthController.cs`; `HealthEndpointTests`, `HealthSecurityTests` | `GET /health` 200 con MongoDB y Redis saludables | Sonda productiva verificada; no es una ficha funcional |
 
 ## Criterios de lectura
 
