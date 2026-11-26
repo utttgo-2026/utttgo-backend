@@ -122,11 +122,13 @@ credenciales.
 
 ## Robustecimiento API-005 2026-11-26
 
-- Rama aislada `feature/api-005-account-deletion-hardening`, creada desde `origin/main` actualizado.
+- Rama aislada `feat/account-deletion-hardening`, creada desde `origin/main` actualizado.
+- Se añadió `accountDeletionOperations` en Identity con prueba hasheada, estado y etapa persistentes; el worker recupera `Pending` y `RequiresIntervention` después de reinicios.
+- `DELETE /api/v1/users/me` exige `X-Account-Deletion-Id`, `X-Account-Deletion-Proof` y `auth_time` reciente (máximo 15 minutos). La consulta segura es `GET /api/v1/users/me/deletion/{operationId}` y no requiere reutilizar el JWT revocado.
 - `DELETE /api/v1/users/me` conserva el bloqueo previo de pedidos `Pending`, `Accepted`, `InPreparation` y `Ready`; después de la anonimización CAS pausa publicaciones del vendedor y persiste una orden idempotente `ownerUserId + deletedUserRef` en `mediaDeletionOutbox`.
 - Media es dueño de la purga: el dispatcher elimina objetos staging/approved de S3 con lease/reintentos y marca `mediaAssets` como `Deleted`. No se guardan access tokens ni credenciales.
 - Supabase global logout continúa best-effort con el token actual; Redis revoca localmente de forma fail-closed. No se usa `service_role` ni Admin API.
-- Build Release, formato y suites con Docker activo: Unit 409, Integration 308, Security 172. Falta una prueba dedicada del dispatcher con doble/emulador S3 y evidencia externa no productiva.
+- Build Release y Unit 415 pasan. Docker Engine quedó disponible después de la primera ejecución; Integration 308 y Security 172 pasan con Docker activo. Falta una prueba dedicada del dispatcher S3.
 - El dispatcher conserva lease y reintentos sin límite fijo para evitar abandonar purgas tras ocho intentos; esto no sustituye una transacción compartida entre Identity, Orders y Catalog.
 
 - Rama `feature/auth-logout` aprobada el 2026-11-21: implementa API-003 con `204`, `401` para token ausente/inválido/expirado/revocado, `503` si Redis falla, `jti` obligatorio, `SET NX` y TTL hasta `exp`; no implementa refresh token.

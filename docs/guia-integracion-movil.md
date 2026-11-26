@@ -1,6 +1,6 @@
 # Guía de integración móvil · UTTT-GO Backend
 
-> Versión 1.6 · 2026-11-26 · Contrato vigente de la API pública desplegada (incluye logout API-003 y robustecimiento de eliminación API-005).
+> Versión 1.7 · 2026-11-26 · Contrato de integración para eliminación segura; la eliminación real permanece deshabilitada hasta cerrar staging.
 > Fuente canónica: `docs/constitution.md` y `docs/traceability.md`; el documento OpenAPI vivo es `GET /openapi/v1.json` y la consola de lectura es `GET /openapi`.
 
 ## 1. Entorno y transporte
@@ -603,7 +603,7 @@ Códigos en uso: `VALIDATION_ERROR`, `UNAUTHORIZED`, `INVALID_CREDENTIALS`, `INS
 
 ### Eliminación de cuenta
 
-`DELETE /api/v1/users/me` no recibe body ni identificadores. El backend obtiene la identidad del Bearer validado. Ante `204`, el móvil debe borrar el access token, refresh token y datos locales de sesión. La operación devuelve `409 ACTIVE_ORDER_CONFLICT` si existen pedidos `Pending`, `Accepted`, `InPreparation` o `Ready`; devuelve `401 UNAUTHORIZED` para una sesión inválida/revocada y `503 ACCOUNT_DELETION_UNAVAILABLE` si Mongo, Orders, Catalog, Media o Redis no están disponibles. La cuenta local pasa a `Deleted`, se anonimiza con `deletedUserRef`, se pausan inmediatamente los productos del vendedor y se persiste una orden idempotente para que Media elimine sus assets de S3 mediante outbox/reintentos. El logout global de Supabase es best-effort y no cambia el `204` local; no se persiste ningún access token para reintentar ese proveedor.
+`DELETE /api/v1/users/me` no recibe body ni `userId`. Antes de solicitarlo, el móvil debe generar y conservar durante el flujo un UUID `X-Account-Deletion-Id` y un secreto aleatorio `X-Account-Deletion-Proof` de al menos 32 caracteres. El backend exige además un JWT cuya reautenticación (`auth_time`) tenga como máximo 15 minutos. Ante `204`, el móvil debe borrar el access token, refresh token, la prueba de operación y los datos locales de sesión. La operación devuelve `409 ACTIVE_ORDER_CONFLICT` si existen pedidos `Pending`, `Accepted`, `InPreparation` o `Ready`; devuelve `401 UNAUTHORIZED` para una sesión inválida, revocada o sin reautenticación reciente; `400 ACCOUNT_DELETION_HEADERS_REQUIRED` si faltan los headers; y `503 ACCOUNT_DELETION_UNAVAILABLE` si una dependencia no está disponible. El `503` puede incluir `operationId`, `state` y `stage`; la app debe conservar los headers y consultar `GET /api/v1/users/me/deletion/{operationId}` enviando el mismo `X-Account-Deletion-Proof`, sin repetir la acción destructiva a ciegas. La consulta no requiere el JWT revocado y solo devuelve estado, etapa y código técnico sin PII. La cuenta local pasa a `Deleted`, se anonimiza con `deletedUserRef`, se pausan inmediatamente los productos del vendedor y se persiste una operación para que un worker continúe las etapas pendientes. `Completed` significa que la purga de Media fue encolada; la eliminación física de fotos de S3 continúa mediante su outbox y reintentos. El logout global de Supabase es best-effort y no se persiste ningún access token.
 
 ## 9. Límites conocidos (no confundir con fallos)
 
@@ -613,6 +613,7 @@ Códigos en uso: `VALIDATION_ERROR`, `UNAUTHORIZED`, `INVALID_CREDENTIALS`, `INS
 - **Sin "mis productos" ni filtro `sellerId`**: el catálogo no permite filtrar por vendedor; está decidido para la siguiente iteración (el índice `sellerId_status` ya existe).
 - **Sin eliminación de producto**: no hay DELETE.
 - La eliminación de cuenta anonimiza el perfil local, pausa los productos del vendedor, encola la purga de assets S3, revoca el token actual y elimina los device tokens. No elimina pedidos compartidos ni reseñas o mensajes: Orders, Reviews y Chat deben aplicar sus propias políticas de anonimización/retención usando `deletedUserRef`.
+- La eliminación real debe permanecer deshabilitada en móvil hasta validar en staging los fallos de MongoDB, Redis, Catalog, Supabase y S3. No mostrar éxito por una confirmación visual; el único éxito final de la solicitud es HTTP `204`.
 - **Sin chat ni notificaciones push**: pertenecen a fases posteriores; la Fase 2 de pedidos no emite push (D-ORD-15).
 - **Sin `role` en `/orders/mine`**: siempre `buyer`. El listado del vendedor es la ruta separada `GET /sellers/me/orders` (§5.8) con `role: "seller"`.
 - **Sin reseñas tras la entrega**: la entrega no genera automáticamente una reseña (fase 06 pendiente).

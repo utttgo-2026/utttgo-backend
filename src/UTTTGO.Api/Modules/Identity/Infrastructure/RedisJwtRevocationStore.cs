@@ -10,8 +10,11 @@ public sealed class RedisJwtRevocationStore(IConnectionMultiplexer connection) :
         cancellationToken.ThrowIfCancellationRequested();
         try
         {
-            return await connection.GetDatabase().StringSetAsync(
-                $"revoked:{jti}", "1", ttl, When.NotExists);
+            var database = connection.GetDatabase();
+            var key = $"revoked:{jti}";
+            if (await database.KeyExistsAsync(key)) return true;
+            return await database.StringSetAsync(key, "1", ttl, When.NotExists) ||
+                await database.KeyExistsAsync(key);
         }
         catch (RedisException)
         {

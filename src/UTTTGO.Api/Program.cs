@@ -141,11 +141,18 @@ builder.Services.AddScoped<ILoginService, LoginService>();
 builder.Services.AddScoped<ISessionService, SessionService>();
 builder.Services.AddScoped<IOwnProfileService, OwnProfileService>();
 builder.Services.AddScoped<IUpdateOwnProfileService, UpdateOwnProfileService>();
-builder.Services.AddScoped<IDeleteOwnAccountService, DeleteOwnAccountService>();
+builder.Services.AddScoped<DeleteOwnAccountService>();
+builder.Services.AddScoped<IDeleteOwnAccountService>(services =>
+    services.GetRequiredService<DeleteOwnAccountService>());
+builder.Services.AddScoped<IAccountDeletionRecovery>(services =>
+    services.GetRequiredService<DeleteOwnAccountService>());
 builder.Services.AddScoped<IValidator<UpdateOwnProfileRequest>, UpdateOwnProfileRequestValidator>();
 builder.Services.AddSingleton<MongoUserRepositories>();
 builder.Services.AddSingleton<IProfileUpdateRepository>(services => services.GetRequiredService<MongoUserRepositories>());
 builder.Services.AddSingleton<IAccountDeletionRepository>(services => services.GetRequiredService<MongoUserRepositories>());
+builder.Services.AddSingleton<IAccountDeletionOperationStore, MongoAccountDeletionOperationStore>();
+builder.Services.AddHostedService<AccountDeletionOperationIndexes>();
+builder.Services.AddHostedService<AccountDeletionRecoveryWorker>();
 builder.Services.AddSingleton<IApprovedAvatarReadAccess, UnconfiguredApprovedAvatarReadAccess>();
 builder.Services.AddScoped<IAuthRateLimitGate, RedisAuthRateLimitGate>();
 builder.Services.AddScoped<ISupabaseRegistration>(services => services.GetRequiredService<SupabaseAuthClient>());

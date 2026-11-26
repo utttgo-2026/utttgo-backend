@@ -29,6 +29,8 @@ public sealed class DeleteOwnAccountSecurityTests
         using var factory = Factory(DeleteOwnAccountOutcome.Unauthorized);
         using var client = factory.CreateClient();
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "revoked-token");
+        client.DefaultRequestHeaders.Add("X-Account-Deletion-Id", "11111111-1111-1111-1111-111111111111");
+        client.DefaultRequestHeaders.Add("X-Account-Deletion-Proof", "01234567890123456789012345678901");
 
         using var response = await client.DeleteAsync("/api/v1/users/me");
 
@@ -41,6 +43,8 @@ public sealed class DeleteOwnAccountSecurityTests
         using var factory = Factory(DeleteOwnAccountOutcome.Unavailable);
         using var client = factory.CreateClient();
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "valid-token");
+        client.DefaultRequestHeaders.Add("X-Account-Deletion-Id", "11111111-1111-1111-1111-111111111111");
+        client.DefaultRequestHeaders.Add("X-Account-Deletion-Proof", "01234567890123456789012345678901");
 
         using var response = await client.DeleteAsync("/api/v1/users/me");
 
@@ -57,7 +61,8 @@ public sealed class DeleteOwnAccountSecurityTests
 
     private sealed class Stub(DeleteOwnAccountOutcome outcome) : IDeleteOwnAccountService
     {
-        public Task<DeleteOwnAccountResult> DeleteAsync(string token, CancellationToken cancellationToken) =>
+        public Task<DeleteOwnAccountResult> DeleteAsync(string token, string operationId, string proof,
+            CancellationToken cancellationToken) =>
             Task.FromResult(new DeleteOwnAccountResult(outcome));
     }
 }
