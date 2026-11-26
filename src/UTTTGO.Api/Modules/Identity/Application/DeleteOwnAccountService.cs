@@ -3,6 +3,7 @@ using Microsoft.IdentityModel.Tokens;
 using UTTTGO.Api.Modules.Catalog.Application;
 using UTTTGO.Api.Modules.Orders.Application;
 using UTTTGO.Api.Modules.Notifications.Application;
+using UTTTGO.Api.Modules.Media.Application;
 
 namespace UTTTGO.Api.Modules.Identity.Application;
 
@@ -16,7 +17,8 @@ public sealed record DeleteOwnAccountResult(DeleteOwnAccountOutcome Outcome);
 
 public sealed class DeleteOwnAccountService(IAuthenticatedLocalProfileReader profiles,
     IAccountDeletionRepository accounts, IActiveOrderReader activeOrders, IAccountDeletionCatalog catalog,
-    IJwtRevocationStore revocations, ISupabaseSessionRevoker supabase, IDeviceTokenStore? deviceTokens = null) : IDeleteOwnAccountService
+    IJwtRevocationStore revocations, ISupabaseSessionRevoker supabase,
+    IAccountDeletionMedia media, IDeviceTokenStore? deviceTokens = null) : IDeleteOwnAccountService
 {
     public async Task<DeleteOwnAccountResult> DeleteAsync(string token, CancellationToken cancellationToken)
     {
@@ -60,6 +62,8 @@ public sealed class DeleteOwnAccountService(IAuthenticatedLocalProfileReader pro
 
             if (!string.IsNullOrWhiteSpace(profile.SellerId))
                 await catalog.PauseProductsForSellerAsync(profile.SellerId, cancellationToken);
+
+            await media.EnqueueOwnerDeletionAsync(profile.Id, deletedRef, cancellationToken);
 
             var ttl = DateTimeOffset.FromUnixTimeSeconds(expiration) - DateTimeOffset.UtcNow;
             if (ttl <= TimeSpan.Zero) return new(DeleteOwnAccountOutcome.Unauthorized);

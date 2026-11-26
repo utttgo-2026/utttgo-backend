@@ -228,6 +228,9 @@ builder.Services.AddSingleton<S3MediaObjectStore>();
 builder.Services.AddSingleton<IMediaObjectStore>(services => services.GetRequiredService<S3MediaObjectStore>());
 builder.Services.AddSingleton<IMediaImageSource>(services => services.GetRequiredService<S3MediaObjectStore>());
 builder.Services.AddSingleton<IMediaRepository, MongoMediaRepository>();
+builder.Services.AddSingleton<IAccountDeletionMedia, MongoMediaDeletionOutbox>();
+builder.Services.AddHostedService<MediaDeletionMongoIndexes>();
+builder.Services.AddHostedService<MediaDeletionOutboxDispatcher>();
 builder.Services.Configure<RekognitionModerationOptions>(options =>
 {
     if (float.TryParse(builder.Configuration["MODERATION_MIN_CONFIDENCE"], out var confidence))

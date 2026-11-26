@@ -34,8 +34,9 @@ public sealed class AdminUsersSecurityTests
         response.StatusCode.Should().Be(expected);
         reader.Calls.Should().Be(0);
         audit.Calls.Should().Be(0);
-        (await response.Content.ReadAsStringAsync()).Should().Contain("correlationId")
-            .And.NotContain("private@uttt.edu.mx").And.NotContain("jwt");
+        var body = await response.Content.ReadAsStringAsync();
+        body.Should().Contain("correlationId").And.NotContain("private@uttt.edu.mx");
+        if (token is not null) body.Should().NotContain(token);
     }
 
     [Fact]
