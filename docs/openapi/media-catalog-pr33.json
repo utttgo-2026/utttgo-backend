@@ -3303,6 +3303,28 @@
         }
       }
     },
+    "/api/v1/users/me/deletion/{operationId}": {
+      "get": {
+        "tags": [
+          "AccountDeletion"
+        ],
+        "parameters": [
+          {
+            "name": "operationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/api/v1/auth/register": {
       "post": {
         "tags": [

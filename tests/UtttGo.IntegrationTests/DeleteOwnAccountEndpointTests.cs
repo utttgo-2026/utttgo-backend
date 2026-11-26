@@ -52,6 +52,8 @@ public sealed class DeleteOwnAccountEndpointTests
     {
         var client = factory.CreateClient();
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "test-token");
+        client.DefaultRequestHeaders.Add("X-Account-Deletion-Id", "11111111-1111-1111-1111-111111111111");
+        client.DefaultRequestHeaders.Add("X-Account-Deletion-Proof", "01234567890123456789012345678901");
         return client;
     }
 
@@ -65,7 +67,8 @@ public sealed class DeleteOwnAccountEndpointTests
 
     private sealed class Stub(DeleteOwnAccountOutcome outcome) : IDeleteOwnAccountService
     {
-        public Task<DeleteOwnAccountResult> DeleteAsync(string token, CancellationToken cancellationToken) =>
+        public Task<DeleteOwnAccountResult> DeleteAsync(string token, string operationId, string proof,
+            CancellationToken cancellationToken) =>
             Task.FromResult(new DeleteOwnAccountResult(outcome));
     }
 }
