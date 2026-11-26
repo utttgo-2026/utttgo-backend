@@ -190,3 +190,20 @@ credenciales.
 - Evidencia: unitarias `397/397`, seguridad `164/164`, integración `300/300`
   excluyendo el snapshot OpenAPI. El snapshot completo aún difiere por un
   contrato previo de `PATCH /api/v1/users/me` (`200`/`204`), no por FCM.
+
+## Cierre operativo y smoke 2026-11-26
+
+- `origin/main` contiene PR #69 (Chat API-037/API-038) y PR #70 (API-005).
+  El estado de producción se refrenda como **Activo**: `GET /health` `200 OK`
+  con MongoDB y Redis `Healthy`.
+- El inventario de entrega integrado comprende Auth, Perfil/Vendedor,
+  Productos/Catálogo, Media S3/Rekognition, Pedidos, Reviews API-030/031,
+  Suspensión API-040, Eliminación resiliente API-005 y Chat API-037/API-038.
+- `scripts/smoke-prod.ps1` quedó limitado a login, `me`, catálogo, health y GET
+  no mutante de `device-tokens`. Solo imprime nombre, código HTTP y tiempo; sus
+  credenciales se leen de variables de entorno y no se ejecuta sin autorización
+  y cuentas de prueba.
+- Auditoría de secretos: no hubo referencias a `JWT_SECRET` ni
+  `SUPABASE_JWT_SECRET` en `infra/ssm/` o `scripts/`. Los placeholders dummy de
+  DAST/fuzz fueron retirados de `.github/workflows/ci-1.yml`; no se imprimieron
+  valores sensibles.

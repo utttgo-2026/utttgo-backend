@@ -240,7 +240,6 @@ jobs:
       MONGODB_DATABASE: utttgo
       SUPABASE_URL: https://example.supabase.co
       SUPABASE_ANON_KEY: ci-dummy-anon-key
-      SUPABASE_JWT_SECRET: <JWT_DE_PRUEBA_AQUI>
       SUPABASE_JWT_ISSUER: https://example.supabase.co
       SUPABASE_JWT_AUDIENCE: authenticated
       S3_BUCKET_IMAGES: utttgo-ci-dummy
@@ -253,7 +252,6 @@ jobs:
           MONGODB_DATABASE: utttgo
           SUPABASE_URL: https://example.supabase.co
           SUPABASE_ANON_KEY: ci-dummy-anon-key
-          SUPABASE_JWT_SECRET: <JWT_DE_PRUEBA_AQUI>
           SUPABASE_JWT_ISSUER: https://example.supabase.co
           SUPABASE_JWT_AUDIENCE: authenticated
           S3_BUCKET_IMAGES: utttgo-ci-dummy
@@ -301,7 +299,6 @@ jobs:
       MONGODB_DATABASE: utttgo
       SUPABASE_URL: https://example.supabase.co
       SUPABASE_ANON_KEY: ci-dummy-anon-key
-      SUPABASE_JWT_SECRET: <JWT_DE_PRUEBA_AQUI>
       SUPABASE_JWT_ISSUER: https://example.supabase.co
       SUPABASE_JWT_AUDIENCE: authenticated
       S3_BUCKET_IMAGES: utttgo-ci-dummy
@@ -314,7 +311,6 @@ jobs:
           MONGODB_DATABASE: utttgo
           SUPABASE_URL: https://example.supabase.co
           SUPABASE_ANON_KEY: ci-dummy-anon-key
-          SUPABASE_JWT_SECRET: <JWT_DE_PRUEBA_AQUI>
           SUPABASE_JWT_ISSUER: https://example.supabase.co
           SUPABASE_JWT_AUDIENCE: authenticated
           S3_BUCKET_IMAGES: utttgo-ci-dummy
