@@ -9,7 +9,7 @@ credenciales.
 |---|---|---|
 | DEC-001 | Compra directa individual; no existe carrito. | Resuelta |
 | DEC-002 | El vendedor se autoactiva al completar su perfil de negocio. | Resuelta |
-| DEC-003 | API-005: baja lógica `Deleted`, anonimización de perfil, `deletedUserRef` UUID aleatorio, bloqueo por pedidos activos, productos de vendedor no disponibles, revocación Redis y logout global de Supabase best-effort; no se usa service_role/Admin API. | Aprobada por el propietario 2026-11-22; evidencia de contenedores pendiente |
+| DEC-003 | API-005: baja lógica `Deleted`, anonimización de perfil, `deletedUserRef` UUID aleatorio, bloqueo por pedidos activos, productos de vendedor no disponibles, outbox de purga Media/S3, revocación Redis y logout global de Supabase best-effort; no se usa service_role/Admin API. | Aprobada por el propietario 2026-11-22; suites locales verdes; evidencia S3 y consistencia compartida pendientes |
 | DEC-005 | El chat se conserva durante el pedido y se purga dentro de tres días. | Diseño técnico pendiente |
 | DEC-008 | El único pago es efectivo presencial. | Resuelta |
 | DEC-009 | No existen menús ni horarios. | Resuelta |
@@ -113,8 +113,21 @@ credenciales.
 
 - DEC-003/API-005 fue aprobada el 2026-11-22. Los contratos mínimos `IActiveOrderReader`
   e `IAccountDeletionCatalog` ya están publicados; Reviews y mensajes quedan para
-  sus fichas dueñas. Falta ejecutar integración/seguridad con Mongo y Redis aislados
-  cuando Docker esté disponible.
+  sus fichas dueñas. API-005 persiste `mediaDeletionOutbox` mediante
+  `IAccountDeletionMedia`; Media elimina el `ObjectKey` registrado y las rutas
+  conocidas de staging/approved en S3, marca assets `Deleted` y reintenta también
+  registros `Failed`. Las suites locales ya se ejecutaron con Docker disponible;
+  falta una prueba dedicada del dispatcher contra doble/emulador S3 y evidencia
+  externa no productiva.
+
+## Robustecimiento API-005 2026-11-26
+
+- Rama aislada `feature/api-005-account-deletion-hardening`, creada desde `origin/main` actualizado.
+- `DELETE /api/v1/users/me` conserva el bloqueo previo de pedidos `Pending`, `Accepted`, `InPreparation` y `Ready`; después de la anonimización CAS pausa publicaciones del vendedor y persiste una orden idempotente `ownerUserId + deletedUserRef` en `mediaDeletionOutbox`.
+- Media es dueño de la purga: el dispatcher elimina objetos staging/approved de S3 con lease/reintentos y marca `mediaAssets` como `Deleted`. No se guardan access tokens ni credenciales.
+- Supabase global logout continúa best-effort con el token actual; Redis revoca localmente de forma fail-closed. No se usa `service_role` ni Admin API.
+- Build Release, formato y suites con Docker activo: Unit 409, Integration 308, Security 172. Falta una prueba dedicada del dispatcher con doble/emulador S3 y evidencia externa no productiva.
+- El dispatcher conserva lease y reintentos sin límite fijo para evitar abandonar purgas tras ocho intentos; esto no sustituye una transacción compartida entre Identity, Orders y Catalog.
 
 - Rama `feature/auth-logout` aprobada el 2026-11-21: implementa API-003 con `204`, `401` para token ausente/inválido/expirado/revocado, `503` si Redis falla, `jti` obligatorio, `SET NX` y TTL hasta `exp`; no implementa refresh token.
 

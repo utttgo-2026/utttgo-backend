@@ -12,7 +12,7 @@ Constitucion -> spec.md -> este plan -> task.md. Identity coordina la baja y sol
 
 ## Secuencia tecnica aprobada
 
-Validar sujeto con el gate existente -> consultar pedidos activos -> anonimizar `users` con CAS -> pausar productos mediante Catalog -> revocar la sesion actual en Redis -> solicitar logout global de Supabase best-effort -> responder `204`. `deletedUserRef` es un UUID aleatorio estable. Mongo o Redis fallidos devuelven `503` fail-closed.
+Validar sujeto con el gate existente -> consultar pedidos activos -> anonimizar `users` con CAS -> pausar productos mediante Catalog -> persistir outbox de Media -> revocar la sesion actual en Redis -> solicitar logout global de Supabase best-effort -> responder `204`. `deletedUserRef` es un UUID aleatorio estable. Mongo, Redis, Catalog o la persistencia del outbox fallidos devuelven `503` fail-closed; la purga S3 posterior usa reintentos con lease.
 
 ## Componentes
 
@@ -20,8 +20,9 @@ Validar sujeto con el gate existente -> consultar pedidos activos -> anonimizar 
 |---|---|---|
 | Controller | `Modules/Identity/Controllers/UsersController.cs` | DELETE `/api/v1/users/me`. |
 | Application | `Modules/Identity/Application/DeleteOwnAccountService.cs` | Orquestacion e idempotencia. |
-| Infrastructure | `MongoUserRepositories.cs`, `SupabaseAuthClient.cs` | Persistencia de Identity y logout best-effort. |
-| Contratos | `IActiveOrderReader`, `IAccountDeletionCatalog` | Consultar pedidos y pausar productos sin cruzar colecciones. |
+| Infrastructure | `MongoUserRepositories.cs`, `SupabaseSessionRevoker.cs` | Persistencia de Identity, revocacion local y logout best-effort. |
+| Contratos | `IActiveOrderReader`, `IAccountDeletionCatalog`, `IAccountDeletionMedia` | Consultar pedidos, pausar productos y registrar purga de assets sin cruzar colecciones. |
+| Media outbox | `MediaDeletionOutbox.cs`, `MongoMediaRepository.cs`, `S3MediaObjectStore.cs` | Eliminar staging/approved en S3 y marcar `mediaAssets` como `Deleted` de forma reintentable. |
 
 ## Dependencias y gates
 
@@ -29,7 +30,7 @@ Validar sujeto con el gate existente -> consultar pedidos activos -> anonimizar 
 |---|---|---|
 | DEC-003 y AC-007 | DEV-API005-01/02/03/04 | Decision aprobada; contratos minimos publicados. |
 | Orders, Catalog y API-003 | DEV-API005-03/04 | Interfaces y pruebas aisladas. |
-| Docker/Testcontainers | DEV-API005-04 | Integracion y seguridad completas pendientes. |
+| Docker/Testcontainers | DEV-API005-04 | Integracion, seguridad y dispatcher de Media con dependencias aisladas. |
 
 ## Archivos
 
@@ -38,6 +39,7 @@ Validar sujeto con el gate existente -> consultar pedidos activos -> anonimizar 
 | `UsersController.cs` | Accion DELETE autenticada. |
 | `DeleteOwnAccountService.cs` | Coordinacion de baja. |
 | `MongoUserRepositories.cs` | Anonimizacion CAS. |
+| `Modules/Media/Infrastructure/MediaDeletionOutbox.cs` | Outbox idempotente, lease, reintentos y purga de assets. |
 | `tests/UtttGo.UnitTests/DeleteOwnAccountServiceTests.cs` | Orden, fallos e idempotencia. |
 | `tests/UtttGo.IntegrationTests/` y `tests/UtttGo.SecurityTests/` | Evidencia con Mongo/Redis aislados cuando Docker este disponible. |
 
@@ -47,4 +49,4 @@ El cliente no decide identidad, estado ni referencias. El error usa el contrato 
 
 ## Criterios de cierre
 
-DEL-01..04 con pruebas de comprador, vendedor, pedidos activos, repeticion y fallos parciales; build, formato y las tres suites verdes. La evidencia de contenedores sigue pendiente.
+DEL-01..06 con pruebas de comprador, vendedor, pedidos activos, repeticion, outbox y fallos parciales; build, formato y las tres suites verdes. La revocacion global Supabase sigue best-effort sin persistir tokens; la evidencia S3 requiere doble/emulador no productivo.

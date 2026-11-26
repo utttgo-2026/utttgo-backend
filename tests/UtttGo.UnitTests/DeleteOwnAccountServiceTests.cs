@@ -2,6 +2,8 @@ using System.IdentityModel.Tokens.Jwt;
 using FluentAssertions;
 using UTTTGO.Api.Modules.Catalog.Application;
 using UTTTGO.Api.Modules.Identity.Application;
+using UTTTGO.Api.Modules.Media.Application;
+using UTTTGO.Api.Modules.Notifications.Application;
 using UTTTGO.Api.Modules.Orders.Application;
 using Xunit;
 
@@ -21,6 +23,8 @@ public sealed class DeleteOwnAccountServiceTests
         result.Outcome.Should().Be(DeleteOwnAccountOutcome.Success);
         dependencies.Accounts.Calls.Should().Be(1);
         dependencies.Catalog.SellerId.Should().Be("seller-1");
+        dependencies.Media.OwnerUserId.Should().Be("user-1");
+        dependencies.Media.DeletionReference.Should().NotBeNullOrWhiteSpace();
         dependencies.Revocations.Calls.Should().Be(1);
         dependencies.Supabase.Calls.Should().Be(1);
         dependencies.Accounts.DeletedRef.Should().NotBeNullOrWhiteSpace();
@@ -48,6 +52,7 @@ public sealed class DeleteOwnAccountServiceTests
         result.Outcome.Should().Be(DeleteOwnAccountOutcome.Success);
         dependencies.Accounts.Calls.Should().Be(0);
         dependencies.Catalog.SellerId.Should().Be("seller-1");
+        dependencies.Media.OwnerUserId.Should().Be("user-1");
         dependencies.Revocations.Calls.Should().Be(1);
     }
 
@@ -59,6 +64,36 @@ public sealed class DeleteOwnAccountServiceTests
 
         result.Outcome.Should().Be(DeleteOwnAccountOutcome.Unavailable);
         dependencies.Supabase.Calls.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task DeviceTokenCleanupFailureDoesNotBlockSuccessfulDeletion()
+    {
+        var dependencies = new Dependencies(Active)
+        {
+            DeviceTokens = new DeviceTokens { ThrowOnRemove = true }
+        };
+
+        var result = await dependencies.Service.DeleteAsync(Token(), default);
+
+        result.Outcome.Should().Be(DeleteOwnAccountOutcome.Success);
+        dependencies.DeviceTokens.Calls.Should().Be(1);
+        dependencies.Supabase.Calls.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task SupabaseLogoutFailureDoesNotBlockSuccessfulDeletion()
+    {
+        var dependencies = new Dependencies(Active)
+        {
+            Supabase = new Supabase { ThrowOnRevoke = true }
+        };
+
+        var result = await dependencies.Service.DeleteAsync(Token(), default);
+
+        result.Outcome.Should().Be(DeleteOwnAccountOutcome.Success);
+        dependencies.Revocations.Calls.Should().Be(1);
+        dependencies.Supabase.Calls.Should().Be(1);
     }
 
     [Fact]
@@ -87,8 +122,11 @@ public sealed class DeleteOwnAccountServiceTests
         public ActiveOrders Orders { get; set; } = new(false);
         public Catalog Catalog { get; } = new();
         public Revocations Revocations { get; set; } = new(true);
-        public Supabase Supabase { get; } = new();
-        public DeleteOwnAccountService Service => new(Profiles, Accounts, Orders, Catalog, Revocations, Supabase);
+        public Supabase Supabase { get; set; } = new();
+        public Media Media { get; } = new();
+        public DeviceTokens DeviceTokens { get; set; } = new();
+        public DeleteOwnAccountService Service => new(Profiles, Accounts, Orders, Catalog, Revocations, Supabase,
+            Media, DeviceTokens);
     }
 
     private sealed class Profiles(AuthenticatedLocalProfileOutcome outcome, LocalLoginProfile? profile = null)
@@ -142,9 +180,46 @@ public sealed class DeleteOwnAccountServiceTests
     private sealed class Supabase : ISupabaseSessionRevoker
     {
         public int Calls { get; private set; }
+        public bool ThrowOnRevoke { get; init; }
         public Task RevokeGloballyAsync(string accessToken, CancellationToken cancellationToken)
         {
             Calls++;
+            if (ThrowOnRevoke) throw new InvalidOperationException("test logout failure");
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class DeviceTokens : IDeviceTokenStore
+    {
+        public int Calls { get; private set; }
+        public bool ThrowOnRemove { get; init; }
+        public Task<DeviceTokenRegistration> UpsertAsync(string userId, string token, string installationId,
+            string platform, string? appVersion, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<bool> RemoveAsync(string userId, string deviceTokenId, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+        public Task RemoveForUserAsync(string userId, CancellationToken cancellationToken)
+        {
+            Calls++;
+            if (ThrowOnRemove) throw new InvalidOperationException("test token cleanup failure");
+            return Task.CompletedTask;
+        }
+        public Task<IReadOnlyList<DeviceTokenRecord>> FindActiveAsync(string userId,
+            CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task DeactivateAsync(string deviceTokenId, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+        public string Unprotect(string protectedToken) => throw new NotSupportedException();
+    }
+
+    private sealed class Media : IAccountDeletionMedia
+    {
+        public string? OwnerUserId { get; private set; }
+        public string? DeletionReference { get; private set; }
+
+        public Task EnqueueOwnerDeletionAsync(string ownerUserId, string deletionReference,
+            CancellationToken cancellationToken)
+        {
+            OwnerUserId = ownerUserId;
+            DeletionReference = deletionReference;
             return Task.CompletedTask;
         }
     }

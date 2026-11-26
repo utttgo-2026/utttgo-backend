@@ -281,6 +281,8 @@ public sealed class MediaServiceTests
         }
         public Task<MediaRecord?> FindAsync(string id, CancellationToken ct) =>
             Task.FromResult(Value?.Id == id ? Value : null);
+        public Task<IReadOnlyList<MediaRecord>> ListForOwnerAsync(string owner, CancellationToken ct) =>
+            Task.FromResult<IReadOnlyList<MediaRecord>>(Value?.OwnerUserId == owner ? [Value] : []);
         public Task<bool> TransitionAsync(string id, string owner, long version, string from, string to,
             CancellationToken ct)
         {
@@ -297,6 +299,13 @@ public sealed class MediaServiceTests
                 !PromoteSucceeds)
                 return Task.FromResult(false);
             Value = Value with { ObjectKey = targetKey, Version = version + 1 };
+            return Task.FromResult(true);
+        }
+        public Task<bool> MarkDeletedAsync(string id, string owner, long version, CancellationToken ct)
+        {
+            if (Value is null || Value.Id != id || Value.OwnerUserId != owner || Value.Version != version)
+                return Task.FromResult(false);
+            Value = Value with { Status = MediaStatus.Deleted, Version = version + 1 };
             return Task.FromResult(true);
         }
     }

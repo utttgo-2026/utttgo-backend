@@ -51,6 +51,14 @@ public sealed class MongoMediaRepository(MongoStore store) : IMediaRepository
             doc.Size, doc.Status, doc.CreatedAt, doc.ConfirmedAt, doc.Version, doc.ModerationStartedAt);
     }
 
+    public async Task<IReadOnlyList<MediaRecord>> ListForOwnerAsync(string ownerUserId,
+        CancellationToken cancellationToken)
+    {
+        var documents = await Assets.Find(asset => asset.OwnerUserId == ownerUserId &&
+            asset.Status != MediaStatus.Deleted).ToListAsync(cancellationToken);
+        return documents.Select(ToRecord).ToArray();
+    }
+
     public async Task<bool> TransitionAsync(string id, string ownerId, long version, string from,
         string to, CancellationToken cancellationToken)
     {
@@ -79,4 +87,22 @@ public sealed class MongoMediaRepository(MongoStore store) : IMediaRepository
         var update = Builders<MediaDocument>.Update.Set(x => x.ObjectKey, targetKey).Inc(x => x.Version, 1);
         return (await Assets.UpdateOneAsync(filter, update, cancellationToken: cancellationToken)).ModifiedCount == 1;
     }
+
+    public async Task<bool> MarkDeletedAsync(string id, string ownerId, long expectedVersion,
+        CancellationToken cancellationToken)
+    {
+        if (!ObjectId.TryParse(id, out var objectId)) return false;
+        var filter = Builders<MediaDocument>.Filter.Eq(x => x.Id, objectId) &
+            Builders<MediaDocument>.Filter.Eq(x => x.OwnerUserId, ownerId) &
+            Builders<MediaDocument>.Filter.Eq(x => x.Version, expectedVersion) &
+            Builders<MediaDocument>.Filter.Ne(x => x.Status, MediaStatus.Deleted);
+        var update = Builders<MediaDocument>.Update.Set(x => x.Status, MediaStatus.Deleted)
+            .Inc(x => x.Version, 1).Set(x => x.ConfirmedAt, DateTime.UtcNow);
+        return (await Assets.UpdateOneAsync(filter, update, cancellationToken: cancellationToken)).ModifiedCount == 1;
+    }
+
+    private static MediaRecord ToRecord(MediaDocument document) =>
+        new(document.Id.ToString(), document.OwnerUserId, document.ObjectKey, document.MimeType,
+            document.Size, document.Status, document.CreatedAt, document.ConfirmedAt, document.Version,
+            document.ModerationStartedAt);
 }

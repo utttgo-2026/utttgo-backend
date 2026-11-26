@@ -7,6 +7,7 @@ public static class MediaStatus
     public const string Approved = "Approved";
     public const string Rejected = "Rejected";
     public const string ProcessingFailed = "ProcessingFailed";
+    public const string Deleted = "Deleted";
 }
 
 public sealed record MediaRecord(string Id, string OwnerUserId, string ObjectKey, string MimeType,
@@ -17,9 +18,12 @@ public interface IMediaRepository
 {
     Task AddAsync(MediaRecord record, CancellationToken cancellationToken);
     Task<MediaRecord?> FindAsync(string id, CancellationToken cancellationToken);
+    Task<IReadOnlyList<MediaRecord>> ListForOwnerAsync(string ownerUserId, CancellationToken cancellationToken);
     Task<bool> TransitionAsync(string id, string ownerId, long version, string from, string to,
         CancellationToken cancellationToken);
     Task<bool> PromoteAsync(string id, string ownerId, long version, string sourceKey, string targetKey,
+        CancellationToken cancellationToken);
+    Task<bool> MarkDeletedAsync(string id, string ownerId, long expectedVersion,
         CancellationToken cancellationToken);
 }
 
@@ -42,6 +46,12 @@ public interface IProductMediaAccess
         return results.Where(item => item.Url is not null)
             .ToDictionary(item => item.Id, item => item.Url!, StringComparer.Ordinal);
     }
+}
+
+public interface IAccountDeletionMedia
+{
+    Task EnqueueOwnerDeletionAsync(string ownerUserId, string deletionReference,
+        CancellationToken cancellationToken);
 }
 
 public interface IMediaObjectStore
