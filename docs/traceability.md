@@ -6,6 +6,14 @@
 > Corte documental: 2026-11-25 · Estado: **fase 03 v2.1 aprobada para el Sprint 1 de vendedor (DEC‑019)**; las fichas del catálogo (API‑011..015, API‑019..022) siguen pendientes de aprobación propia.
 > Alcance funcional provisional aprobado por el equipo: **solo API-001 a API-042**, con método y ruta exactamente como en `material/UTTT_GO_Punto_4_Especificacion_API_v1.xlsx` («Inventario endpoints»), más las **fichas nuevas aprobadas** que constan como tales en este documento (`GET /api/v1/sellers/me`, DEC‑019.d; `GET /api/v1/sellers/me/orders`, D‑ORD‑05). Una ampliación requiere nuevas fichas y aprobación del equipo.
 
+## Reconciliación final de entrega (2026-11-26)
+
+La producción se considera **Activa** según la evidencia operativa vigente: `GET /health` devuelve `200 OK` y reporta `MongoDB: Healthy` y `Redis: Healthy`. El inventario integrado y desplegado comprende Auth, Perfil/Vendedor, Productos/Catálogo, Media con S3/Rekognition, Pedidos, Reviews API-030/031, Suspensión API-040, eliminación resiliente API-005 y Chat API-037/038.
+
+La rama de cierre incorpora `scripts/smoke-prod.ps1`, que usa variables de entorno y ejecuta login, perfil propio, catálogo, health y una sonda GET no mutante para `device-tokens`. La salida se limita a código HTTP y tiempo de respuesta; no registra tokens, cuerpos ni credenciales. La ejecución contra producción requiere autorización y cuentas de prueba externas al repositorio.
+
+Auditoría de configuración: no existen referencias a `JWT_SECRET`/`SUPABASE_JWT_SECRET` en `infra/ssm/` ni `scripts/`; los placeholders dummy equivalentes fueron retirados de los jobs DAST y fuzz de `.github/workflows/ci-1.yml`. Las variables de runtime permanecen documentadas sin valores.
+
 ## Conciliación de estado 2026-11-25
 
 La siguiente matriz corrige el inventario de API-003, API-005 y API-039. «Producción» solo se marca cuando existe evidencia fechada; el CD #241 y `/health` 200 acreditan despliegue y salud, pero no sustituyen las pruebas productivas de cada flujo.
@@ -13,7 +21,7 @@ La siguiente matriz corrige el inventario de API-003, API-005 y API-039. «Produ
 | Código | Local | Producción | Spec aprobada | Estado y evidencia faltante |
 |---|---|---|---|---|
 | API-003 `POST /api/v1/auth/logout` | Sí: implementación y suites `Logout*Tests` fusionadas | No acreditado individualmente; falta SHA/run y prueba con cuenta de prueba | Parcial: constitución y fase 02; refresh, repetición y coordinación móvil pendientes | Reporte del propietario: PR #39 y fix de Supabase. Falta evidencia productiva reproducible sin tokens |
-| API-005 `DELETE /api/v1/users/me` | Sí: implementación y suites `DeleteOwnAccount*Tests` fusionadas | No acreditado individualmente; falta SHA/run y evidencia de `204`/`409`/revocación | Parcialmente aprobada por DEC-003 el 2026-11-22; falta cierre técnico de consistencia compartida | Reporte del propietario: desplegado junto con PR #46. Falta evidencia externa verificable |
+| API-005 `DELETE /api/v1/users/me` | Sí: implementación y suites `DeleteOwnAccount*Tests` fusionadas | Activo en el despliegue vigente; `/health` 200. Smoke autenticado sanitizado pendiente de ejecución controlada | Parcialmente aprobada por DEC-003 el 2026-11-22; consistencia compartida queda como seguimiento | PR #70 fusionado; outbox `mediaDeletionOutbox`, revocación Redis y pausa de publicaciones implementados |
 | API-039 `GET /api/v1/admin/users` | Sí: implementación y suites `AdminUsers*Tests` fusionadas | Parcial: sonda `401` del 2026-11-08; falta `200` autenticado y auditoría persistente | Sí, con AC-005 pendiente | `docs/qa-api-039.md` y la sonda de `PROJECT_STATUS.md` acreditan acceso sin sesión, no el flujo admin completo |
 
 El orden de trabajo vigente mantiene FCM como prioridad operativa. Reviews ya están implementadas y expuestas en el OpenAPI productivo, pero requieren pruebas productivas de flujo para cerrar su evidencia. Favorites y Chat quedan después de la entrega y no son requisitos prioritarios del documento del proyecto sin aprobación expresa.
@@ -101,15 +109,15 @@ El orden de trabajo vigente mantiene FCM como prioridad operativa. Reviews ya es
 | API-034 | `DELETE /api/v1/favorites/{productId}` | `phase-09-favorites` · — | **Pendiente de fase**. |
 | API-035 | `GET /api/v1/notifications` | `phase-06-notifications-push` · — | **Pendiente de fase**; paginación y alcance al usuario propio. |
 | API-036 | `PATCH /api/v1/notifications/{notificationId}/read` | `phase-06-notifications-push` · — | **Pendiente de fase**; autorización por recurso. |
-| API-037 | `GET /api/v1/orders/{orderId}/messages` | A `spec.md` v0.2 → `plan.md` → `task.md` | **Implementada en rama `feature/chat-api-037-038`**: lectura paginada `page/pageSize` máximo 50, autorización por contrato de Orders, `404 ORDER_NOT_FOUND` para terceros y persistencia Mongo `orderMessages`; purga posterior pendiente. |
-| API-038 | `POST /api/v1/orders/{orderId}/messages` | A `spec.md` v0.2 → `plan.md` → `task.md` | **Implementada en rama `feature/chat-api-037-038`**: `{content}` sanitizado 1..1000, `Idempotency-Key`, `404` para terceros y `409 ORDER_CHAT_CLOSED` en terminal; purga/SignalR/FCM posteriores pendientes. |
+| API-037 | `GET /api/v1/orders/{orderId}/messages` | A `spec.md` v0.2 → `plan.md` → `task.md` | **Fusionada y desplegada por PR #69**: lectura paginada `page/pageSize` máximo 50, autorización por contrato de Orders, `404 ORDER_NOT_FOUND` para terceros y persistencia Mongo `orderMessages`; purga posterior pendiente. |
+| API-038 | `POST /api/v1/orders/{orderId}/messages` | A `spec.md` v0.2 → `plan.md` → `task.md` | **Fusionada y desplegada por PR #69**: `{content}` sanitizado 1..1000, `Idempotency-Key`, `404` para terceros y `409 ORDER_CHAT_CLOSED` en terminal; purga/SignalR/FCM posteriores pendientes. |
 
 ## Administración (API-039 a API-042)
 
 | ID | Método y ruta del Excel | Spec / requisito | Plan · task · test previstos | Diagnóstico y acción |
 |---|---|---|---|---|
 | API-039 | `GET /api/v1/admin/users` | A RF-07, HU-AUTH-08; ficha Excel API-039/HU-049/UI-043 verificadas | A `api-039-list-users/spec.md` § 3 → `plan.md` → `task.md` (TASK-039-001..021); **T-AUTH-07 es suspensión, no listado** | **Fusionada y con evidencia productiva parcial**: la sonda del 2026-11-08 acredita `401` sin token y el código usa Mongo/Redis reales; falta una prueba productiva autenticada `200`, evidencia de filtros/paginación en producción y cierre de `UnconfiguredAdminUsersAudit` (AC-005, API-040). |
-| API-040 | `PATCH /api/v1/admin/users/{userId}/status` | A RF-08/09/14 | A `plan.md` § 4; tarea futura por definir; T-AUTH-13 | Suspensión/reactivación única; no confundir con eliminación API-005. |
+| API-040 | `PATCH /api/v1/admin/users/{userId}/status` | A RF-08/09/14 | A `plan.md` § 4; implementación y pruebas fusionadas | **Fusionada y desplegada**: suspensión/reactivación única, revocación de sesiones y pausa de publicaciones; no confundir con eliminación API-005. |
 | API-041 | `PATCH /api/v1/admin/reviews/{reviewId}/moderation` | `phase-10-admin-moderation` · — | — | **Pendiente de fase**; Admin debe consumir contrato del dueño de Reviews, no su colección directamente. |
 | API-042 | `GET /api/v1/admin/reports/weekly` | `phase-10-admin-moderation` · — | — | **Pendiente de fase**; alcance de métricas y autorización por definir. |
 

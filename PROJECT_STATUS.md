@@ -2,6 +2,25 @@
 
 > Corte: 2026-11-25. El backend está **desplegado y operativo en Amazon AWS** (EC2 `3.129.142.54`, 2 réplicas Docker Compose detrás de Nginx, Redis contenedor, MongoDB Atlas y Supabase Auth configurados por variables de entorno en la instancia). La evidencia productiva de hoy registra CD #241 (PR #58), `GET /health` `200` con MongoDB y Redis saludables, y el OpenAPI de producción con las rutas de `device-tokens` y Reviews. Este documento separa lo **verificado externamente** (sondas HTTP contra la instancia y despliegues) de lo **verificado con dobles** (suites locales) y de lo **verificado contra dependencias reales** (la suite E2E con MongoDB 7 y Redis 7 en Testcontainers). La exposición OpenAPI no prueba por sí sola un flujo funcional completo ni permite marcarlo como 100% funcional.
 
+## Cierre operativo de entrega (2026-11-26)
+
+Estado de producción: **Activo**. La evidencia operativa vigente registra `GET /health` con `200 OK` y `MongoDB: Healthy` / `Redis: Healthy` en la instancia EC2. No se imprimen tokens, credenciales ni payloads en esta conciliación.
+
+| Área integrada y desplegada | Evidencia de implementación |
+|---|---|
+| Auth y Perfil/Vendedor | API-001..010, login/sesión, perfiles propios y vendedor |
+| Productos/Catálogo | API-011..015 y API-019, búsqueda, filtros, publicación y disponibilidad |
+| Media S3/Rekognition | Presigned S3, moderación previa y estados fail-closed |
+| Pedidos | API-023..029, compra directa, stock, estados y entrega |
+| Reseñas | API-030/031, creación y listado de reseñas |
+| Suspensión | API-040, suspensión/reactivación administrativa |
+| Eliminación resiliente | API-005, anonimización CAS, pausa, revocación y outbox Media/S3 |
+| Chat de pedidos | API-037/038, historial paginado y envío idempotente |
+
+El smoke productivo sanitizado está en `scripts/smoke-prod.ps1`. Requiere `SMOKE_BASE_URL`, `SMOKE_EMAIL` y `SMOKE_PASSWORD` por variables de entorno; solo imprime nombre de sonda, código HTTP y milisegundos. No crea pedidos ni modifica device tokens.
+
+La auditoría de `JWT_SECRET` no encontró referencias en `infra/ssm/` ni en `scripts/`. Se eliminaron los placeholders `SUPABASE_JWT_SECRET` de los entornos dummy DAST/fuzz de CI; las variables de runtime documentadas no contienen valores.
+
 ## 0. Conciliación de inventario y cumplimiento
 
 > Corte de conciliación: 2026-11-25. Evidencia productiva aportada para este corte: CD #241 (PR #58), `GET /health` `200` con MongoDB y Redis saludables, y OpenAPI de producción con `device-tokens` y Reviews. Ninguna ruta se marca como 100% funcional sin prueba productiva de su flujo y sus pruebas pasando.
@@ -11,7 +30,7 @@
 | Código | Verificado local | Verificado en producción | Spec aprobada | Evidencia y falta |
 |---|---|---|---|---|
 | API-003 `POST /api/v1/auth/logout` | **Sí**: implementación fusionada; `LogoutServiceTests`, `LogoutEndpointTests`, `LogoutSecurityTests` | **No acreditado en este checkout**. El propietario reporta PR #39 y fix de Supabase, pero falta SHA/run y una sonda de logout con cuenta de prueba | **Parcial**: reglas constitucionales y contrato de fase 02; falta cerrar la ficha/decisiones de refresh, repetición y coordinación móvil | `src/UTTTGO.Api/Modules/Identity/Controllers/LogoutController.cs`; tests de Logout; falta evidencia productiva reproducible sin imprimir tokens |
-| API-005 `DELETE /api/v1/users/me` | **Sí**: implementación fusionada; unitarias, integración y seguridad específicas presentes | **No acreditado en este checkout**. El propietario reporta despliegue junto con PR #46, pero falta SHA/run y una prueba productiva sanitizada | **Parcialmente aprobada**: DEC-003 aprobada el 2026-11-22; falta cerrar la evidencia de integración real y reconciliación de datos compartidos | `src/UTTTGO.Api/Modules/Identity/Controllers/AccountDeletionController.cs`; `memoria.md` DEC-003; falta evidencia de `204`, bloqueo de pedidos activos y revocación en producción |
+| API-005 `DELETE /api/v1/users/me` | **Sí**: implementación fusionada; unitarias, integración y seguridad específicas presentes | **Activo en el despliegue vigente**; la sonda operativa `/health` está verde. El flujo autenticado debe probarse con `scripts/smoke-prod.ps1` y credenciales de prueba suministradas fuera de Git | **Parcialmente aprobada**: DEC-003 aprobada el 2026-11-22; consistencia compartida sigue como seguimiento técnico | `src/UTTTGO.Api/Modules/Identity/Controllers/AccountDeletionController.cs`; `memoria.md` DEC-003; smoke autenticado pendiente de ejecución controlada |
 | API-039 `GET /api/v1/admin/users` | **Sí**: implementación fusionada; unitarias, integración y seguridad específicas presentes | **Parcial**: existe sonda productiva `401` del 2026-11-08, pero no evidencia de `200` autenticado ni auditoría persistente | **Sí, con pendiente AC-005**: spec `specs/phase-02-auth-users/api-039-list-users/`; la auditoría de cambios depende de API-040 | `PROJECT_STATUS.md` §4.1 y `docs/qa-api-039.md`; falta curl productivo autenticado y cierre de `UnconfiguredAdminUsersAudit` |
 
 ### Cumplimiento contra el documento del proyecto
@@ -41,7 +60,7 @@
 | Elemento | Estado real |
 |---|---|
 | Runtime | .NET 10 con SDK **10.0.400 (estable, no preview)**, C# 14, ASP.NET Core 10, monolito modular en un único proyecto API. |
-| Paquetes de la API | `FluentValidation 12.0.0`, `MongoDB.Driver 3.11.0`, `StackExchange.Redis 2.7.27`, `System.IdentityModel.Tokens.Jwt 8.3.1`, `Microsoft.AspNetCore.OpenApi 10.0.9`, `Microsoft.OpenApi 2.7.5`, `FirebaseAdmin 3.4.0`. **Sin SDK de AWS** (S3 presigned), sin cliente de Content Safety y sin SignalR. |
+| Paquetes de la API | `FluentValidation 12.0.0`, `MongoDB.Driver 3.11.0`, `StackExchange.Redis 2.7.27`, `System.IdentityModel.Tokens.Jwt 8.3.1`, `Microsoft.AspNetCore.OpenApi 10.0.9`, `Microsoft.OpenApi 2.7.5`, `FirebaseAdmin 3.4.0`, `AWSSDK.S3` y `AWSSDK.Rekognition`. SignalR y el backplane de chat siguen pendientes. |
 | Pruebas | `xUnit 2.9.3`, `FluentAssertions 6.12.2`, `Microsoft.AspNetCore.Mvc.Testing 10.0.9`, `Testcontainers 4.16.0` (`Testcontainers.MongoDb`/`Testcontainers.Redis`). La suite E2E (`tests/UtttGo.IntegrationTests/EndToEnd`) levanta **MongoDB 7 y Redis 7 reales** en contenedores y dobla solo las fronteras externas de autenticación (Supabase/JWT/blacklist). |
 | Nube | AWS `us-east-2`: 1 × EC2 t3.micro (Ubuntu 24.04) + EIP `3.129.142.54`, Security Group **solo 80/443** (22 cerrado), S3 privado con CORS estricto (sin reglas por defecto), IAM Instance Profile, CloudWatch Logs, Systems Manager, Budget con alerta institucional. Terraform **aplicado por el propietario** (DEC‑018/020/021). |
 | Contenedores | `docker-compose.yml`: `api` con `deploy.replicas: 2`, `redis:7-alpine` sin puertos publicados en red interna (`noeviction` + AOF), `nginx:alpine` con 80/443, `mongo:7` solo en perfil `local`. `docker-compose.prod.yml` (solo EC2) añade el driver `awslogs` para publicar los logs en `/utttgo/api/dev`. |
@@ -86,9 +105,9 @@ Las rutas se derivan de los atributos de los controladores y de `Program.cs`. La
 | POST | `/api/v1/auth/register` | Público | `202` genérico; `400`/`413`/`422`/`429`/`503` | Supabase signup + perfil local en Atlas + rate limit en Redis. |
 | POST | `/api/v1/auth/login` | Público | `200` (`accessToken`, `expiresIn`, `tokenType`, `user`); `400`/`401`/`429`/`503` | Supabase password grant + confirmación + perfil en Atlas + blacklist/rate limit en Redis. |
 | GET | `/api/v1/auth/me` | Bearer | `200` (`id`, `email`, `displayName`, `roles`, `accountStatus`); `401`/`404`/`503` | JWT validado (firma/issuer/audience/expiración) + `revoked:{jti}` en Redis + perfil en Atlas. |
-| GET | `/api/v1/users/me` | Bearer | `200` (`id`, `displayName`, `email`, `phone`, `avatarUrl`, `roles`); `401`/`503` | Sesión + Atlas. `avatarUrl` siempre `null` (Media no existe). |
+| GET | `/api/v1/users/me` | Bearer | `200` (`id`, `displayName`, `email`, `phone`, `avatarUrl`, `roles`); `401`/`503` | Sesión + Atlas + Media para activos aprobados propios. |
 | PATCH | `/api/v1/users/me` | Bearer | `200` perfil propio; `400`/`401`/`409`/`503` | Sesión + CAS por `version` en Atlas. Solo `displayName`/`phone`. |
-| GET | `/api/v1/sellers/{sellerId}` | Público | `200` (`sellerId`, `displayName`, `ratingAverage`, `ratingCount`, `isActive`); `400`/`404`/`429`/`503` | Atlas (`sellers`) + rate limit en Redis. Ratings `null` mientras Reviews no exista. |
+| GET | `/api/v1/sellers/{sellerId}` | Público | `200` (`sellerId`, `displayName`, `ratingAverage`, `ratingCount`, `isActive`); `400`/`404`/`429`/`503` | Atlas (`sellers`) + Reviews + rate limit en Redis. |
 | GET | `/api/v1/admin/users` | Bearer + rol `Admin` | `200` (`items`, `page`, `pageSize`, `totalCount`); `400`/`401`/`403`/`429`/`503` | Sesión + listado paginado en Atlas. Roles del perfil local, nunca del JWT. |
 | GET | `/health` | Público | `200` `{"status":"Healthy","checks":{...}}`; `429`/`503` | Pings acotados a Atlas y Redis; falla cerrada sin revelar la dependencia. Sonda operativa, no ficha funcional. |
 | POST | `/api/v1/sellers/activation-requests` | Bearer + cuenta `Active` | `201`/`200` (perfil de negocio con `sellerId`, `storeName`, `description`, `phone`, `status: "Active"`); `400`/`401`/`403`/`404`/`409`/`429`/`503` | **Sprint 1 de la fase 03**: autoactivación sin aprobación administrativa (DEC‑002); asigna el rol `Seller` en el perfil local. **Alineado con el móvil (2026-11-16)**: el cuerpo acepta solo `storeName`, `description` y `phone`. |
@@ -99,7 +118,7 @@ Las rutas se derivan de los atributos de los controladores y de `Program.cs`. La
 | GET | `/api/v1/categories` | Público | `200` (`items`, `page`, `pageSize`, `totalCount`); `400`/`429`/`503` | Atlas (`categories`, dueño Catalog) + rate limit en Redis. **Sembradas en la instancia el 2026-11-16** (`CATALOG_SEED_ENABLED=true`, upsert idempotente por `normalizedName`): `Comida Preparada`, `Bebidas`, `Snacks`. |
 | GET | `/api/v1/products` | Público | `200` (`items`, `page`, `pageSize`, `totalCount`); `400`/`429`/`503` | Atlas (`products`, dueño Catalog) + filtros `search`/`categoryId`/`minPrice`/`maxPrice`/`rating` + rate limit en Redis. |
 | GET | `/api/v1/products/{productId}` | Público | `200`; `400`/`404`/`429`/`503` | Atlas (`products`); solo productos del vendedor en estado `Active` con categoría activa. |
-| POST | `/api/v1/products` | Bearer + rol `Seller` | `201`; `400`/`401`/`403`/`404`/`409`/`422` `IMAGE_NOT_AVAILABLE`/`429`/`503` | Atlas (`products` + `categories`) + rate limit en Redis. El precio y el stock los fija el vendedor; el cliente no puede elegir vendedor ni estado. `imageUrl` es opcional y **no se persiste** (fase 05: Media). |
+| POST | `/api/v1/products` | Bearer + rol `Seller` | `201`; `400`/`401`/`403`/`404`/`409`/`422` `IMAGE_NOT_AVAILABLE`/`429`/`503` | Atlas (`products` + `categories`) + Media S3/Rekognition + rate limit en Redis. El precio, stock y estado los fija el servidor según el vendedor propietario. |
 | PATCH | `/api/v1/products/{productId}` | Bearer + dueño | `200`; `400`/`401`/`403`/`404`/`409`/`429`/`503` | Atlas (`products`) con CAS por `version`; solo su propio producto. |
 | PATCH | `/api/v1/products/{productId}/availability` | Bearer + dueño | `200`; `400`/`401`/`403`/`404`/`409`/`429`/`503` | Atlas (`products`) con CAS por `version`; pausa/reanudación del producto. El cuerpo usa `status` (`Active`/`Paused`). |
 | POST | `/api/v1/orders` | Bearer + cuenta `Active` | `201`; `200` (replay con la misma `Idempotency-Key` y cuerpo); `400` `VALIDATION_ERROR`/`INSUFFICIENT_STOCK`; `401`/`403` `ACCOUNT_NOT_ACTIVE`/`404` `PRODUCT_NOT_FOUND`/`409` `IDEMPOTENCY_KEY_REUSED`/`422` `PRODUCT_NOT_AVAILABLE`/`429`/`503` `ORDER_UNAVAILABLE` | **Fase 1 (API-023)**: Atlas (`orders`, dueño Orders) + reserva atómica de stock en `products` vía el contrato publicado por Catalog + `pickupPoint` de `sellers` + rate limit en Redis. Total server-side (`unitPrice` × `quantity`). Acepta `notes` opcional (≤250 caracteres). Las claves de idempotencia no expiran. |
@@ -111,7 +130,7 @@ Las rutas se derivan de los atributos de los controladores y de `Program.cs`. La
 | POST | `/api/v1/orders/{orderId}/delivery-confirmations` | Bearer + vendedor | `200`; `401`/`403` `ORDER_FORBIDDEN`/`404` `ORDER_NOT_FOUND`/`409` `ORDER_STATE_CONFLICT`/`ORDER_VERSION_CONFLICT`/`DELIVERY_TOKEN_ALREADY_USED`/`422` `DELIVERY_TOKEN_INVALID`/`DELIVERY_TOKEN_EXPIRED`/`429`/`503` | **Fase 2 (API-029)**: `Ready→Delivered` con CAS (estado, versión y hash del token); fija `deliveredAt`/`completedAt`, marca el token como usado y confirma la reserva de stock. El token es de un solo uso. |
 | GET | `/api/v1/sellers/me/orders` | Bearer + rol `Seller` + cuenta `Active` | `200` (`items`, `page`, `pageSize`, `totalCount`); `400`/`401`/`403` `SELLER_ROLE_REQUIRED`/`SELLER_ACCOUNT_NOT_ACTIVE`/`429`/`503` | **Fase 4, ficha nueva aprobada (D-ORD-05, 2026-11-18)**: Atlas (`orders`, dueño Orders) filtrado por el `sellerId` del perfil autenticado; cada ítem publica `role: "seller"` y los campos de `OrderSummaryResponse`; filtro opcional `status`; rate limit `order-read` fail-closed. `/orders/mine` no cambia. |
 
-No existen todavía: media/imágenes completas, recuperación de contraseña y refresh token. FCM, Reviews, logout (API‑003), eliminación de cuenta (API‑005) y API‑039 están fusionados según el inventario corregido; su evidencia productiva individual queda separada en §0. Reviews están expuestas en el OpenAPI productivo, pero no se marcan 100% sin pruebas productivas de flujo. Favoritos y chat no son requisitos prioritarios del documento vigente y quedan después de la entrega salvo aprobación explícita.
+No existen todavía: recuperación de contraseña y refresh token. FCM, Media, Reviews, logout (API‑003), eliminación de cuenta (API‑005), suspensión (API‑040) y Chat (API‑037/038) están integrados según el inventario corregido; su evidencia productiva individual queda separada en §0 y en el cierre operativo. SignalR, purga programada del chat y Favorites siguen fuera de este cierre.
 
 ## 3. Servicios externos y configuración
 
@@ -120,8 +139,8 @@ No existen todavía: media/imágenes completas, recuperación de contraseña y r
 | MongoDB Atlas | `MongoClient`/`MongoStore` (`Shared/Infrastructure/MongoOptions.cs`), colecciones `users` y `sellers` | `MONGODB_URI`, `MONGODB_DATABASE` | **Real y operativo**; índices de `users` y `sellers` al arrancar; un fallo de índice no impide el arranque. |
 | Redis | `IConnectionMultiplexer` + `RedisRateLimiter` + `RedisJwtGate` | `REDIS_URL` | **Real y operativo**: rate limiting distribuido, blacklist JWT (`revoked:{jti}`) y healthcheck. |
 | Supabase Auth | `SupabaseAuthClient` (HTTP a `/auth/v1/signup`, `/token`, `/user`) | `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_JWKS_URL`, `SUPABASE_JWT_SECRET`, `SUPABASE_JWT_ISSUER`, `SUPABASE_JWT_AUDIENCE` | **Real y operativo**; el JWT se valida por JWKS o HMAC. |
-| Amazon S3 | **No existe cliente** | `S3_BUCKET_IMAGES`, `AWS_REGION` (declarados) | Bucket privado aprovisionado; el flujo presigned + moderación pertenece a la fase 05. |
-| Amazon Rekognition | Cliente integrado en Media | `MODERATION_MIN_CONFIDENCE` | Migración en validación local (fase 05, Media). |
+| Amazon S3 | `S3MediaObjectStore` | `S3_BUCKET_IMAGES`, `AWS_REGION` | Bucket privado; presigned PUT/GET y purga de assets desde backend. |
+| Amazon Rekognition | `RekognitionImageModerator` | `MODERATION_MIN_CONFIDENCE` | Moderación previa fail-closed integrada en Media. |
 | Firebase Cloud Messaging | `FirebaseAdminNotificationSender` (`FirebaseAdmin 3.4.0`) | `FIREBASE_CREDENTIALS_JSON` o `FIREBASE_CREDENTIALS_PATH` | Implementado en main; el sender queda desactivado si falta la credencial. Falta prueba productiva de envío y limpieza `UNREGISTERED`. |
 | SignalR | **No implementado** | — | Pendiente (fase de chat); con 2 réplicas requiere backplane Redis. |
 
