@@ -61,7 +61,7 @@ public sealed class DeleteOwnAccountEndpointTests
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var body = await response.Content.ReadAsStringAsync();
-        body.Should().Contain("mediaPurge").And.Contain("Completed");
+        body.Should().Contain("mediaPurgeStatus").And.Contain("Completed");
     }
 
     private static HttpClient AuthorizedClient(WebApplicationFactory<Program> factory)
