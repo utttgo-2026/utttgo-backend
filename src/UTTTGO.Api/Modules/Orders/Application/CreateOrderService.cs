@@ -31,6 +31,7 @@ public sealed record CreateOrderResult(CreateOrderOutcome Outcome, OrderResponse
 public sealed class CreateOrderService(IAuthenticatedLocalProfileReader profiles,
     IOrdersRateLimitGate rateLimit, ICatalogOrderProducts catalog, ISellerOrderProfiles sellers,
     IOrderRepository orders, IOrderAuditWriter audit, ILogger<CreateOrderService> logger,
+    IAccountDeletionFence deletionFence,
     INotificationEventPublisher? notifications = null)
     : ICreateOrderService
 {
@@ -65,73 +66,96 @@ public sealed class CreateOrderService(IAuthenticatedLocalProfileReader profiles
             if (product is null) return new(CreateOrderOutcome.ProductNotFound);
             if (!product.IsPublished) return new(CreateOrderOutcome.ProductNotAvailable);
 
-            var seller = await sellers.FindOrderProfileAsync(product.SellerId, cancellationToken);
-            if (seller is null || !string.Equals(seller.Status, "Active", StringComparison.Ordinal))
-                return new(CreateOrderOutcome.ProductNotAvailable);
-
-            var quantity = request.Quantity!.Value;
-            var reservationId = Guid.NewGuid().ToString("N");
-            var reservation = await catalog.ReserveStockAsync(product.ProductId, quantity, reservationId,
-                cancellationToken);
-            if (reservation == CatalogStockOutcome.InsufficientStock)
-                return new(CreateOrderOutcome.InsufficientStock);
-            if (reservation != CatalogStockOutcome.Reserved)
-                return new(CreateOrderOutcome.ProductNotAvailable);
-
-            var now = DateTime.UtcNow;
-            var notes = string.IsNullOrWhiteSpace(request.Notes) ? null : request.Notes.Trim();
-            var record = new OrderRecord(string.Empty, profile.Id, product.SellerId, product.ProductId,
-                product.Name, quantity, product.UnitPrice, product.UnitPrice * quantity, OrderStatus.CurrencyMxn,
-                OrderStatus.PaymentMethodCash, OrderStatus.Pending, reservationId, seller.PickupPoint,
-                null, null, 0, key, now, now, notes);
-
-            OrderRecord created;
-            try
+            var lease = await deletionFence.AcquireAsync(
+                [$"user:{profile.Id}", $"seller:{product.SellerId}"], cancellationToken);
+            if (lease is null) return new(CreateOrderOutcome.Unavailable);
+            await using (lease)
             {
-                created = await orders.CreateAsync(record, cancellationToken);
-            }
-            catch (DuplicateOrderException)
-            {
-                await catalog.ReleaseStockAsync(product.ProductId, quantity, reservationId, cancellationToken);
-                var winner = key is null
-                    ? null
-                    : await orders.FindByIdempotencyKeyAsync(profile.Id, key, cancellationToken);
-                return winner is null
-                    ? new(CreateOrderOutcome.Unavailable)
-                    : IsSameRequest(winner, request)
-                        ? new(CreateOrderOutcome.AlreadyCreated, ToResponse(winner))
-                        : new(CreateOrderOutcome.IdempotencyKeyReused);
-            }
-            catch (Exception) when (!cancellationToken.IsCancellationRequested)
-            {
-                await catalog.ReleaseStockAsync(product.ProductId, quantity, reservationId, cancellationToken);
-                return new(CreateOrderOutcome.Unavailable);
-            }
+                // Re-read both participants under the shared fence. A deletion that won
+                // the race changes the buyer status or pauses the seller's product.
+                authorization = await profiles.ReadAsync(token, cancellationToken);
+                if (authorization.Outcome is AuthenticatedLocalProfileOutcome.Unauthorized
+                    or AuthenticatedLocalProfileOutcome.ProfileMissing)
+                    return new(CreateOrderOutcome.Unauthorized);
+                if (authorization.Outcome != AuthenticatedLocalProfileOutcome.Success
+                    || authorization.Profile is null)
+                    return new(CreateOrderOutcome.Unavailable);
+                profile = authorization.Profile;
+                if (!string.Equals(profile.AccountStatus, "Active", StringComparison.Ordinal))
+                    return new(CreateOrderOutcome.AccountNotActive);
 
-            try
-            {
-                if (notifications is not null && !string.IsNullOrWhiteSpace(seller.OwnerUserId))
-                    await notifications.PublishAsync("order.created", seller.OwnerUserId, created.OrderId,
-                        created.Status, correlationId,
-                        NotificationEventKeys.For("order.created", created.OrderId, created.Status),
-                        cancellationToken);
-                else if (notifications is not null)
-                    logger.LogWarning("Order notification recipient could not be resolved.");
-            }
-            catch (Exception) when (!cancellationToken.IsCancellationRequested)
-            { logger.LogWarning("Notification outbox could not record order creation {OrderId}.", created.OrderId); }
+                product = await catalog.FindForOrderAsync(request.ProductId!, cancellationToken);
+                if (product is null || !product.IsPublished)
+                    return new(CreateOrderOutcome.ProductNotAvailable);
 
-            try
-            {
-                await audit.WriteAsync(new OrderAuditRecord(created.OrderId, profile.Id, "buyer", "Created",
-                    null, OrderStatus.Pending, correlationId, now), cancellationToken);
-            }
-            catch (Exception) when (!cancellationToken.IsCancellationRequested)
-            {
-                logger.LogError("Order {OrderId} was created without its audit trail.", created.OrderId);
-            }
+                var seller = await sellers.FindOrderProfileAsync(product.SellerId, cancellationToken);
+                if (seller is null || !string.Equals(seller.Status, "Active", StringComparison.Ordinal))
+                    return new(CreateOrderOutcome.ProductNotAvailable);
 
-            return new(CreateOrderOutcome.Created, ToResponse(created));
+                var quantity = request.Quantity!.Value;
+                var reservationId = Guid.NewGuid().ToString("N");
+                var reservation = await catalog.ReserveStockAsync(product.ProductId, quantity, reservationId,
+                    cancellationToken);
+                if (reservation == CatalogStockOutcome.InsufficientStock)
+                    return new(CreateOrderOutcome.InsufficientStock);
+                if (reservation != CatalogStockOutcome.Reserved)
+                    return new(CreateOrderOutcome.ProductNotAvailable);
+
+                var now = DateTime.UtcNow;
+                var notes = string.IsNullOrWhiteSpace(request.Notes) ? null : request.Notes.Trim();
+                var record = new OrderRecord(string.Empty, profile.Id, product.SellerId, product.ProductId,
+                    product.Name, quantity, product.UnitPrice, product.UnitPrice * quantity, OrderStatus.CurrencyMxn,
+                    OrderStatus.PaymentMethodCash, OrderStatus.Pending, reservationId, seller.PickupPoint,
+                    null, null, 0, key, now, now, notes);
+
+                OrderRecord created;
+                try
+                {
+                    created = await orders.CreateAsync(record, cancellationToken);
+                }
+                catch (DuplicateOrderException)
+                {
+                    await catalog.ReleaseStockAsync(product.ProductId, quantity, reservationId, cancellationToken);
+                    var winner = key is null
+                        ? null
+                        : await orders.FindByIdempotencyKeyAsync(profile.Id, key, cancellationToken);
+                    return winner is null
+                        ? new(CreateOrderOutcome.Unavailable)
+                        : IsSameRequest(winner, request)
+                            ? new(CreateOrderOutcome.AlreadyCreated, ToResponse(winner))
+                            : new(CreateOrderOutcome.IdempotencyKeyReused);
+                }
+                catch (Exception) when (!cancellationToken.IsCancellationRequested)
+                {
+                    await catalog.ReleaseStockAsync(product.ProductId, quantity, reservationId, cancellationToken);
+                    return new(CreateOrderOutcome.Unavailable);
+                }
+
+                try
+                {
+                    if (notifications is not null && !string.IsNullOrWhiteSpace(seller.OwnerUserId))
+                        await notifications.PublishAsync("order.created", seller.OwnerUserId, created.OrderId,
+                            created.Status, correlationId,
+                            NotificationEventKeys.For("order.created", created.OrderId, created.Status),
+                            cancellationToken);
+                    else if (notifications is not null)
+                        logger.LogWarning("Order notification recipient could not be resolved.");
+                }
+                catch (Exception) when (!cancellationToken.IsCancellationRequested)
+                { logger.LogWarning("Notification outbox could not record order creation {OrderId}.", created.OrderId); }
+
+                try
+                {
+                    await audit.WriteAsync(new OrderAuditRecord(created.OrderId, profile.Id, "buyer", "Created",
+                        null, OrderStatus.Pending, correlationId, now), cancellationToken);
+                }
+                catch (Exception) when (!cancellationToken.IsCancellationRequested)
+                {
+                    logger.LogError("Order {OrderId} was created without its audit trail.", created.OrderId);
+                }
+
+                return new(CreateOrderOutcome.Created, ToResponse(created));
+            }
         }
         catch (Exception) when (!cancellationToken.IsCancellationRequested)
         {

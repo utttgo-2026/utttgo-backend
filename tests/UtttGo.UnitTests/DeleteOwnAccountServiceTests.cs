@@ -140,6 +140,24 @@ public sealed class DeleteOwnAccountServiceTests
     }
 
     [Fact]
+    public async Task RecoveryContinuesAfterTheOriginalJwtExpires()
+    {
+        var dependencies = new Dependencies(Active) { Revocations = new Revocations(false) };
+        var first = await dependencies.Service.DeleteAsync(Token(), OperationId(), Proof(), default);
+
+        first.Outcome.Should().Be(DeleteOwnAccountOutcome.Unavailable);
+        var expired = first.Operation! with
+        {
+            Expiration = DateTimeOffset.UtcNow.AddMinutes(-1).ToUnixTimeSeconds()
+        };
+        await dependencies.Service.RecoverAsync(expired, default);
+
+        dependencies.Accounts.Calls.Should().Be(1);
+        dependencies.Catalog.SellerId.Should().Be("seller-1");
+        dependencies.Media.OwnerUserId.Should().Be("user-1");
+    }
+
+    [Fact]
     public async Task MissingOrInvalidSessionIsUnauthorized()
     {
         var dependencies = new Dependencies(Active) { Profiles = new Profiles(AuthenticatedLocalProfileOutcome.Unauthorized) };
@@ -174,8 +192,9 @@ public sealed class DeleteOwnAccountServiceTests
         public Media Media { get; set; } = new();
         public DeviceTokens DeviceTokens { get; set; } = new();
         public Operations Operations { get; } = new();
+        public IAccountDeletionFence Fence { get; set; } = new AccountDeletionFenceDouble();
         public DeleteOwnAccountService Service => new(Profiles, Accounts, Orders, Catalog, Revocations, Supabase,
-            Media, Operations, DeviceTokens);
+            Media, Operations, Fence, DeviceTokens);
     }
 
     private sealed class Profiles(AuthenticatedLocalProfileOutcome outcome, LocalLoginProfile? profile = null)

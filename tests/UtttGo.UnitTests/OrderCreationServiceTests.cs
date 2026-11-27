@@ -14,14 +14,33 @@ public sealed class OrderCreationServiceTests
 {
     private static CreateOrderService Service(OrdersRepository orders, CatalogOrderProducts catalog,
         SellerOrderProfiles sellers, OrdersRateLimitGate? gate = null, OrdersAuditWriter? audit = null,
-        AuthenticatedProfileDouble? profile = null, NotificationPublisher? notifications = null) =>
+        AuthenticatedProfileDouble? profile = null, NotificationPublisher? notifications = null,
+        IAccountDeletionFence? deletionFence = null) =>
         new(profile ?? new AuthenticatedProfileDouble { Profile = SellerFixtures.Buyer() },
             gate ?? new OrdersRateLimitGate(), catalog, sellers, orders,
-            audit ?? new OrdersAuditWriter(), NullLogger<CreateOrderService>.Instance, notifications);
+            audit ?? new OrdersAuditWriter(), NullLogger<CreateOrderService>.Instance,
+            deletionFence ?? new AccountDeletionFenceDouble(), notifications);
 
     private static CreateOrderRequest Request(int quantity = 2, string productId = OrderFixtures.ProductId,
         string? notes = null) =>
         new() { ProductId = productId, Quantity = quantity, Notes = notes };
+
+    [Fact]
+    public async Task AccountDeletionWinningTheFenceStopsAStaleBuyerOrder()
+    {
+        var orders = new OrdersRepository();
+        var catalog = new CatalogOrderProducts { Product = OrderFixtures.Product() };
+        var sellers = new SellerOrderProfiles { Profile = OrderFixtures.Seller() };
+        var profile = new AuthenticatedProfileDouble { Profile = SellerFixtures.Buyer() };
+        var fence = new AccountDeletionFenceDouble(() => profile.Profile = SellerFixtures.Buyer("Deleted"));
+
+        var result = await Service(orders, catalog, sellers, profile: profile, deletionFence: fence)
+            .CreateAsync("token", Request(), null, "correlation", CancellationToken.None);
+
+        result.Outcome.Should().Be(CreateOrderOutcome.AccountNotActive);
+        orders.CreateCalls.Should().Be(0);
+        catalog.ReserveCalls.Should().Be(0);
+    }
 
     [Fact]
     public async Task TotalIsCalculatedFromTheProductPriceAndQuantity()

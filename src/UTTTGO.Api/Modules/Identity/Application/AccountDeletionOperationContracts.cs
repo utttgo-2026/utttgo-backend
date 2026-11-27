@@ -61,6 +61,14 @@ public interface IAccountDeletionRecovery
     Task RecoverAsync(AccountDeletionOperation operation, CancellationToken cancellationToken);
 }
 
+// Published coordination contract. Identity and Orders share only this lock contract,
+// never each other's collections.
+public interface IAccountDeletionFence
+{
+    Task<IAsyncDisposable?> AcquireAsync(IEnumerable<string> accountKeys,
+        CancellationToken cancellationToken);
+}
+
 public static class AccountDeletionProof
 {
     public static string Hash(string proof) => Convert.ToHexString(

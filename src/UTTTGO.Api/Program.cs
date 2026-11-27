@@ -151,6 +151,7 @@ builder.Services.AddSingleton<MongoUserRepositories>();
 builder.Services.AddSingleton<IProfileUpdateRepository>(services => services.GetRequiredService<MongoUserRepositories>());
 builder.Services.AddSingleton<IAccountDeletionRepository>(services => services.GetRequiredService<MongoUserRepositories>());
 builder.Services.AddSingleton<IAccountDeletionOperationStore, MongoAccountDeletionOperationStore>();
+builder.Services.AddSingleton<IAccountDeletionFence, RedisAccountDeletionFence>();
 builder.Services.AddHostedService<AccountDeletionOperationIndexes>();
 builder.Services.AddHostedService<AccountDeletionRecoveryWorker>();
 builder.Services.AddSingleton<IApprovedAvatarReadAccess, UnconfiguredApprovedAvatarReadAccess>();
@@ -236,6 +237,8 @@ builder.Services.AddSingleton<IMediaObjectStore>(services => services.GetRequire
 builder.Services.AddSingleton<IMediaImageSource>(services => services.GetRequiredService<S3MediaObjectStore>());
 builder.Services.AddSingleton<IMediaRepository, MongoMediaRepository>();
 builder.Services.AddSingleton<IAccountDeletionMedia, MongoMediaDeletionOutbox>();
+builder.Services.AddSingleton<IMediaDeletionStatusReader>(services =>
+    (IMediaDeletionStatusReader)services.GetRequiredService<IAccountDeletionMedia>());
 builder.Services.AddHostedService<MediaDeletionMongoIndexes>();
 builder.Services.AddHostedService<MediaDeletionOutboxDispatcher>();
 builder.Services.Configure<RekognitionModerationOptions>(options =>

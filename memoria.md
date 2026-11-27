@@ -208,4 +208,20 @@ credenciales.
 - Auditoría de secretos: no hubo referencias a `JWT_SECRET` ni
   `SUPABASE_JWT_SECRET` en `infra/ssm/` o `scripts/`. Los placeholders dummy de
   DAST/fuzz fueron retirados de `.github/workflows/ci-1.yml`; no se imprimieron
-  valores sensibles.
+   valores sensibles.
+
+## Hardening API-005 y concurrencia 2026-11-26
+
+- Rama `fix/account-deletion-race-and-recovery`, basada en `origin/main`
+  `a2674ae`; no hay commit ni PR de esta rama todavía.
+- Se añadió `IAccountDeletionFence` con locks Redis ordenados por usuario y
+  vendedor. API-005 y creación de pedidos revalidan identidad, estado y
+  producto bajo el mismo fence.
+- El fence espera hasta cinco segundos ante contención legítima para no
+  convertir compras concurrentes en `503`; errores de Redis permanecen
+  fail-closed. Los hosts de pruebas de endpoints inyectan un doble determinista.
+- La recuperación de eliminación tolera expiración del JWT original; las
+  operaciones `Processing` stale se pueden reclamar y el estado de purga Media
+  queda consultable.
+- Evidencia local final: build Release sin errores, format correcto, unitarias
+  `417/417`, integración `309/309` y seguridad `172/172`.

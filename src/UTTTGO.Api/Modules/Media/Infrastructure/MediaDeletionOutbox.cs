@@ -7,7 +7,7 @@ using UTTTGO.Api.Shared.Infrastructure;
 
 namespace UTTTGO.Api.Modules.Media.Infrastructure;
 
-public sealed class MongoMediaDeletionOutbox(MongoStore store) : IAccountDeletionMedia
+public sealed class MongoMediaDeletionOutbox(MongoStore store) : IAccountDeletionMedia, IMediaDeletionStatusReader
 {
     private IMongoCollection<MediaDeletionOutboxDocument> Collection =>
         store.Database.GetCollection<MediaDeletionOutboxDocument>("mediaDeletionOutbox");
@@ -23,6 +23,14 @@ public sealed class MongoMediaDeletionOutbox(MongoStore store) : IAccountDeletio
             Builders<MediaDeletionOutboxDocument>.Update.SetOnInsert(x => x.Attempts, 0),
             Builders<MediaDeletionOutboxDocument>.Update.SetOnInsert(x => x.CreatedAt, DateTime.UtcNow)),
         new UpdateOptions { IsUpsert = true }, cancellationToken);
+
+    public async Task<MediaDeletionStatus?> FindDeletionStatusAsync(string ownerUserId,
+        string deletionReference, CancellationToken cancellationToken)
+    {
+        var item = await Collection.Find(x => x.OwnerUserId == ownerUserId &&
+            x.DeletionReference == deletionReference).FirstOrDefaultAsync(cancellationToken);
+        return item is null ? null : new(item.Status, item.Attempts, item.CreatedAt, item.NextAttemptAt);
+    }
 }
 
 public sealed class MediaDeletionOutboxDocument

@@ -17,6 +17,9 @@ Constitucion -> spec.md -> plan.md -> tareas. DEC-003 esta aprobado; Identity no
 | DEV-API005-05 | IMPLEMENTACION | Operacion persistente idempotente, estados y etapas recuperables, worker tras reinicio y consulta protegida por prueba opaca. | DONE | `accountDeletionOperations`, `GET /api/v1/users/me/deletion/{operationId}`, recovery worker |
 | DEV-API005-06 | SEGURIDAD | Reautenticacion reciente mediante `auth_time` validado en backend, maximo 15 minutos. | DONE | `DeleteOwnAccountService` y prueba pendiente de ampliacion de seguridad |
 | DEV-API005-07 | QA_TECNICA | Fallos controlados de Mongo, Redis, Catalog, Supabase y S3, incluyendo recuperación idempotente. | IN_PROGRESS | Dobles unitarios parciales; prueba S3 y Docker pendientes |
+| DEV-API005-08 | CONCURRENCIA | Fence Redis compartido y revalidación bajo lock en Identity/Orders para impedir pedidos durante la baja. | DONE | `RedisAccountDeletionFence`, `CreateOrderService` y prueba de carrera |
+| DEV-API005-09 | RECUPERACION | Recuperar `Processing` stale y continuar aunque expire el JWT original. | DONE | Worker, lease stale de un minuto y prueba post-TTL |
+| DEV-API005-10 | OBSERVABILIDAD | Exponer estado de `mediaDeletionOutbox` en la consulta segura de operación. | DONE | `IMediaDeletionStatusReader` y prueba de endpoint |
 
 ## Restricciones
 

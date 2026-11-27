@@ -12,7 +12,7 @@ Constitucion -> spec.md -> este plan -> task.md. Identity coordina la baja y sol
 
 ## Secuencia tecnica aprobada
 
-Validar JWT y `auth_time` reciente -> consultar pedidos activos -> crear `accountDeletionOperations` -> revocar Redis -> anonimizar `users` con CAS -> pausar productos -> persistir outbox de Media -> responder `204`; el logout global de Supabase es best-effort. El worker recupera operaciones no completadas tras reinicios. `deletedUserRef` es un UUID aleatorio estable. La purga S3 posterior usa reintentos con lease.
+Validar JWT y `auth_time` reciente -> adquirir fence Redis de usuario/vendedor -> consultar pedidos activos -> crear `accountDeletionOperations` -> revocar Redis -> anonimizar `users` con CAS -> pausar productos -> persistir outbox de Media -> liberar fence -> responder `204`; el logout global de Supabase es best-effort. Orders adquiere el mismo fence y revalida estado antes de reservar stock. El worker recupera operaciones `Pending`, `RequiresIntervention` y `Processing` stale tras reinicios, aun con JWT expirado. `deletedUserRef` es un UUID aleatorio estable. La purga S3 posterior usa reintentos con lease.
 
 ## Componentes
 
@@ -25,6 +25,7 @@ Validar JWT y `auth_time` reciente -> consultar pedidos activos -> crear `accoun
 | Media outbox | `MediaDeletionOutbox.cs`, `MongoMediaRepository.cs`, `S3MediaObjectStore.cs` | Eliminar staging/approved en S3 y marcar `mediaAssets` como `Deleted` de forma reintentable. |
 | Operation store | `MongoAccountDeletionOperationStore.cs` | Persistir estado, etapa y prueba hasheada para recuperar la baja. |
 | Recovery | `DeleteOwnAccountService.cs` | Reanudar etapas pendientes sin reutilizar access tokens. |
+| Cross-module fence | `RedisAccountDeletionFence.cs`, `CreateOrderService.cs` | Serializar baja con reserva/creación de pedidos por usuario y vendedor. |
 
 ## Dependencias y gates
 
@@ -47,7 +48,7 @@ Validar JWT y `auth_time` reciente -> consultar pedidos activos -> crear `accoun
 
 ## Seguridad y errores
 
-El cliente no decide identidad, estado ni referencias. El error usa el contrato unico con `correlationId`; no se registran PII, tokens, pruebas ni secretos. Redis es fail-closed para la revocacion. La consulta de estado valida la prueba hasheada y no requiere el JWT revocado.
+El cliente no decide identidad, estado ni referencias. El error usa el contrato unico con `correlationId`; no se registran PII, tokens, pruebas ni secretos. Redis es fail-closed para la revocacion y para el fence. La consulta de estado valida la prueba hasheada y no requiere el JWT revocado; devuelve el estado del outbox Media sin exponer propietario ni claves S3.
 
 ## Criterios de cierre
 

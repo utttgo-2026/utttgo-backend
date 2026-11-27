@@ -1,12 +1,14 @@
 using Microsoft.AspNetCore.Mvc;
 using UTTTGO.Api.Modules.Identity.Application;
+using UTTTGO.Api.Modules.Media.Application;
 using UTTTGO.Api.Shared.Contracts;
 
 namespace UTTTGO.Api.Modules.Identity.Controllers;
 
 [ApiController]
 [Route("api/v1/users")]
-public sealed class AccountDeletionController(IDeleteOwnAccountService deletion) : ControllerBase
+public sealed class AccountDeletionController(IDeleteOwnAccountService deletion,
+    IMediaDeletionStatusReader mediaDeletion) : ControllerBase
 {
     [HttpDelete("me")]
     public async Task<IActionResult> DeleteMe(CancellationToken cancellationToken)
@@ -48,12 +50,22 @@ public sealed class AccountDeletionController(IDeleteOwnAccountService deletion)
             return NotFound(ApiError.Create(HttpContext, 404, "ACCOUNT_DELETION_NOT_FOUND",
                 "Operación no encontrada."));
 
+        var media = await mediaDeletion.FindDeletionStatusAsync(operation.UserId,
+            operation.DeletedUserRef, cancellationToken);
         return Ok(new
         {
             operationId = operation.OperationId,
             status = operation.Status,
             stage = operation.Stage,
-            failureCode = operation.FailureCode
+            failureCode = operation.FailureCode,
+            mediaPurge = media is null
+                ? new { status = "NotQueued", attempts = 0, nextAttemptAt = (DateTime?)null }
+                : new
+                {
+                    status = media.Status,
+                    attempts = media.Attempts,
+                    nextAttemptAt = media.NextAttemptAt
+                }
         });
     }
 }

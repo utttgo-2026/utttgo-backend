@@ -54,6 +54,15 @@ public interface IAccountDeletionMedia
         CancellationToken cancellationToken);
 }
 
+public interface IMediaDeletionStatusReader
+{
+    Task<MediaDeletionStatus?> FindDeletionStatusAsync(string ownerUserId, string deletionReference,
+        CancellationToken cancellationToken);
+}
+
+public sealed record MediaDeletionStatus(string Status, int Attempts, DateTime CreatedAt,
+    DateTime? NextAttemptAt);
+
 public interface IMediaObjectStore
 {
     Task<(string Url, DateTime ExpiresAt, IReadOnlyDictionary<string, string> Headers)> SignPutAsync(
