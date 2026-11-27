@@ -372,6 +372,7 @@ public sealed class OrdersSecurityTests
             services.RemoveAll<ICatalogOrderProducts>();
             services.RemoveAll<ISellerOrderProfiles>();
             services.RemoveAll<IAuthenticatedLocalProfileReader>();
+            services.RemoveAll<IAccountDeletionFence>();
             services.AddSingleton<IOrderRepository>(orders ?? new OrdersRepositoryDouble());
             services.AddSingleton<IOrderAuditWriter>(new OrdersAuditWriterDouble());
             services.AddSingleton<IOrdersRateLimitGate>(gate ?? new OrdersRateLimitDouble());
@@ -387,5 +388,6 @@ public sealed class OrdersSecurityTests
             {
                 Profile = SellerFixtures.Profile("Active")
             });
+            services.AddSingleton<IAccountDeletionFence, AccountDeletionFenceDouble>();
         }));
 }

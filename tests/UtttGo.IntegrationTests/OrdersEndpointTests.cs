@@ -621,6 +621,7 @@ public sealed class OrdersEndpointTests
             services.RemoveAll<ICatalogOrderProducts>();
             services.RemoveAll<ISellerOrderProfiles>();
             services.RemoveAll<IAuthenticatedLocalProfileReader>();
+            services.RemoveAll<IAccountDeletionFence>();
             services.AddSingleton<IOrderRepository>(orders ?? new OrdersRepositoryDouble());
             services.AddSingleton<IOrderAuditWriter>(new OrdersAuditWriterDouble());
             services.AddSingleton<IOrdersRateLimitGate>(gate ?? new OrdersRateLimitDouble());
@@ -636,5 +637,6 @@ public sealed class OrdersEndpointTests
             {
                 Profile = SellerFixtures.Profile()
             });
+            services.AddSingleton<IAccountDeletionFence, AccountDeletionFenceDouble>();
         }));
 }

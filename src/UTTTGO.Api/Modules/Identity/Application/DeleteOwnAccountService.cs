@@ -20,6 +20,7 @@ public sealed class DeleteOwnAccountService(IAuthenticatedLocalProfileReader pro
     IAccountDeletionRepository accounts, IActiveOrderReader activeOrders, IAccountDeletionCatalog catalog,
     IJwtRevocationStore revocations, ISupabaseSessionRevoker supabase,
     IAccountDeletionMedia media, IAccountDeletionOperationStore operations,
+    IAccountDeletionFence fence,
     IDeviceTokenStore? deviceTokens = null) : IDeleteOwnAccountService, IAccountDeletionRecovery
 {
     public async Task<DeleteOwnAccountResult> DeleteAsync(string token, string operationId, string proof,
@@ -51,48 +52,56 @@ public sealed class DeleteOwnAccountService(IAuthenticatedLocalProfileReader pro
             var profile = authorization.Profile;
             if (profile.AccountStatus is not ("Active" or "Deleted"))
                 return new(DeleteOwnAccountOutcome.Unauthorized);
-            if (await activeOrders.HasActiveOrdersAsync(profile.Id, profile.SellerId, cancellationToken))
-                return new(DeleteOwnAccountOutcome.Conflict);
 
-            if (profile.AccountStatus == "Deleted" && string.IsNullOrWhiteSpace(profile.DeletedUserRef))
-                return new(DeleteOwnAccountOutcome.Unavailable);
-            var deletedRef = profile.DeletedUserRef ?? Guid.NewGuid().ToString("N");
-            var ttl = DateTimeOffset.FromUnixTimeSeconds(expiration) - DateTimeOffset.UtcNow;
-            if (ttl <= TimeSpan.Zero) return new(DeleteOwnAccountOutcome.Unauthorized);
-            var operation = await operations.CreateOrGetAsync(operationId, AccountDeletionProof.Hash(proof),
-                subject, profile.Id, profile.SellerId, profile.Version, deletedRef,
-                JwtRevocationIdentifier.For(parsed, token), expiration, cancellationToken);
-            if (operation is null || operation.Subject != subject || operation.UserId != profile.Id)
-                return new(DeleteOwnAccountOutcome.Unavailable);
+            var fenceKeys = new[] { $"user:{profile.Id}",
+                string.IsNullOrWhiteSpace(profile.SellerId) ? null : $"seller:{profile.SellerId}" };
+            var lease = await fence.AcquireAsync(fenceKeys!, cancellationToken);
+            if (lease is null) return new(DeleteOwnAccountOutcome.Unavailable);
+            await using (lease)
+            {
+                if (await activeOrders.HasActiveOrdersAsync(profile.Id, profile.SellerId, cancellationToken))
+                    return new(DeleteOwnAccountOutcome.Conflict);
 
-            try
-            {
-                await RunAsync(operation, ttl, cancellationToken);
-            }
-            catch (ExternalDependencyUnavailableException)
-            {
-                var failed = await operations.MarkFailureAsync(operation.OperationId,
-                    AccountDeletionOperationStates.RequiresIntervention,
-                    "DEPENDENCY_UNAVAILABLE", cancellationToken);
-                return new(DeleteOwnAccountOutcome.Unavailable, failed ?? operation);
-            }
-            catch (Exception) when (!cancellationToken.IsCancellationRequested)
-            {
-                var failed = await operations.MarkFailureAsync(operation.OperationId,
-                    AccountDeletionOperationStates.RequiresIntervention,
-                    "RECOVERY_REQUIRED", cancellationToken);
-                return new(DeleteOwnAccountOutcome.Unavailable, failed ?? operation);
-            }
+                if (profile.AccountStatus == "Deleted" && string.IsNullOrWhiteSpace(profile.DeletedUserRef))
+                    return new(DeleteOwnAccountOutcome.Unavailable);
+                var deletedRef = profile.DeletedUserRef ?? Guid.NewGuid().ToString("N");
+                var ttl = DateTimeOffset.FromUnixTimeSeconds(expiration) - DateTimeOffset.UtcNow;
+                if (ttl <= TimeSpan.Zero) return new(DeleteOwnAccountOutcome.Unauthorized);
+                var operation = await operations.CreateOrGetAsync(operationId, AccountDeletionProof.Hash(proof),
+                    subject, profile.Id, profile.SellerId, profile.Version, deletedRef,
+                    JwtRevocationIdentifier.For(parsed, token), expiration, cancellationToken);
+                if (operation is null || operation.Subject != subject || operation.UserId != profile.Id)
+                    return new(DeleteOwnAccountOutcome.Unavailable);
 
-            try
-            {
-                await supabase.RevokeGloballyAsync(token, cancellationToken);
+                try
+                {
+                    await RunAsync(operation, ttl, cancellationToken);
+                }
+                catch (ExternalDependencyUnavailableException)
+                {
+                    var failed = await operations.MarkFailureAsync(operation.OperationId,
+                        AccountDeletionOperationStates.RequiresIntervention,
+                        "DEPENDENCY_UNAVAILABLE", cancellationToken);
+                    return new(DeleteOwnAccountOutcome.Unavailable, failed ?? operation);
+                }
+                catch (Exception) when (!cancellationToken.IsCancellationRequested)
+                {
+                    var failed = await operations.MarkFailureAsync(operation.OperationId,
+                        AccountDeletionOperationStates.RequiresIntervention,
+                        "RECOVERY_REQUIRED", cancellationToken);
+                    return new(DeleteOwnAccountOutcome.Unavailable, failed ?? operation);
+                }
+
+                try
+                {
+                    await supabase.RevokeGloballyAsync(token, cancellationToken);
+                }
+                catch (Exception) when (!cancellationToken.IsCancellationRequested)
+                {
+                    // Global provider logout is explicitly best effort after local completion.
+                }
+                return new(DeleteOwnAccountOutcome.Success);
             }
-            catch (Exception) when (!cancellationToken.IsCancellationRequested)
-            {
-                // Global provider logout is explicitly best effort after local completion.
-            }
-            return new(DeleteOwnAccountOutcome.Success);
         }
         catch (ExternalDependencyUnavailableException)
         { return new(DeleteOwnAccountOutcome.Unavailable); }
@@ -105,13 +114,41 @@ public sealed class DeleteOwnAccountService(IAuthenticatedLocalProfileReader pro
         try
         {
             var ttl = DateTimeOffset.FromUnixTimeSeconds(operation.Expiration) - DateTimeOffset.UtcNow;
-            if (ttl <= TimeSpan.Zero) return;
-            await RunAsync(operation, ttl, cancellationToken);
+            if (operation.Stage == AccountDeletionStages.Created && ttl <= TimeSpan.Zero)
+            {
+                operation = await operations.MarkAsync(operation.OperationId,
+                    AccountDeletionOperationStates.Processing, AccountDeletionStages.SessionRevoked,
+                    "JWT_EXPIRED_BEFORE_RECOVERY", cancellationToken) ?? operation with
+                    { Stage = AccountDeletionStages.SessionRevoked };
+                ttl = TimeSpan.FromSeconds(1);
+            }
+            else
+            {
+                ttl = ttl > TimeSpan.Zero ? ttl : TimeSpan.FromSeconds(1);
+            }
+
+            var lease = await fence.AcquireAsync(new[] { $"user:{operation.UserId}",
+                string.IsNullOrWhiteSpace(operation.SellerId) ? null : $"seller:{operation.SellerId}" }!,
+                cancellationToken);
+            if (lease is null) return;
+            await using (lease)
+            {
+                if (operation.Stage is AccountDeletionStages.Created or AccountDeletionStages.SessionRevoked &&
+                    await activeOrders.HasActiveOrdersAsync(operation.UserId, operation.SellerId,
+                        cancellationToken))
+                {
+                    await operations.MarkFailureAsync(operation.OperationId,
+                        AccountDeletionOperationStates.RequiresIntervention,
+                        "ACTIVE_ORDER_CONFLICT", cancellationToken);
+                    return;
+                }
+                await RunAsync(operation, ttl, cancellationToken);
+            }
         }
         catch (Exception) when (!cancellationToken.IsCancellationRequested)
         {
-            await operations.MarkFailureAsync(operation.OperationId, AccountDeletionOperationStates.RequiresIntervention,
-                "RECOVERY_REQUIRED", cancellationToken);
+            await operations.MarkFailureAsync(operation.OperationId,
+                AccountDeletionOperationStates.RequiresIntervention, "RECOVERY_REQUIRED", cancellationToken);
         }
     }
 

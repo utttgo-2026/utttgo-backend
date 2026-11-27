@@ -50,11 +50,16 @@ public sealed class MongoAccountDeletionOperationStore(MongoStore store) : IAcco
             x => x.OperationId == operationId && x.ProofHash == proofHash).FirstOrDefaultAsync(cancellationToken));
 
     public async Task<IReadOnlyList<AccountDeletionOperation>> ListRecoverableAsync(
-        CancellationToken cancellationToken) => (await Collection.Find(x =>
+        CancellationToken cancellationToken)
+    {
+        var staleBefore = DateTime.UtcNow.Subtract(TimeSpan.FromMinutes(1));
+        return (await Collection.Find(x =>
             x.Status == AccountDeletionOperationStates.Pending ||
-            x.Status == AccountDeletionOperationStates.RequiresIntervention)
+            x.Status == AccountDeletionOperationStates.RequiresIntervention ||
+            x.Status == AccountDeletionOperationStates.Processing && x.UpdatedAt <= staleBefore)
             .SortBy(x => x.CreatedAt).Limit(20).ToListAsync(cancellationToken))
             .Select(ToContract).Where(item => item is not null).Select(item => item!).ToArray();
+    }
 
     public async Task<AccountDeletionOperation?> MarkAsync(string operationId, string status, string stage,
         string? failureCode, CancellationToken cancellationToken) => ToContract(await Collection.FindOneAndUpdateAsync(
@@ -117,7 +122,8 @@ public sealed class AccountDeletionOperationIndexes(MongoStore store) : IHostedS
                     new CreateIndexOptions { Unique = true, Name = "operation_id_unique" }),
                 new CreateIndexModel<AccountDeletionOperationDocument>(
                     Builders<AccountDeletionOperationDocument>.IndexKeys.Ascending(x => x.Status)
-                        .Ascending(x => x.CreatedAt), new CreateIndexOptions { Name = "recovery_queue" })], cancellationToken);
+                        .Ascending(x => x.UpdatedAt).Ascending(x => x.CreatedAt),
+                    new CreateIndexOptions { Name = "recovery_queue" })], cancellationToken);
         }
         catch (Exception) when (!cancellationToken.IsCancellationRequested)
         {
