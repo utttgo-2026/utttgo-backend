@@ -1,5 +1,4 @@
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.ModelBinding;
 using UTTTGO.Api.Modules.Identity.Application;
 using UTTTGO.Api.Modules.Media.Application;
 using UTTTGO.Api.Shared.Contracts;
@@ -18,15 +17,16 @@ public sealed class AccountDeletionController(IDeleteOwnAccountService deletion,
     [ProducesResponseType(typeof(ApiError), StatusCodes.Status409Conflict)]
     [ProducesResponseType(typeof(AccountDeletionUnavailableResponse), StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> DeleteMe(
-        [FromHeader(Name = "X-Account-Deletion-Id"), BindRequired] string operationId,
-        [FromHeader(Name = "X-Account-Deletion-Proof"), BindRequired] string proof,
+        [FromHeader(Name = "X-Account-Deletion-Id")] string? operationId,
+        [FromHeader(Name = "X-Account-Deletion-Proof")] string? proof,
         CancellationToken cancellationToken)
     {
         var token = BearerTokenReader.Read(Request);
         if (token is null)
             return Unauthorized(ApiError.Create(HttpContext, 401, "UNAUTHORIZED", "Sesión no autorizada."));
 
-        var result = await deletion.DeleteAsync(token, operationId, proof, cancellationToken);
+        var result = await deletion.DeleteAsync(token, operationId ?? string.Empty, proof ?? string.Empty,
+            cancellationToken);
         return result.Outcome switch
         {
             DeleteOwnAccountOutcome.Success => NoContent(),
@@ -48,7 +48,7 @@ public sealed class AccountDeletionController(IDeleteOwnAccountService deletion,
     [ProducesResponseType(typeof(ApiError), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ApiError), StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetDeletion(string operationId,
-        [FromHeader(Name = "X-Account-Deletion-Proof"), BindRequired] string proof,
+        [FromHeader(Name = "X-Account-Deletion-Proof")] string? proof,
         CancellationToken cancellationToken)
     {
         if (!Guid.TryParse(operationId, out _) || string.IsNullOrWhiteSpace(proof) || proof.Length < 32)

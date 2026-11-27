@@ -49,6 +49,31 @@ public sealed class PublicApiServerTransformer(IConfiguration configuration) : I
                     content.Schema = schema;
         }
 
+        MarkAccountDeletionHeadersRequired(document);
         return Task.CompletedTask;
+    }
+
+    private static void MarkAccountDeletionHeadersRequired(OpenApiDocument document)
+    {
+        if (!document.Paths.TryGetValue("/api/v1/users/me", out var deletePath) ||
+            !document.Paths.TryGetValue("/api/v1/users/me/deletion/{operationId}", out var statusPath))
+            return;
+
+        if (deletePath.Operations is not { } deleteOperations || statusPath.Operations is not { } statusOperations)
+            return;
+
+        foreach (var operation in deleteOperations.Values.Concat(statusOperations.Values))
+        {
+            if (operation is null) continue;
+            foreach (var parameter in operation.Parameters ?? [])
+            {
+                if (parameter is not OpenApiParameter openApiParameter ||
+                    openApiParameter.In != ParameterLocation.Header ||
+                    openApiParameter.Name is not ("X-Account-Deletion-Id" or "X-Account-Deletion-Proof"))
+                    continue;
+
+                openApiParameter.Required = true;
+            }
+        }
     }
 }
