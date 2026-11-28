@@ -2,6 +2,7 @@ using FluentValidation;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using MongoDB.Driver;
 using StackExchange.Redis;
 using UTTTGO.Api.Modules.Admin.Application;
@@ -44,6 +45,7 @@ using UTTTGO.Api.Modules.Notifications.Validators;
 using UTTTGO.Api.Modules.Chat.Application;
 using UTTTGO.Api.Modules.Chat.Infrastructure;
 using UTTTGO.Api.Shared.OpenApi;
+using UTTTGO.Api.Shared.LocalStaging;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -231,6 +233,7 @@ builder.Services.Configure<S3Config>(options =>
 {
     options.BucketName = builder.Configuration["S3_BUCKET_IMAGES"] ?? "";
     options.Region = builder.Configuration["AWS_REGION"] ?? "us-east-2";
+    options.ServiceUrl = builder.Configuration["S3_SERVICE_URL"];
 });
 builder.Services.AddSingleton<S3MediaObjectStore>();
 builder.Services.AddSingleton<IMediaObjectStore>(services => services.GetRequiredService<S3MediaObjectStore>());
@@ -298,6 +301,24 @@ builder.Services.AddSingleton<IOrderMessageRepository, MongoOrderMessageReposito
 builder.Services.AddScoped<IChatRateLimitGate, RedisChatRateLimitGate>();
 builder.Services.AddScoped<IChatService, ChatService>();
 builder.Services.AddHostedService<ChatMongoIndexes>();
+
+if (builder.Environment.IsEnvironment("LocalStaging") &&
+    builder.Configuration.GetValue<bool>("LOCAL_STAGING_ENABLED"))
+{
+    builder.Services.RemoveAll<ISupabaseRegistration>();
+    builder.Services.RemoveAll<ISupabaseLogin>();
+    builder.Services.RemoveAll<IValidatedJwtSubjectReader>();
+    builder.Services.RemoveAll<ILoginJwtGate>();
+    builder.Services.RemoveAll<ISupabaseSessionIdentity>();
+    builder.Services.RemoveAll<ISupabaseSessionRevoker>();
+    builder.Services.AddSingleton<LocalStagingAuthDoubles>();
+    builder.Services.AddSingleton<ISupabaseRegistration>(services => services.GetRequiredService<LocalStagingAuthDoubles>());
+    builder.Services.AddSingleton<ISupabaseLogin>(services => services.GetRequiredService<LocalStagingAuthDoubles>());
+    builder.Services.AddSingleton<IValidatedJwtSubjectReader>(services => services.GetRequiredService<LocalStagingAuthDoubles>());
+    builder.Services.AddSingleton<ILoginJwtGate>(services => services.GetRequiredService<LocalStagingAuthDoubles>());
+    builder.Services.AddSingleton<ISupabaseSessionIdentity>(services => services.GetRequiredService<LocalStagingAuthDoubles>());
+    builder.Services.AddSingleton<ISupabaseSessionRevoker>(services => services.GetRequiredService<LocalStagingAuthDoubles>());
+}
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi(options => options.AddDocumentTransformer<PublicApiServerTransformer>());
 

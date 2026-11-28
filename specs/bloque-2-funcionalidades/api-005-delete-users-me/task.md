@@ -13,10 +13,10 @@ Constitucion -> spec.md -> plan.md -> tareas. DEC-003 esta aprobado; Identity no
 | DEV-API005-01 | DOCUMENTAL | Politica de baja, anonimización, `deletedUserRef` UUID, bloqueo por pedidos activos, pausa de productos, Redis y logout best-effort. | DONE | `spec.md`, aprobacion 2026-11-22 |
 | DEV-API005-02 | IMPLEMENTACION | DELETE, servicio Identity, CAS en `users`, contratos Orders/Catalog, Redis y logout best-effort. | DONE | Código existente y pruebas unitarias |
 | DEV-API005-03 | INTEGRACION | Consumir contratos de Orders/Catalog/Media sin escribir colecciones ajenas; outbox idempotente para assets. | DONE | `IAccountDeletionMedia`, `mediaDeletionOutbox`, dispatcher y DI |
-| DEV-API005-04 | QA_TECNICA | Repeticion, pedido activo, JWT invalido/revocado, dependencia caida, pausa de publicaciones y orden de purga. | IN_PROGRESS | Build y Unit 411 verdes; suites Integration/Security requieren Docker Engine activo |
+| DEV-API005-04 | QA_TECNICA | Repeticion, pedido activo, JWT invalido/revocado, dependencia caida, pausa de publicaciones y orden de purga. | IN_PROGRESS | `AccountDeletionJourneyTests` cubre los escenarios HTTP; ejecución local pendiente de Docker Engine activo |
 | DEV-API005-05 | IMPLEMENTACION | Operacion persistente idempotente, estados y etapas recuperables, worker tras reinicio y consulta protegida por prueba opaca. | DONE | `accountDeletionOperations`, `GET /api/v1/users/me/deletion/{operationId}`, recovery worker |
 | DEV-API005-06 | SEGURIDAD | Reautenticacion reciente mediante `auth_time` validado en backend, maximo 15 minutos. | DONE | `DeleteOwnAccountService` y prueba pendiente de ampliacion de seguridad |
-| DEV-API005-07 | QA_TECNICA | Fallos controlados de Mongo, Redis, Catalog, Supabase y S3, incluyendo recuperación idempotente. | IN_PROGRESS | Dobles unitarios parciales; prueba S3 y Docker pendientes |
+| DEV-API005-07 | QA_TECNICA | Fallos controlados de Mongo, Redis, Catalog, Supabase y S3, incluyendo recuperación idempotente. | IN_PROGRESS | JWT HMAC local, Redis revocation y LocalStack S3 añadidos; ejecución Docker pendiente |
 | DEV-API005-08 | CONCURRENCIA | Fence Redis compartido y revalidación bajo lock en Identity/Orders para impedir pedidos durante la baja. | DONE | `RedisAccountDeletionFence`, `CreateOrderService` y prueba de carrera |
 | DEV-API005-09 | RECUPERACION | Recuperar `Processing` stale y continuar aunque expire el JWT original. | DONE | Worker, lease stale de un minuto y prueba post-TTL |
 | DEV-API005-10 | OBSERVABILIDAD | Exponer estado de `mediaDeletionOutbox` en la consulta segura de operación. | DONE | `IMediaDeletionStatusReader` y prueba de endpoint |
@@ -27,4 +27,4 @@ No usar Supabase `service_role` ni Admin API. No persistir access tokens ni la p
 
 ## Evidencia requerida
 
-Build Release, formato y las tres suites se deben ejecutar con Docker. Registrar resultados y actualizar `docs/traceability.md` y `memoria.md` sin afirmar verificacion no realizada. La purga S3 requiere una prueba dedicada con doble o emulador local, nunca con el bucket real.
+Build Release, formato y las tres suites se deben ejecutar con Docker. Registrar resultados y actualizar `docs/traceability.md` y `memoria.md` sin afirmar verificacion no realizada. La purga S3 requiere una prueba dedicada con doble o emulador local, nunca con el bucket real. `EndToEndHost` permanece como host HTTP interno; un servidor Kestrel para Android requiere una tarea posterior.

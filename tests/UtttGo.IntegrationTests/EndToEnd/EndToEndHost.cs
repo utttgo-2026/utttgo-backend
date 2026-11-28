@@ -42,13 +42,15 @@ internal sealed class EndToEndHost : IAsyncDisposable
 
     private readonly MongoDbContainer mongo;
     private readonly RedisContainer redis;
+    private readonly IConnectionMultiplexer redisConnection;
     private readonly Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactory<Program> factory;
 
-    private EndToEndHost(MongoDbContainer mongo, RedisContainer redis,
+    private EndToEndHost(MongoDbContainer mongo, RedisContainer redis, IConnectionMultiplexer redisConnection,
         Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactory<Program> factory)
     {
         this.mongo = mongo;
         this.redis = redis;
+        this.redisConnection = redisConnection;
         this.factory = factory;
         Client = factory.CreateClient();
         Services = factory.Services;
@@ -101,6 +103,7 @@ internal sealed class EndToEndHost : IAsyncDisposable
     {
         Client.Dispose();
         await factory.DisposeAsync();
+        await redisConnection.DisposeAsync();
         await redis.DisposeAsync();
         await mongo.DisposeAsync();
     }
@@ -109,6 +112,8 @@ internal sealed class EndToEndHost : IAsyncDisposable
     {
         var mongo = BuildMongoContainer();
         var redis = BuildRedisContainer();
+        IConnectionMultiplexer? redisConnection = null;
+        Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactory<Program>? factory = null;
 
         try
         {
@@ -121,8 +126,9 @@ internal sealed class EndToEndHost : IAsyncDisposable
             await WaitForMongoAsync(mongoUri);
             await WaitForRedisAsync(redisHost, redisPort);
 
-            var auth = new EndToEndAuthDoubles();
-            var factory = new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactory<Program>()
+            redisConnection = CreateMultiplexer(redisHost, redisPort);
+            var auth = new EndToEndAuthDoubles(redisConnection);
+            factory = new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactory<Program>()
                 .WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
                 {
                     services.RemoveAll<IOptions<MongoOptions>>();
@@ -132,7 +138,7 @@ internal sealed class EndToEndHost : IAsyncDisposable
                         Database = DatabaseName
                     }));
                     services.RemoveAll<IConnectionMultiplexer>();
-                    services.AddSingleton<IConnectionMultiplexer>(CreateMultiplexer(redisHost, redisPort));
+                    services.AddSingleton(redisConnection);
                     services.AddSingleton<IStartupFilter, RemoteIpStartupFilter>();
                     services.RemoveAll<ISupabaseRegistration>();
                     services.AddSingleton<ISupabaseRegistration>(auth);
@@ -147,10 +153,12 @@ internal sealed class EndToEndHost : IAsyncDisposable
                     configureServices?.Invoke(services);
                 }));
 
-            return new EndToEndHost(mongo, redis, factory);
+            return new EndToEndHost(mongo, redis, redisConnection, factory);
         }
         catch
         {
+            if (factory is not null) await factory.DisposeAsync();
+            if (redisConnection is not null) await redisConnection.DisposeAsync();
             await redis.DisposeAsync();
             await mongo.DisposeAsync();
             throw;

@@ -225,3 +225,26 @@ credenciales.
   queda consultable.
 - Evidencia local final: build Release sin errores, format correcto, unitarias
   `417/417`, integración `309/309` y seguridad `172/172`.
+
+## Harness local API-005 2026-11-27
+
+- Se añadió `AccountDeletionJourneyTests` sobre MongoDB y Redis de
+  Testcontainers, LocalStack S3 y `EndToEndHost`.
+- `EndToEndAuthDoubles` ahora emite JWT HMAC efímeros con `auth_time`, `exp`,
+  `iss`, `aud` y `jti`; valida firma/vida y consulta `revoked:{jti}` en Redis.
+  No representa una integración real con Supabase, JWKS ni logout global.
+- La suite cubre los seis escenarios API-005 solicitados, incluyendo headers,
+  consulta por proof, recuperación stale y `mediaPurgeStatus`. La recuperación
+  ejecuta el mismo pass del worker; el reinicio físico del proceso queda
+  pendiente del host Kestrel con contenedores persistidos.
+- Se documentó el procedimiento en `docs/api-005-local-staging.md`. El host
+  Kestrel real vive en `tools/UtttGo.LocalStaging` y expone `0.0.0.0:5080`;
+  el smoke test de `/health` respondió `200` y los contenedores etiquetados se
+  limpiaron al terminar.
+- Build Release y formato pasan sin errores. Docker Engine quedó disponible y
+  una ejecución desde artefactos temporales antiguos alcanzó los seis casos:
+  2 pasaron y 4 fallaron por defectos del propio harness, ya corregidos
+  (proof distinto al consultar, `mediaId` no válido para Mongo y scope DI;
+  los dos timeouts tenían la misma causa de proof). La recompilación posterior volvió a ser bloqueada por
+  App Control al cargar el DLL de pruebas; por ello todavía no se declara
+  evidencia verde de los seis escenarios corregidos.
