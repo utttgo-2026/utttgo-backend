@@ -17,7 +17,15 @@ public sealed class S3MediaObjectStore(IOptions<S3Config> options,
         var config = Configuration;
         if (string.IsNullOrWhiteSpace(config.BucketName))
             throw new InvalidOperationException("Media bucket is not configured.");
-        return (new AmazonS3Client(RegionEndpoint.GetBySystemName(config.Region)), config.BucketName);
+        var client = string.IsNullOrWhiteSpace(config.ServiceUrl)
+            ? new AmazonS3Client(RegionEndpoint.GetBySystemName(config.Region))
+            : new AmazonS3Client(new AmazonS3Config
+            {
+                ServiceURL = config.ServiceUrl,
+                ForcePathStyle = true,
+                AuthenticationRegion = config.Region
+            });
+        return (client, config.BucketName);
     }
 
     public Task<(string Url, DateTime ExpiresAt, IReadOnlyDictionary<string, string> Headers)> SignPutAsync(

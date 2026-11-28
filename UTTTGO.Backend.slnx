@@ -7,4 +7,7 @@
     <Project Path="tests/UtttGo.SecurityTests/UtttGo.SecurityTests.csproj" />
     <Project Path="tests/UtttGo.UnitTests/UtttGo.UnitTests.csproj" />
   </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/UtttGo.LocalStaging/UtttGo.LocalStaging.csproj" />
+  </Folder>
 </Solution>
